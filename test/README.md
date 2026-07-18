@@ -8,8 +8,11 @@ against known-answer vectors instead of only being exercised by flashing.
 ## Run
 
 ```sh
-make -C test test
+bash test/run.sh
 ```
+
+(`make -C test test` also works if you have `make`; this box has neither `make`
+nor `cmake`, so `run.sh` is the primary entry point — it needs only g++.)
 
 Expected:
 
