@@ -1,0 +1,113 @@
+name: LvglExamples
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    paths:
+      - "examples/lvgl/**"
+      - "src/**"
+      - ".github/scripts/check_ci_json.py"
+jobs:
+  Arduino-Build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        board:
+          - tlora_pager
+          - twatch_ultra
+          - twatchs3
+          
+        lvgl_examples:
+          - lvgl/benchmark/benchmark.ino
+          - lvgl/event/event.ino
+          - lvgl/get_started/get_started.ino
+          - lvgl/layouts/flex/flex.ino
+          - lvgl/layouts/grid/grid.ino
+          - lvgl/scroll/scroll.ino
+          - lvgl/style/style.ino
+          - lvgl/third_party/gif/gif.ino
+          - lvgl/third_party/image/image.ino
+          - lvgl/widgets/animimg/animimg.ino
+          - lvgl/widgets/arc/arc.ino
+          - lvgl/widgets/bar/bar.ino
+          - lvgl/widgets/btn/btn.ino
+          - lvgl/widgets/btnmatrix/btnmatrix.ino
+          - lvgl/widgets/calendar/calendar.ino
+          - lvgl/widgets/canvas/canvas.ino
+          - lvgl/widgets/chart/chart.ino
+          - lvgl/widgets/checkbox/checkbox.ino
+          - lvgl/widgets/dropdown/dropdown.ino
+          - lvgl/widgets/img/img.ino
+          - lvgl/widgets/imgbtn/imgbtn.ino
+          - lvgl/widgets/keyboard/keyboard.ino
+          - lvgl/widgets/label/label.ino
+          - lvgl/widgets/led/led.ino
+          - lvgl/widgets/line/line.ino
+          - lvgl/widgets/list/list.ino
+          - lvgl/widgets/menu/menu.ino
+          - lvgl/widgets/msgbox/msgbox.ino
+          - lvgl/widgets/obj/obj.ino
+          - lvgl/widgets/roller/roller.ino
+          - lvgl/widgets/scale/scale.ino
+          - lvgl/widgets/slider/slider.ino
+          - lvgl/widgets/span/span.ino
+          - lvgl/widgets/spinbox/spinbox.ino
+          - lvgl/widgets/spinner/spinner.ino
+          - lvgl/widgets/switch/switch.ino
+          - lvgl/widgets/table/table.ino
+          - lvgl/widgets/tabview/tabview.ino
+          - lvgl/widgets/textarea/textarea.ino
+          - lvgl/widgets/tileview/tileview.ino
+          - lvgl/widgets/win/win.ino
+
+    env:
+      SKETCH: ${{matrix.lvgl_examples}}
+      LILYGO_BOARD_TYPE: ${{matrix.board}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Arduino Ci
+        run: |
+          wget https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz -O arduino-cli.tar.gz
+          sudo tar xf arduino-cli.tar.gz -C /usr/local/bin arduino-cli
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_dev_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Check ci.json
+        id: check_json
+        run: |
+          python .github/scripts/check_ci_json.py \
+            --dir-path "$PWD/examples/$(dirname "$SKETCH")" \
+            --board "$LILYGO_BOARD_TYPE"
+      
+      - name: Install ThirdParty
+        if: steps.check_json.outputs.should_build == 'true'
+        run: |
+          mkdir -p $HOME/Arduino/libraries ;
+          cd $HOME/Arduino/libraries ;
+          git clone https://github.com/Xinyuan-LilyGO/LilyGoLib-ThirdParty.git $HOME/Arduino/libraries ;
+
+      - name: Build base examples
+        if: steps.check_json.outputs.should_build == 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          DIR_PATH=$(dirname "$PWD/examples/$SKETCH")
+          echo "RUN EXAMPLE PATH:"$DIR_PATH
+          echo "ACTIVE RADIO: ${{ steps.check_json.outputs.active_radio }}"
+          echo "SHOULD BUILD: ${{ steps.check_json.outputs.should_build }}"
+          
+          if [[ "${{ steps.check_json.outputs.should_build }}" == "true" ]]; then
+            arduino-cli compile \
+            -besp32:esp32:$LILYGO_BOARD_TYPE:UploadSpeed=921600,USBMode=hwcdc,CDCOnBoot=cdc,MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,CPUFreq=240,PartitionScheme=app3M_fat9M_16MB,DebugLevel=none,LoopCore=1,EventsCore=1,EraseFlash=none,JTAGAdapter=default,Revision=${{ steps.check_json.outputs.active_radio }} \
+              --library . \
+              $PWD/examples/$SKETCH
+          else
+            echo "Skip the compilation step according to the ci.json configuration"
+            exit 0
+          fi    
