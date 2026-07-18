@@ -5,6 +5,7 @@
 #include "skimmer.h"
 #include "evil_twin.h"
 #include "flock.h"
+#include "threat_radar_screen.h"
 #include "pet_screen.h"
 #include "handshake.h"
 #include "tesla_cp_screen.h"
@@ -22,6 +23,7 @@ void clock_screen_show();
 void main_loop_request_lvgl_priority(int cycles);
 
 static lv_obj_t *tools_screen;
+static lv_obj_t *tools_title;   // repainted on show() so it flips to HADES red under threat
 static lv_obj_t *t_airtag;    // referenced by on_airtag_clicked for colour swap
 static lv_obj_t *t_flipper;   // referenced by on_flipper_clicked for colour swap
 static lv_obj_t *t_skimmer;   // referenced by on_skimmer_clicked for colour swap
@@ -898,6 +900,46 @@ static void on_handshake_clicked(lv_event_t *)
     }
 }
 
+// Threat Radar — concentric sweep rings with a single red blip, evoking a
+// radar scope. Rings are transparent circles with an ARGUS steel-blue border;
+// the blip is a contact riding a ring, the spoke a faint sweep line. (Fork drew
+// this in matrix-green; rethemed to the ARGUS accent, threat blip in HADES.)
+static void draw_radar_icon(lv_obj_t *tile)
+{
+    lv_color_t accent = ARGUS_ACCENT;
+    const int rings[3] = { 96, 64, 32 };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *r = lv_obj_create(tile);
+        lv_obj_set_size(r, rings[i], rings[i]);
+        lv_obj_set_style_radius(r, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_color(r, accent, LV_PART_MAIN);
+        lv_obj_set_style_border_width(r, 2, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(r, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(r, LV_ALIGN_TOP_MID, 0, 30 + (96 - rings[i]) / 2);
+    }
+    lv_obj_t *spoke = lv_obj_create(tile);
+    lv_obj_set_size(spoke, 3, 48);
+    lv_obj_set_style_radius(spoke, 2, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(spoke, accent, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(spoke, LV_OPA_70, LV_PART_MAIN);
+    lv_obj_set_style_border_width(spoke, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(spoke, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(spoke, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(spoke, LV_ALIGN_TOP_MID, 18, 34);
+
+    lv_obj_t *blip = lv_obj_create(tile);
+    lv_obj_set_size(blip, 14, 14);
+    lv_obj_set_style_radius(blip, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(blip, HADES_RED, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(blip, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(blip, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(blip, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(blip, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(blip, LV_ALIGN_TOP_MID, 28, 44);
+}
+
 // HexHound — an angular cyber-hound head (skull + pointed ears + scanner eyes +
 // snout) in ARGUS steel-blue, matching the pet screen's creature.
 static void draw_pet_icon(lv_obj_t *tile)
@@ -1014,11 +1056,11 @@ void tools_screen_create()
     lv_obj_set_style_border_width(tools_screen, 0, LV_PART_MAIN);
 
     // Title
-    lv_obj_t *title = lv_label_create(tools_screen);
-    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, LV_PART_MAIN);
-    lv_label_set_text(title, "TOOLS");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+    tools_title = lv_label_create(tools_screen);
+    lv_obj_set_style_text_color(tools_title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(tools_title, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_label_set_text(tools_title, "TOOLS");
+    lv_obj_align(tools_title, LV_ALIGN_TOP_MID, 0, 8);
 
     // Two-column flex grid. ROW_WRAP gives us 2 tiles per row (since each
     // 180px tile + the 12px column gap exceeds half the 384px inner width),
@@ -1064,6 +1106,7 @@ void tools_screen_create()
     t_skimmer           = make_tile(grid, "Skimmers");
     t_eviltwin          = make_tile(grid, "Evil Twin");
     t_flock             = make_tile(grid, "Flock");
+    lv_obj_t *t_radar   = make_tile(grid, "Radar");
     lv_obj_t *t_pet     = make_tile(grid, "HexHound");
     t_handshake         = make_tile(grid, "Pwn");
 
@@ -1080,6 +1123,7 @@ void tools_screen_create()
     draw_skimmer_icon(t_skimmer);
     draw_eviltwin_icon(t_eviltwin);
     draw_flock_icon(t_flock);
+    draw_radar_icon(t_radar);
     draw_pet_icon(t_pet);
     draw_handshake_icon(t_handshake);
 
@@ -1109,6 +1153,8 @@ void tools_screen_create()
     lv_obj_add_event_cb(t_flock, on_flock_clicked, LV_EVENT_CLICKED, NULL);
 
     // HexHound tile opens the cyber-recon pet; Pwn tile toggles passive handshake capture.
+    // Radar tile opens the Threat Radar spatio-temporal correlation screen.
+    lv_obj_add_event_cb(t_radar, [](lv_event_t *) { threat_radar_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_pet, [](lv_event_t *) { pet_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_handshake, on_handshake_clicked, LV_EVENT_CLICKED, NULL);
     set_flock_tile_running(flock_is_running());
@@ -1155,6 +1201,9 @@ void tools_screen_create()
 void tools_screen_show()
 {
     main_loop_request_lvgl_priority(12);
+    // Repaint the title with the live accent on entry: HADES red if a tail is
+    // currently flagged, calm steel-blue otherwise.
+    if (tools_title) lv_obj_set_style_text_color(tools_title, argus_accent(), LV_PART_MAIN);
     lv_scr_load(tools_screen);
 }
 bool tools_screen_is_active() { return lv_screen_active() == tools_screen; }

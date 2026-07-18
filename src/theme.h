@@ -21,3 +21,10 @@
 
 // HADES threat-red (#DB615A) — the "red eyes" alert state.
 #define HADES_RED            lv_color_make(0xDB, 0x61, 0x5A)
+
+// Runtime, state-aware accent. Returns ARGUS_ACCENT (steel-blue) at rest and
+// HADES_RED when Threat Radar is flagging a tail (top level >= TR_LVL_LIKELY).
+// High-visibility, frequently-repainted surfaces (clock status bar, Threat
+// Radar screen) call this so the brand flips to the alert state live; static
+// low-traffic screens keep using the ARGUS_ACCENT macro. Defined in theme.cpp.
+lv_color_t argus_accent(void);

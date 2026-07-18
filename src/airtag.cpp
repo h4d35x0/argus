@@ -1,4 +1,5 @@
 #include "airtag.h"
+#include "threat_radar.h"
 
 void clock_screen_get_local_time(struct tm *out);
 #include "ble_scan_manager.h"
@@ -132,6 +133,7 @@ bool airtag_check(const uint8_t *mac6, int8_t rssi, uint8_t addr_type,
                 memcpy(hit.apple_data, ad_data, hit.apple_data_len);
 
                 if (s_queue) xQueueSend(s_queue, &hit, 0);
+                threatradar_observe(mac6, rssi, TR_CAT_AIRTAG);
                 s_count++;
                 return true;
             }
