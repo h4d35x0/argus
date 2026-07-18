@@ -54,6 +54,10 @@
 #include "skimmer.h"
 #include "evil_twin.h"
 #include "flock.h"
+#include "threat_radar.h"
+#include "threat_radar_screen.h"
+#include "tracker_rep.h"
+#include "counter_tail.h"
 #include "matrix_bg.h"
 #include "nfc_icon.h"
 
@@ -300,6 +304,18 @@ static void update_analog_clock(const struct tm *t)
     lv_obj_set_style_transform_rotation(hand_sec,  s, LV_PART_MAIN);
 }
 
+// Status-bar "active" accent, threat-aware (ARGUS -> HADES). Normally the
+// bright steel-blue ARGUS_ACCENT_ACTIVE; the instant Threat Radar flags a tail
+// (top level >= TR_LVL_LIKELY) every live status icon flips to HADES red, so a
+// glance at the clock face shows the watch has "opened its red eyes". Refreshed
+// each second by the status-icon update loop, so it flips live and clears on its
+// own once the tail goes stale. Shares argus_accent()'s exact threshold so all
+// themed surfaces agree.
+static inline lv_color_t status_accent_active()
+{
+    return threatradar_top_level() >= TR_LVL_LIKELY ? HADES_RED : ARGUS_ACCENT_ACTIVE;
+}
+
 static void update_lora_indicator()
 {
     // Green whenever the shared SX1262 radio is in use — by LoRa/meshtastic,
@@ -308,7 +324,7 @@ static void update_lora_indicator()
                || tpms_is_running() || aprs_is_running()
                || lora_analyze_is_running();
     lv_color_t color = in_use
-        ? ARGUS_ACCENT_ACTIVE
+        ? status_accent_active()
         : lv_color_make(0x33, 0x33, 0x33);
     lv_obj_set_style_arc_color(lora_arc,  color, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(lora_ball,  color, LV_PART_MAIN);
@@ -388,7 +404,7 @@ static void update_bt_indicator()
 {
     bool on = btStarted();
     lv_color_t color = on
-        ? ARGUS_ACCENT_ACTIVE  // green — BT active
+        ? status_accent_active()  // steel-blue — BT active (HADES red on a tail)
         : lv_color_make(0x33, 0x33, 0x33); // gray  — BT off
     lv_obj_set_style_text_color(bt_indicator, color, LV_PART_MAIN);
 }
@@ -399,7 +415,7 @@ static void update_wifi_indicator()
     esp_wifi_get_mode(&mode);
     bool on = (mode != WIFI_MODE_NULL);
     lv_color_t color = on
-        ? ARGUS_ACCENT_ACTIVE  // green — radio active
+        ? status_accent_active()  // steel-blue — radio active (HADES red on a tail)
         : lv_color_make(0x33, 0x33, 0x33); // gray  — radio off
     lv_obj_set_style_text_color(wifi_indicator, color, LV_PART_MAIN);
 }
@@ -432,7 +448,7 @@ static void update_sd_indicator()
         }
     }
     lv_color_t color = sd_was_ready
-        ? ARGUS_ACCENT_ACTIVE  // green — card mounted
+        ? status_accent_active()  // steel-blue — card mounted (HADES red on a tail)
         : lv_color_make(0x33, 0x33, 0x33); // gray  — no card
     lv_obj_set_style_text_color(sd_indicator, color, LV_PART_MAIN);
 
@@ -448,7 +464,7 @@ static void update_nfc_indicator()
 {
     bool on = instance.pmu.isEnableDLDO1();
     lv_color_t color = on
-        ? ARGUS_ACCENT_ACTIVE
+        ? status_accent_active()
         : lv_color_make(0x33, 0x33, 0x33);
     lv_obj_set_style_image_recolor(nfc_indicator, color, LV_PART_MAIN);
     lv_obj_set_style_image_recolor_opa(nfc_indicator, LV_OPA_COVER, LV_PART_MAIN);
@@ -1560,6 +1576,7 @@ void setup()
     channels_screen_create();
     settings_screen_create();
     tools_screen_create();
+    threat_radar_screen_create();
     pet_screen_create();
     tpms_screen_create();
     pager_screen_create();
@@ -1777,6 +1794,7 @@ void loop()
             skimmer_bg_tick();
             evil_twin_bg_tick();
             flock_bg_tick();
+            threatradar_bg_tick();  // correlate detector hits into follow-scores
             handshake_bg_tick();    // drain captured EAPOL frames to /pwn/*.pcap
         }
     }

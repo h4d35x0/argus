@@ -1,4 +1,5 @@
 #include "meshtastic.h"
+#include "tracker_rep.h"
 #include "usb_sd.h"
 #include "gps_screen.h"
 #include <LilyGoLib.h>
@@ -1542,6 +1543,11 @@ static void process_packet(const uint8_t *buf, size_t len,
     size_t         text_len = payload_len;
     s_dbg.parse_ok++;
     MESH_LOG("[MESH] TEXT decoded len=%u text=\"%.*s\"\n", (unsigned)text_len, (int)text_len, text_ptr);
+
+    // Distributed tracker-reputation flag from a peer (TRFLAG|...). Folded into
+    // the reputation store and swallowed here so it never shows up as chat.
+    if (tracker_rep_handle_text(from_node, (const char *)text_ptr, (uint32_t)text_len))
+        return;
 
     // Store message — shift ring buffer, newest at index 0
     int store_slots = (s_count < MESH_MAX_MESSAGES) ? s_count : MESH_MAX_MESSAGES - 1;

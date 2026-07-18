@@ -1,4 +1,5 @@
 #include "evil_twin.h"
+#include "threat_radar.h"
 
 void clock_screen_get_local_time(struct tm *out);
 #include "wifi_beacon_manager.h"
@@ -151,6 +152,7 @@ bool evil_twin_check(const uint8_t *bssid, const char *ssid, const char *auth,
     hit.channel = channel;
 
     if (s_queue) xQueueSend(s_queue, &hit, 0);
+    threatradar_observe(bssid, rssi, TR_CAT_EVILTWIN);
     s_count++;
     return true;
 }

@@ -15,6 +15,7 @@ void clock_screen_get_local_time(struct tm *out);
 #include "flipper.h"
 #include "skimmer.h"
 #include "evil_twin.h"
+#include "counter_tail.h"
 
 void clock_screen_show();
 
@@ -139,6 +140,7 @@ static void wd_beacon_cb(const WifiBeacon *b) {
 
     flock_check(raw.mac, raw.rssi, raw.ssid, 'W');
     evil_twin_check(raw.mac, raw.ssid, raw.auth, raw.rssi, raw.channel);
+    counter_tail_observe_wifi(raw.mac, raw.rssi);
     xQueueSend(ap_queue, &raw, 0);
 }
 
@@ -186,6 +188,7 @@ static void ble_gap_cb(esp_ble_gap_cb_param_t *param) {
     airtag_check(raw.mac, raw.rssi, res.ble_addr_type, res.ble_adv, total_len);
     flipper_check(raw.mac, raw.rssi, res.ble_addr_type, res.ble_adv, total_len);
     skimmer_check(raw.mac, raw.rssi, res.ble_addr_type, res.ble_adv, total_len);
+    counter_tail_observe_ble(raw.mac, raw.rssi);
     xQueueSend(ap_queue, &raw, 0);
 }
 
