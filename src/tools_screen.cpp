@@ -898,55 +898,86 @@ static void on_handshake_clicked(lv_event_t *)
     }
 }
 
-// Pwnpet — a Tamagotchi-ish handheld with a little face (two eyes + a smile).
+// HexHound — an angular cyber-hound head (skull + pointed ears + scanner eyes +
+// snout) in ARGUS steel-blue, matching the pet screen's creature.
 static void draw_pet_icon(lv_obj_t *tile)
 {
-    lv_color_t body = lv_color_make(0x1d, 0x6f, 0x42);
-    lv_color_t face = lv_color_make(0x0a, 0x12, 0x0a);
-    lv_color_t eye  = lv_color_make(0x33, 0xdd, 0x88);
+    lv_color_t hide = ARGUS_ACCENT;                       // steel-blue head
+    lv_color_t dark = lv_color_make(0x0A, 0x10, 0x16);    // pupils / nose
+    lv_color_t eye  = lv_color_make(0xF0, 0xF4, 0xF8);    // bright scanners
 
-    lv_obj_t *b = lv_obj_create(tile);
-    lv_obj_set_size(b, 104, 116);
-    lv_obj_set_style_radius(b, 26, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(b, body, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(b, lv_color_make(0x2c, 0xa0, 0x60), LV_PART_MAIN);
-    lv_obj_set_style_border_width(b, 2, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(b, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(b, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(b, LV_ALIGN_TOP_MID, 0, 26);
+    // Ears — two squares rotated 45deg poking up behind the skull.
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *ear = lv_obj_create(tile);
+        lv_obj_set_size(ear, 32, 32);
+        lv_obj_set_style_radius(ear, 3, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(ear, hide, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(ear, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(ear, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(ear, 0, LV_PART_MAIN);
+        lv_obj_set_style_transform_pivot_x(ear, 16, LV_PART_MAIN);
+        lv_obj_set_style_transform_pivot_y(ear, 16, LV_PART_MAIN);
+        lv_obj_set_style_transform_rotation(ear, 450, LV_PART_MAIN);
+        lv_obj_clear_flag(ear, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(ear, LV_ALIGN_TOP_MID, i == 0 ? -34 : 34, 22);
+    }
 
-    lv_obj_t *f = lv_obj_create(tile);
-    lv_obj_set_size(f, 76, 64);
-    lv_obj_set_style_radius(f, 14, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(f, face, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(f, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(f, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(f, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(f, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(f, LV_ALIGN_TOP_MID, 0, 44);
+    // Skull — angular head plate.
+    lv_obj_t *skull = lv_obj_create(tile);
+    lv_obj_set_size(skull, 96, 82);
+    lv_obj_set_style_radius(skull, 16, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(skull, hide, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(skull, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(skull, ARGUS_ACCENT_ACTIVE, LV_PART_MAIN);
+    lv_obj_set_style_border_width(skull, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(skull, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(skull, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(skull, LV_ALIGN_TOP_MID, 0, 34);
 
+    // Snout jutting down from the skull.
+    lv_obj_t *snout = lv_obj_create(tile);
+    lv_obj_set_size(snout, 44, 34);
+    lv_obj_set_style_radius(snout, 10, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(snout, hide, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(snout, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(snout, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(snout, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(snout, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(snout, LV_ALIGN_TOP_MID, 0, 104);
+
+    // Eyes — two bright scanners with dark pupils.
     for (int i = 0; i < 2; i++) {
         lv_obj_t *e = lv_obj_create(tile);
-        lv_obj_set_size(e, 12, 16);
-        lv_obj_set_style_radius(e, 6, LV_PART_MAIN);
+        lv_obj_set_size(e, 24, 18);
+        lv_obj_set_style_radius(e, 7, LV_PART_MAIN);
         lv_obj_set_style_bg_color(e, eye, LV_PART_MAIN);
         lv_obj_set_style_bg_opa(e, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_border_width(e, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(e, 0, LV_PART_MAIN);
         lv_obj_clear_flag(e, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(e, LV_ALIGN_TOP_MID, i == 0 ? -16 : 16, 58);
+        lv_obj_align(e, LV_ALIGN_TOP_MID, i == 0 ? -22 : 22, 58);
+
+        lv_obj_t *pupil = lv_obj_create(e);
+        lv_obj_set_size(pupil, 10, 12);
+        lv_obj_set_style_radius(pupil, 5, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(pupil, dark, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(pupil, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(pupil, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(pupil, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(pupil, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_center(pupil);
     }
 
-    lv_obj_t *m = lv_obj_create(tile);
-    lv_obj_set_size(m, 28, 5);
-    lv_obj_set_style_radius(m, 2, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(m, eye, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(m, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(m, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(m, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(m, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(m, LV_ALIGN_TOP_MID, 0, 84);
+    // Nose — dark tip on the snout.
+    lv_obj_t *nose = lv_obj_create(tile);
+    lv_obj_set_size(nose, 16, 10);
+    lv_obj_set_style_radius(nose, 5, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(nose, dark, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(nose, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(nose, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(nose, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(nose, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(nose, LV_ALIGN_TOP_MID, 0, 110);
 }
 
 // Handshake capture — signal rings with a captured packet dropping out (orange).
@@ -1033,7 +1064,7 @@ void tools_screen_create()
     t_skimmer           = make_tile(grid, "Skimmers");
     t_eviltwin          = make_tile(grid, "Evil Twin");
     t_flock             = make_tile(grid, "Flock");
-    lv_obj_t *t_pet     = make_tile(grid, "Pet");
+    lv_obj_t *t_pet     = make_tile(grid, "HexHound");
     t_handshake         = make_tile(grid, "Pwn");
 
     draw_wifi_icon(t_wifi);
@@ -1077,7 +1108,7 @@ void tools_screen_create()
     // Flock tile toggles the surveillance-vendor detector (WiFi + BLE scan).
     lv_obj_add_event_cb(t_flock, on_flock_clicked, LV_EVENT_CLICKED, NULL);
 
-    // Pet tile opens the pwnpet mascot; Pwn tile toggles passive handshake capture.
+    // HexHound tile opens the cyber-recon pet; Pwn tile toggles passive handshake capture.
     lv_obj_add_event_cb(t_pet, [](lv_event_t *) { pet_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_handshake, on_handshake_clicked, LV_EVENT_CLICKED, NULL);
     set_flock_tile_running(flock_is_running());
