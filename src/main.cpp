@@ -18,6 +18,8 @@
 #include "settings_screen.h"
 #include "screenshot.h"
 #include "tools_screen.h"
+#include "pet_screen.h"
+#include "handshake.h"
 #include "tpms_screen.h"
 #include "timezone.h"
 #include "tpms.h"
@@ -1558,6 +1560,7 @@ void setup()
     channels_screen_create();
     settings_screen_create();
     tools_screen_create();
+    pet_screen_create();
     tpms_screen_create();
     pager_screen_create();
     mouse_screen_create();
@@ -1774,6 +1777,7 @@ void loop()
             skimmer_bg_tick();
             evil_twin_bg_tick();
             flock_bg_tick();
+            handshake_bg_tick();    // drain captured EAPOL frames to /pwn/*.pcap
         }
     }
     // Yield to LVGL between SD-heavy batches. The display uses partial

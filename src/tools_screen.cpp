@@ -5,6 +5,8 @@
 #include "skimmer.h"
 #include "evil_twin.h"
 #include "flock.h"
+#include "pet_screen.h"
+#include "handshake.h"
 #include "tesla_cp_screen.h"
 #include "tpms_screen.h"
 #include "pager_screen.h"
@@ -25,6 +27,7 @@ static lv_obj_t *t_flipper;   // referenced by on_flipper_clicked for colour swa
 static lv_obj_t *t_skimmer;   // referenced by on_skimmer_clicked for colour swap
 static lv_obj_t *t_eviltwin;  // referenced by on_eviltwin_clicked for colour swap
 static lv_obj_t *t_flock;     // referenced by on_flock_clicked for colour swap
+static lv_obj_t *t_handshake; // referenced by on_handshake_clicked for colour swap
 
 static void on_gesture(lv_event_t *e)
 {
@@ -873,6 +876,106 @@ static void draw_tesla_cp_icon(lv_obj_t *tile)
     lv_obj_align(led, LV_ALIGN_BOTTOM_RIGHT, -10, -6);
 }
 
+// --- pwnpet + passive handshake capture (Phase 3a: WiFi-beacon cluster) -------
+
+// Passive WPA handshake / PMKID capture toggle. Green while capturing (matches
+// the other detector tiles' "running" state).
+static void set_handshake_tile_running(bool on)
+{
+    lv_obj_set_style_bg_color(t_handshake,
+        on ? lv_color_make(0x00, 0x55, 0x22) : lv_color_make(0x11, 0x11, 0x11),
+        LV_PART_MAIN);
+}
+
+static void on_handshake_clicked(lv_event_t *)
+{
+    if (handshake_is_running()) {
+        handshake_stop();
+        set_handshake_tile_running(false);
+    } else {
+        bool ok = handshake_start();
+        set_handshake_tile_running(ok);
+    }
+}
+
+// Pwnpet — a Tamagotchi-ish handheld with a little face (two eyes + a smile).
+static void draw_pet_icon(lv_obj_t *tile)
+{
+    lv_color_t body = lv_color_make(0x1d, 0x6f, 0x42);
+    lv_color_t face = lv_color_make(0x0a, 0x12, 0x0a);
+    lv_color_t eye  = lv_color_make(0x33, 0xdd, 0x88);
+
+    lv_obj_t *b = lv_obj_create(tile);
+    lv_obj_set_size(b, 104, 116);
+    lv_obj_set_style_radius(b, 26, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(b, body, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(b, lv_color_make(0x2c, 0xa0, 0x60), LV_PART_MAIN);
+    lv_obj_set_style_border_width(b, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(b, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(b, LV_ALIGN_TOP_MID, 0, 26);
+
+    lv_obj_t *f = lv_obj_create(tile);
+    lv_obj_set_size(f, 76, 64);
+    lv_obj_set_style_radius(f, 14, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(f, face, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(f, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(f, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(f, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(f, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(f, LV_ALIGN_TOP_MID, 0, 44);
+
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *e = lv_obj_create(tile);
+        lv_obj_set_size(e, 12, 16);
+        lv_obj_set_style_radius(e, 6, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(e, eye, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(e, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(e, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(e, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(e, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(e, LV_ALIGN_TOP_MID, i == 0 ? -16 : 16, 58);
+    }
+
+    lv_obj_t *m = lv_obj_create(tile);
+    lv_obj_set_size(m, 28, 5);
+    lv_obj_set_style_radius(m, 2, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(m, eye, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(m, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(m, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(m, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(m, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(m, LV_ALIGN_TOP_MID, 0, 84);
+}
+
+// Handshake capture — signal rings with a captured packet dropping out (orange).
+static void draw_handshake_icon(lv_obj_t *tile)
+{
+    lv_color_t o = lv_color_make(0xff, 0x8c, 0x1a);
+    const int d[3] = { 96, 66, 36 };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *a = lv_obj_create(tile);
+        lv_obj_set_size(a, d[i], d[i]);
+        lv_obj_set_style_radius(a, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_color(a, o, LV_PART_MAIN);
+        lv_obj_set_style_border_width(a, 3, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(a, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(a, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(a, LV_ALIGN_TOP_MID, 0, 30 + (96 - d[i]) / 2);
+    }
+    lv_obj_t *pkt = lv_obj_create(tile);
+    lv_obj_set_size(pkt, 22, 16);
+    lv_obj_set_style_radius(pkt, 3, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(pkt, o, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(pkt, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(pkt, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(pkt, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(pkt, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(pkt, LV_ALIGN_TOP_MID, 0, 124);
+}
+
 void tools_screen_create()
 {
     tools_screen = lv_obj_create(NULL);
@@ -930,6 +1033,8 @@ void tools_screen_create()
     t_skimmer           = make_tile(grid, "Skimmers");
     t_eviltwin          = make_tile(grid, "Evil Twin");
     t_flock             = make_tile(grid, "Flock");
+    lv_obj_t *t_pet     = make_tile(grid, "Pet");
+    t_handshake         = make_tile(grid, "Pwn");
 
     draw_wifi_icon(t_wifi);
     draw_analyzer_icon(t_analyze);
@@ -944,6 +1049,8 @@ void tools_screen_create()
     draw_skimmer_icon(t_skimmer);
     draw_eviltwin_icon(t_eviltwin);
     draw_flock_icon(t_flock);
+    draw_pet_icon(t_pet);
+    draw_handshake_icon(t_handshake);
 
     // Tesla CP tile opens the 315 MHz charge-port-open transmit screen.
     lv_obj_add_event_cb(t_tesla, [](lv_event_t *) { tesla_cp_screen_show(); }, LV_EVENT_CLICKED, NULL);
@@ -969,6 +1076,10 @@ void tools_screen_create()
 
     // Flock tile toggles the surveillance-vendor detector (WiFi + BLE scan).
     lv_obj_add_event_cb(t_flock, on_flock_clicked, LV_EVENT_CLICKED, NULL);
+
+    // Pet tile opens the pwnpet mascot; Pwn tile toggles passive handshake capture.
+    lv_obj_add_event_cb(t_pet, [](lv_event_t *) { pet_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_handshake, on_handshake_clicked, LV_EVENT_CLICKED, NULL);
     set_flock_tile_running(flock_is_running());
 
     // TPMS tile opens the TPMS monitor screen.

@@ -33,3 +33,7 @@ void wifi_beacon_remove(wifi_beacon_cb_t cb);
 
 // True if at least one consumer is registered.
 bool wifi_beacon_active();
+
+// Also receive 802.11 DATA frames (routed to handshake_rx_data) for handshake /
+// PMKID capture. Off by default — the survey path is untouched unless enabled.
+void wifi_beacon_set_data_capture(bool on);
