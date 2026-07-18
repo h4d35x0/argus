@@ -1,4 +1,5 @@
 #include "send_message_screen.h"
+#include "theme.h"
 #include "meshtastic.h"
 #include "configuration_screen.h"
 #include "nodes_screen.h"
@@ -175,7 +176,7 @@ static void show_send_status(const char *text, bool ok)
     if (!status_label) return;
     lv_label_set_text(status_label, text);
     lv_obj_set_style_text_color(status_label,
-        ok ? lv_color_make(0x00, 0xCC, 0x66) : lv_color_make(0xCC, 0x44, 0x44),
+        ok ? ARGUS_ACCENT : lv_color_make(0xCC, 0x44, 0x44),
         LV_PART_MAIN);
 }
 
@@ -450,7 +451,7 @@ void send_message_screen_create()
     lv_obj_set_style_pad_row(list_box, 6, LV_PART_MAIN);
 
     status_label = lv_label_create(send_screen);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_text_font(status_label, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_label_set_text(status_label, "");
     lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -55);

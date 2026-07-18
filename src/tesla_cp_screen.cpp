@@ -1,4 +1,5 @@
 #include "tesla_cp_screen.h"
+#include "theme.h"
 #include "tesla_cp.h"
 #include "lora_screen.h"
 #include "aprs.h"
@@ -90,7 +91,7 @@ static void on_send(lv_event_t *)
     if (ok) {
         char sent_msg[48];
         snprintf(sent_msg, sizeof(sent_msg), "Sent  (5x burst at %s)", freq_txt);
-        update_status(sent_msg, lv_color_make(0x00, 0xCC, 0x66));
+        update_status(sent_msg, ARGUS_ACCENT);
     } else {
         char buf[40];
         snprintf(buf, sizeof(buf), "Failed (err %d)", (int)tesla_cp_last_error());

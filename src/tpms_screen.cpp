@@ -1,4 +1,5 @@
 #include "tpms_screen.h"
+#include "theme.h"
 #include "tpms.h"
 #include "lora_screen.h"
 #include <LilyGoLib.h>
@@ -184,7 +185,7 @@ static void on_update(lv_timer_t *)
             snprintf(buf, sizeof(buf), "Scanning  %drx/%dcrc", rx, crc);
         }
         lv_label_set_text(status_label, buf);
-        lv_obj_set_style_text_color(status_label, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+        lv_obj_set_style_text_color(status_label, ARGUS_ACCENT, LV_PART_MAIN);
     } else if (lora_screen_is_powered()) {
         lv_label_set_text(status_label, "Radio in use by LoRa");
         lv_obj_set_style_text_color(status_label, lv_color_make(0xFF, 0xAA, 0x00), LV_PART_MAIN);

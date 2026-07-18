@@ -1,4 +1,5 @@
 #include "aprs_screen.h"
+#include "theme.h"
 #include "aprs.h"
 #include "lora_screen.h"
 #include <LilyGoLib.h>
@@ -51,7 +52,7 @@ static void update_status()
     if (s_flash_until && millis() < s_flash_until) {
         text  = s_flash_msg;
         color = s_flash_warn ? lv_color_make(0xFF, 0xAA, 0x00)
-                             : lv_color_make(0x00, 0xCC, 0x66);
+                             : ARGUS_ACCENT;
     } else if (aprs_tx_busy() || aprs_tx_pending()) {
         text  = "Transmitting beacon...";
         color = lv_color_make(0xFF, 0xCC, 0x00);
@@ -60,7 +61,7 @@ static void update_status()
                  aprs_get_packet_count(),
                  aprs_get_packet_count() == 1 ? "" : "s");
         text  = buf;
-        color = lv_color_make(0x00, 0xCC, 0x66);
+        color = ARGUS_ACCENT;
     } else if (lora_screen_is_powered()) {
         text  = "LoRa radio in use - stop Meshtastic";
         color = lv_color_make(0xFF, 0xAA, 0x00);

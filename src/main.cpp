@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "theme.h"
 #include <LilyGoLib.h>
 #include <LV_Helper.h>
 #include <bosch/BoschSensorDataHelper.hpp>
@@ -305,7 +306,7 @@ static void update_lora_indicator()
                || tpms_is_running() || aprs_is_running()
                || lora_analyze_is_running();
     lv_color_t color = in_use
-        ? lv_color_make(0x00, 0xFF, 0x80)
+        ? ARGUS_ACCENT_ACTIVE
         : lv_color_make(0x33, 0x33, 0x33);
     lv_obj_set_style_arc_color(lora_arc,  color, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(lora_ball,  color, LV_PART_MAIN);
@@ -385,7 +386,7 @@ static void update_bt_indicator()
 {
     bool on = btStarted();
     lv_color_t color = on
-        ? lv_color_make(0x00, 0xFF, 0x80)  // green — BT active
+        ? ARGUS_ACCENT_ACTIVE  // green — BT active
         : lv_color_make(0x33, 0x33, 0x33); // gray  — BT off
     lv_obj_set_style_text_color(bt_indicator, color, LV_PART_MAIN);
 }
@@ -396,7 +397,7 @@ static void update_wifi_indicator()
     esp_wifi_get_mode(&mode);
     bool on = (mode != WIFI_MODE_NULL);
     lv_color_t color = on
-        ? lv_color_make(0x00, 0xFF, 0x80)  // green — radio active
+        ? ARGUS_ACCENT_ACTIVE  // green — radio active
         : lv_color_make(0x33, 0x33, 0x33); // gray  — radio off
     lv_obj_set_style_text_color(wifi_indicator, color, LV_PART_MAIN);
 }
@@ -429,7 +430,7 @@ static void update_sd_indicator()
         }
     }
     lv_color_t color = sd_was_ready
-        ? lv_color_make(0x00, 0xFF, 0x80)  // green — card mounted
+        ? ARGUS_ACCENT_ACTIVE  // green — card mounted
         : lv_color_make(0x33, 0x33, 0x33); // gray  — no card
     lv_obj_set_style_text_color(sd_indicator, color, LV_PART_MAIN);
 
@@ -445,7 +446,7 @@ static void update_nfc_indicator()
 {
     bool on = instance.pmu.isEnableDLDO1();
     lv_color_t color = on
-        ? lv_color_make(0x00, 0xFF, 0x80)
+        ? ARGUS_ACCENT_ACTIVE
         : lv_color_make(0x33, 0x33, 0x33);
     lv_obj_set_style_image_recolor(nfc_indicator, color, LV_PART_MAIN);
     lv_obj_set_style_image_recolor_opa(nfc_indicator, LV_OPA_COVER, LV_PART_MAIN);
@@ -525,7 +526,10 @@ static void layout_battery_indicators()
 static lv_obj_t *build_clock_icon(lv_obj_t *parent, bool wide_cap,
                                   int16_t hand_rotation_deci_deg)
 {
-    static constexpr lv_color_t green = LV_COLOR_MAKE(0x00, 0xCC, 0x66);
+    // const (not constexpr): ARGUS_ACCENT uses the runtime lv_color_make(); the
+    // stock code's LV_COLOR_MAKE brace-init was constexpr, but our themed accent
+    // is centralized as a function-form macro (needed for the ternary/arg sites).
+    static const lv_color_t green = ARGUS_ACCENT;
 
     lv_obj_t *icon = lv_obj_create(parent);
     lv_obj_set_size(icon, 20, 24);
@@ -590,7 +594,7 @@ static void update_wardriver_indicator()
 
     if (running) {
         lv_obj_set_style_text_color(wardriver_wifi_label,
-            lv_color_make(0x00, 0xFF, 0x80), LV_PART_MAIN);
+            ARGUS_ACCENT_ACTIVE, LV_PART_MAIN);
         if (wc > 0)
             lv_label_set_text_fmt(wardriver_wifi_label, LV_SYMBOL_EYE_OPEN " %d", wc);
         else
@@ -758,7 +762,7 @@ void clock_screen_set_mesh_count(int count)
 void clock_screen_set_gps_active(bool active)
 {
     lv_color_t color = active
-        ? lv_color_make(0x00, 0xFF, 0x80)
+        ? ARGUS_ACCENT_ACTIVE
         : lv_color_make(0x33, 0x33, 0x33);
     lv_obj_set_style_text_color(gps_indicator, color, LV_PART_MAIN);
     if (!active) {
@@ -1165,8 +1169,8 @@ static void update_clock()
 
 // Firmware name + version surfaced in the boot banner so support tickets carry
 // a fixed anchor. Bump FW_VERSION on each cut.
-#define FW_NAME    "13:37"
-#define FW_VERSION "1.0.0"
+#define FW_NAME    "ARGUS"
+#define FW_VERSION "0.1.0"   // ARGUS fork of r3dfish/13-37 (base 1.0.0)
 
 void setup()
 {
@@ -1189,7 +1193,7 @@ void setup()
     lv_obj_set_style_border_width(boot_splash, 0, LV_PART_MAIN);
     lv_obj_t *boot_brand = lv_label_create(boot_splash);
     lv_label_set_text(boot_brand, FW_NAME);
-    lv_obj_set_style_text_color(boot_brand, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(boot_brand, ARGUS_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_text_font(boot_brand, &lv_font_montserrat_clock_96, LV_PART_MAIN);
     lv_obj_center(boot_brand);
     lv_scr_load(boot_splash);
@@ -1319,7 +1323,7 @@ void setup()
     // when the alarm module reports the alarm enabled.
     alarm_indicator = lv_label_create(clock_screen);
     lv_obj_set_style_text_font(alarm_indicator, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(alarm_indicator, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_color(alarm_indicator, ARGUS_ACCENT, LV_PART_MAIN);
     lv_label_set_text(alarm_indicator, LV_SYMBOL_BELL);
     lv_obj_align(alarm_indicator, LV_ALIGN_BOTTOM_MID, -95, -10);
     lv_obj_add_flag(alarm_indicator, LV_OBJ_FLAG_HIDDEN);

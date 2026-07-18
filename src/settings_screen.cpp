@@ -1,4 +1,5 @@
 #include "settings_screen.h"
+#include "theme.h"
 #include "usb_sd.h"
 #include <LilyGoLib.h>
 #include <SD.h>
@@ -465,7 +466,7 @@ void settings_screen_create()
     face_switch = lv_switch_create(face_row);
     lv_obj_set_size(face_switch, 70, 34);
     lv_obj_set_style_bg_color(face_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(face_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(face_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_event_cb(face_switch, on_face_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(face_switch, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -493,7 +494,7 @@ void settings_screen_create()
     hour_format_switch = lv_switch_create(hour_format_row);
     lv_obj_set_size(hour_format_switch, 70, 34);
     lv_obj_set_style_bg_color(hour_format_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(hour_format_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(hour_format_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_state(hour_format_switch, LV_STATE_CHECKED);  // default 12h
     lv_obj_add_event_cb(hour_format_switch, on_hour_format_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(hour_format_switch, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -516,7 +517,7 @@ void settings_screen_create()
     ampm_switch = lv_switch_create(ampm_row);
     lv_obj_set_size(ampm_switch, 70, 34);
     lv_obj_set_style_bg_color(ampm_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(ampm_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(ampm_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_state(ampm_switch, LV_STATE_CHECKED);  // default on
     lv_obj_add_event_cb(ampm_switch, on_ampm_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(ampm_switch, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -539,7 +540,7 @@ void settings_screen_create()
     secs_switch = lv_switch_create(secs_row);
     lv_obj_set_size(secs_switch, 70, 34);
     lv_obj_set_style_bg_color(secs_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(secs_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(secs_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_state(secs_switch, LV_STATE_CHECKED);  // default on
     lv_obj_add_event_cb(secs_switch, on_secs_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(secs_switch, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -569,7 +570,7 @@ void settings_screen_create()
     matrix_switch = lv_switch_create(matrix_row);
     lv_obj_set_size(matrix_switch, 70, 34);
     lv_obj_set_style_bg_color(matrix_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(matrix_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(matrix_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_event_cb(matrix_switch, on_matrix_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(matrix_switch, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -592,7 +593,7 @@ void settings_screen_create()
     show_day_switch = lv_switch_create(show_day_row);
     lv_obj_set_size(show_day_switch, 70, 34);
     lv_obj_set_style_bg_color(show_day_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(show_day_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(show_day_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_state(show_day_switch, LV_STATE_CHECKED);  // default on
     lv_obj_add_event_cb(show_day_switch, on_show_day_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(show_day_switch, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -616,7 +617,7 @@ void settings_screen_create()
     show_date_switch = lv_switch_create(show_date_row);
     lv_obj_set_size(show_date_switch, 70, 34);
     lv_obj_set_style_bg_color(show_date_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(show_date_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(show_date_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_state(show_date_switch, LV_STATE_CHECKED);  // default on
     lv_obj_add_event_cb(show_date_switch, on_show_date_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(show_date_switch, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -640,7 +641,7 @@ void settings_screen_create()
     vibrate_switch = lv_switch_create(vibrate_row);
     lv_obj_set_size(vibrate_switch, 70, 34);
     lv_obj_set_style_bg_color(vibrate_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(vibrate_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(vibrate_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     // default off — do not add LV_STATE_CHECKED
     lv_obj_add_event_cb(vibrate_switch, on_vibrate_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(vibrate_switch, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -760,7 +761,7 @@ void settings_screen_create()
     motion_wake_switch = lv_switch_create(motion_row);
     lv_obj_set_size(motion_wake_switch, 70, 34);
     lv_obj_set_style_bg_color(motion_wake_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(motion_wake_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(motion_wake_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     // Default ON so wrist-raise brightens out of the box — matches the
     // smartwatch behaviour most users expect.
     lv_obj_add_state(motion_wake_switch, LV_STATE_CHECKED);
@@ -806,7 +807,7 @@ void settings_screen_create()
     manual_time_switch = lv_switch_create(manual_row);
     lv_obj_set_size(manual_time_switch, 70, 34);
     lv_obj_set_style_bg_color(manual_time_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(manual_time_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(manual_time_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     // default off — automatic GPS time sync stays in control until a manual set
     lv_obj_add_event_cb(manual_time_switch, on_manual_time_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(manual_time_switch, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -903,7 +904,7 @@ void settings_screen_create()
     screenshot_switch = lv_switch_create(screenshot_row);
     lv_obj_set_size(screenshot_switch, 70, 34);
     lv_obj_set_style_bg_color(screenshot_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(screenshot_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(screenshot_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_event_cb(screenshot_switch, on_screenshot_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(screenshot_switch, LV_ALIGN_RIGHT_MID, 0, 0);
 

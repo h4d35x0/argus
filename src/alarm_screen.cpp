@@ -1,4 +1,5 @@
 #include "alarm_screen.h"
+#include "theme.h"
 #include "alarm.h"
 #include <LilyGoLib.h>
 #include <time.h>
@@ -341,7 +342,7 @@ static void create_settings_screen()
     enable_switch = lv_switch_create(settings_scr);
     lv_obj_set_size(enable_switch, 80, 40);
     lv_obj_set_style_bg_color(enable_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(enable_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(enable_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_align(enable_switch, LV_ALIGN_TOP_RIGHT, -30, 115);
     lv_obj_add_event_cb(enable_switch, on_enable_changed, LV_EVENT_VALUE_CHANGED, NULL);
 
@@ -394,7 +395,7 @@ static void create_settings_screen()
     // Big locked-in time display — shown in place of the rollers when the
     // alarm is enabled.
     big_time_label = lv_label_create(settings_scr);
-    lv_obj_set_style_text_color(big_time_label, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_color(big_time_label, ARGUS_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_text_font(big_time_label, &lv_font_montserrat_48, LV_PART_MAIN);
     lv_label_set_text(big_time_label, "00:00");
     lv_obj_align(big_time_label, LV_ALIGN_TOP_MID, 0, 215);
@@ -425,7 +426,7 @@ static void create_settings_screen()
     vibrate_switch = lv_switch_create(settings_scr);
     lv_obj_set_size(vibrate_switch, 80, 40);
     lv_obj_set_style_bg_color(vibrate_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(vibrate_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(vibrate_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_align(vibrate_switch, LV_ALIGN_TOP_RIGHT, -30, 403);
     lv_obj_add_event_cb(vibrate_switch, on_vibrate_changed, LV_EVENT_VALUE_CHANGED, NULL);
 
@@ -439,7 +440,7 @@ static void create_settings_screen()
     audio_switch = lv_switch_create(settings_scr);
     lv_obj_set_size(audio_switch, 80, 40);
     lv_obj_set_style_bg_color(audio_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(audio_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(audio_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_align(audio_switch, LV_ALIGN_TOP_RIGHT, -30, 457);
     lv_obj_add_event_cb(audio_switch, on_audio_changed, LV_EVENT_VALUE_CHANGED, NULL);
 
@@ -458,7 +459,7 @@ static void create_settings_screen()
     lv_obj_set_style_bg_color(volume_slider, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
     lv_obj_set_style_radius(volume_slider, 8, LV_PART_MAIN);
     lv_obj_set_style_border_width(volume_slider, 0, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(volume_slider, lv_color_make(0x00, 0xCC, 0x66), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(volume_slider, ARGUS_ACCENT, LV_PART_INDICATOR);
     lv_obj_set_style_radius(volume_slider, 8, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(volume_slider, lv_color_white(), LV_PART_KNOB);
     lv_obj_set_style_radius(volume_slider, LV_RADIUS_CIRCLE, LV_PART_KNOB);

@@ -1,4 +1,5 @@
 #include "wardriver_screen.h"
+#include "theme.h"
 
 void clock_screen_get_local_time(struct tm *out);
 #include <LilyGoLib.h>
@@ -509,7 +510,7 @@ static void make_toggle_row(lv_obj_t *screen, const char *field,
     lv_obj_t *sw = lv_switch_create(row);
     lv_obj_set_size(sw, 80, 40);
     lv_obj_set_style_bg_color(sw, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(sw, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(sw, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_state(sw, LV_STATE_CHECKED);  // default ON
     lv_obj_align(sw, LV_ALIGN_RIGHT_MID, 0, 0);
 

@@ -1,4 +1,5 @@
 #include "channels_screen.h"
+#include "theme.h"
 #include "configuration_screen.h"
 #include "meshtastic.h"
 #include <LilyGoLib.h>
@@ -109,7 +110,7 @@ static void make_channel_row(lv_obj_t *parent, int idx)
     lv_obj_set_size(sw, 72, 38);
     lv_obj_set_style_bg_color(sw, lv_color_make(0x44, 0x44, 0x44),
         LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(sw, lv_color_make(0x00, 0xCC, 0x66),
+    lv_obj_set_style_bg_color(sw, ARGUS_ACCENT,
         LV_PART_MAIN | LV_STATE_CHECKED);
     if (ch->enabled) lv_obj_add_state(sw, LV_STATE_CHECKED);
     lv_obj_set_user_data(sw, (void *)(intptr_t)idx);

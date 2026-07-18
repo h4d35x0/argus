@@ -1,4 +1,5 @@
 #include "usb_sd_screen.h"
+#include "theme.h"
 #include "usb_sd.h"
 #include <LilyGoLib.h>
 #include <SD.h>
@@ -137,7 +138,7 @@ static void update_status()
     } else if (usb_sd_host_active()) {
         lv_label_set_text(status_label, "Host active - do not unplug");
         lv_obj_set_style_text_color(status_label,
-            lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+            ARGUS_ACCENT, LV_PART_MAIN);
     } else {
         lv_label_set_text(status_label, "Mounted - open the drive on your PC");
         lv_obj_set_style_text_color(status_label,

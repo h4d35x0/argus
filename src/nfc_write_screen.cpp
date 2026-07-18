@@ -1,4 +1,5 @@
 #include "nfc_write_screen.h"
+#include "theme.h"
 #include <LilyGoLib.h>
 #include <string.h>
 
@@ -170,7 +171,7 @@ static void write_to_card()
 
     err = ndef.ndefPollerWriteMessage(&message);
     if (err == ST_ERR_NONE)
-        set_status("Written successfully", lv_color_make(0x00, 0xCC, 0x66));
+        set_status("Written successfully", ARGUS_ACCENT);
     else
         set_status("Write failed", lv_color_make(0xCC, 0x44, 0x44));
 }
@@ -192,7 +193,7 @@ static void on_write_btn(lv_event_t *e)
     if (s_wr_state == WR_DISCOVERING) {   // pressed while waiting -> cancel
         stop_writing();
         lv_label_set_text(write_btn_label, "Write");
-        lv_obj_set_style_bg_color(write_btn, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(write_btn, ARGUS_ACCENT, LV_PART_MAIN);
         set_status("Cancelled", lv_color_make(0xAA, 0xAA, 0xAA));
         return;
     }
@@ -309,7 +310,7 @@ void nfc_write_screen_create()
     lv_obj_set_size(write_btn, 200, 52);
     lv_obj_align(write_btn, LV_ALIGN_TOP_MID, 0, 244);
     lv_obj_set_style_radius(write_btn, 8, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(write_btn, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(write_btn, ARGUS_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(write_btn, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(write_btn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(write_btn, LV_OBJ_FLAG_SCROLLABLE);
@@ -345,7 +346,7 @@ void nfc_write_screen_show()
 {
     s_wr_state = WR_IDLE;
     lv_label_set_text(write_btn_label, "Write");
-    lv_obj_set_style_bg_color(write_btn, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(write_btn, ARGUS_ACCENT, LV_PART_MAIN);
     set_status("Boot button to return", lv_color_make(0xAA, 0xAA, 0xAA));
     hide_keyboard();
     update_type_fields();
@@ -376,6 +377,6 @@ void nfc_write_screen_worker()
         NFCReader.rfalNfcaPollerSleep();
         s_wr_state = WR_IDLE;
         lv_label_set_text(write_btn_label, "Write");
-        lv_obj_set_style_bg_color(write_btn, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(write_btn, ARGUS_ACCENT, LV_PART_MAIN);
     }
 }

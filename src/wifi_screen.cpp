@@ -1,4 +1,5 @@
 #include "wifi_screen.h"
+#include "theme.h"
 #include "pingsweep.h"
 #include "hostresolve.h"
 #include "portscan_screen.h"
@@ -255,17 +256,17 @@ static void update_status()
                          pingsweep_device_count(),
                          hs.mdns_named, hs.nbns_named,
                          hs.dns_named, hs.oui_named);
-                col = lv_color_make(0x00, 0xCC, 0x66);
+                col = ARGUS_ACCENT;
             } else {
                 snprintf(buf, sizeof(buf), "Sweep complete - %d devices",
                          pingsweep_device_count());
-                col = lv_color_make(0x00, 0xCC, 0x66);
+                col = ARGUS_ACCENT;
             }
         } else {
             IPAddress ip = WiFi.localIP();
             snprintf(buf, sizeof(buf), "%s   %u.%u.%u.%u",
                      WiFi.SSID().c_str(), ip[0], ip[1], ip[2], ip[3]);
-            col = lv_color_make(0x00, 0xCC, 0x66);
+            col = ARGUS_ACCENT;
         }
         break;
     }

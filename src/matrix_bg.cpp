@@ -30,10 +30,10 @@ static const int MX_CHARSET_LEN = sizeof(MX_CHARSET) - 1;
 // lowercase). Roughly 1-in-30 column resets seeds the column's top
 // cells with one of these.
 static const char *MX_EGGS[] = {
-    "HACKEDEXISTENCE",
-    "R3DFISH",
-    "DZAZ ",
-    "1337",
+    "HADES",
+    "ARGUS",
+    "HADES",
+    "1337",           // homage to the r3dfish/13-37 base this is forked from
     "HACKTHEPLANET",
 };
 static const int MX_EGG_COUNT = sizeof(MX_EGGS) / sizeof(MX_EGGS[0]);

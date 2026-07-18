@@ -1,4 +1,5 @@
 #include "lora_analyze_screen.h"
+#include "theme.h"
 #include "bt_analyze_screen.h"
 #include "lora_screen.h"
 #include "pager.h"
@@ -293,7 +294,7 @@ static void update_status()
             (int)s_strongest_rssi,
             (double)freq_of_bin(s_band, s_strongest_bin));
         lv_obj_set_style_text_color(status_label,
-            lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+            ARGUS_ACCENT, LV_PART_MAIN);
     } else {
         lv_label_set_text_fmt(status_label,
             "scanning %s", s_bands[s_band].label);

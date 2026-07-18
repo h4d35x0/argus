@@ -1,4 +1,5 @@
 #include "portscan_screen.h"
+#include "theme.h"
 #include "portscan.h"
 #include <LilyGoLib.h>
 #include <stdio.h>
@@ -134,7 +135,7 @@ static void update_status()
         snprintf(buf, sizeof(buf), "Done   %d ports   %d open",
             portscan_total(), portscan_result_count());
         lv_obj_set_style_text_color(status_label,
-            lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+            ARGUS_ACCENT, LV_PART_MAIN);
     } else {
         snprintf(buf, sizeof(buf), "Tap START");
         lv_obj_set_style_text_color(status_label,
@@ -169,7 +170,7 @@ static void result_row_add(int idx)
         (r->state == PSTATE_OPEN_OR_FILT) ? "open|filtered" : "open";
     lv_color_t state_col =
         (r->state == PSTATE_OPEN_OR_FILT) ? lv_color_make(0xFF, 0xCC, 0x00)
-                                          : lv_color_make(0x00, 0xCC, 0x66);
+                                          : ARGUS_ACCENT;
 
     char hdr[40];
     snprintf(hdr, sizeof(hdr), "%u/%s  %s",

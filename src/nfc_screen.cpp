@@ -1,4 +1,5 @@
 #include "nfc_screen.h"
+#include "theme.h"
 #include "nfc_write_screen.h"
 #include <LilyGoLib.h>
 
@@ -149,7 +150,7 @@ static void set_read_btn_scanning(bool scanning)
         lv_obj_set_style_text_color(read_btn_label, lv_color_white(), LV_PART_MAIN);
         lv_label_set_text(read_btn_label, "Stop");
     } else {
-        lv_color_t bg  = nfc_powered ? lv_color_make(0x00, 0xCC, 0x66) : lv_color_make(0x33, 0x33, 0x33);
+        lv_color_t bg  = nfc_powered ? ARGUS_ACCENT : lv_color_make(0x33, 0x33, 0x33);
         lv_color_t txt = nfc_powered ? lv_color_white()                 : lv_color_make(0x77, 0x77, 0x77);
         lv_obj_set_style_bg_color(read_btn, bg, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_text_color(read_btn_label, txt, LV_PART_MAIN);
@@ -161,7 +162,7 @@ static void update_ui()
 {
     lv_label_set_text(status_label, nfc_powered ? "NFC: ON" : "NFC: OFF");
 
-    lv_color_t bg  = nfc_powered ? lv_color_make(0x00, 0xCC, 0x66) : lv_color_make(0x33, 0x33, 0x33);
+    lv_color_t bg  = nfc_powered ? ARGUS_ACCENT : lv_color_make(0x33, 0x33, 0x33);
     lv_color_t txt = nfc_powered ? lv_color_white()                 : lv_color_make(0x77, 0x77, 0x77);
 
     lv_obj_set_style_bg_color(write_btn, bg,  LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -260,7 +261,7 @@ void nfc_screen_create()
     toggle_sw = lv_switch_create(nfc_screen);
     lv_obj_set_size(toggle_sw, 100, 50);
     lv_obj_set_style_bg_color(toggle_sw, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(toggle_sw, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(toggle_sw, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_event_cb(toggle_sw, on_toggle, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(toggle_sw, LV_ALIGN_TOP_MID, -90, 72);
 

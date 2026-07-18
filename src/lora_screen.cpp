@@ -1,4 +1,5 @@
 #include "lora_screen.h"
+#include "theme.h"
 #include "meshtastic.h"
 #include "pager.h"
 #include "tpms.h"
@@ -149,7 +150,7 @@ void lora_screen_create()
     toggle_sw = lv_switch_create(lora_screen);
     lv_obj_set_size(toggle_sw, 100, 50);
     lv_obj_set_style_bg_color(toggle_sw, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(toggle_sw, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(toggle_sw, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_event_cb(toggle_sw, on_toggle, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(toggle_sw, LV_ALIGN_TOP_MID, -90, 72);
 
@@ -202,7 +203,7 @@ void lora_screen_create()
     boosted_switch = lv_switch_create(boost_row);
     lv_obj_set_size(boosted_switch, 80, 40);
     lv_obj_set_style_bg_color(boosted_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(boosted_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(boosted_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_state(boosted_switch, LV_STATE_CHECKED);   // default ON (+2 dB RX sens)
     lv_obj_add_event_cb(boosted_switch, on_boosted_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(boosted_switch, LV_ALIGN_RIGHT_MID, 0, 0);

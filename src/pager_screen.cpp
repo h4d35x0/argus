@@ -1,4 +1,5 @@
 #include "pager_screen.h"
+#include "theme.h"
 #include "pager.h"
 #include "lora_screen.h"
 #include <LilyGoLib.h>
@@ -104,7 +105,7 @@ static lv_color_t func_color(uint8_t func)
     switch (func) {
     case PFUNC_TONE:    return lv_color_make(0xFF, 0xCC, 0x00);
     case PFUNC_NUMERIC: return lv_color_make(0x44, 0xAA, 0xFF);
-    case PFUNC_ALPHA:   return lv_color_make(0x00, 0xCC, 0x66);
+    case PFUNC_ALPHA:   return ARGUS_ACCENT;
     case PFUNC_VOICE:   return lv_color_make(0xFF, 0x88, 0x00);
     default:            return lv_color_make(0xAA, 0x44, 0xFF); // FLEX — purple
     }
@@ -149,7 +150,7 @@ static void update_status()
             snprintf(buf, sizeof(buf), "Scan %.3f", pager_get_freq());
         }
         lv_label_set_text(status_label, buf);
-        lv_obj_set_style_text_color(status_label, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+        lv_obj_set_style_text_color(status_label, ARGUS_ACCENT, LV_PART_MAIN);
         return;
     }
     if (lora_screen_is_powered()) {
@@ -474,7 +475,7 @@ static void on_tx_send(lv_event_t *)
     if (ok) {
         lv_label_set_text(tx_status_label, "Sent");
         lv_obj_set_style_text_color(tx_status_label,
-            lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+            ARGUS_ACCENT, LV_PART_MAIN);
     } else {
         char buf[32];
         snprintf(buf, sizeof(buf), "Failed (err %d)", (int)pager_last_error());
@@ -604,7 +605,7 @@ void pager_screen_create()
     lv_obj_set_size(scan_switch, 60, 32);
     lv_obj_align(scan_switch, LV_ALIGN_TOP_MID, -90, 120);
     lv_obj_set_style_bg_color(scan_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(scan_switch, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(scan_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_add_event_cb(scan_switch, on_scan_toggled, LV_EVENT_VALUE_CHANGED, NULL);
 
     status_label = lv_label_create(pager_screen);

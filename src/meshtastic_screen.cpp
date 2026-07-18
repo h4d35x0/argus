@@ -1,4 +1,5 @@
 #include "meshtastic_screen.h"
+#include "theme.h"
 #include "meshtastic.h"
 #include "nodes_screen.h"
 #include "send_message_screen.h"
@@ -155,7 +156,7 @@ static void make_message_entry(lv_obj_t *parent, const MeshMessage *msg, int idx
     lv_obj_t *hdr = lv_label_create(entry);
     lv_obj_set_width(hdr, lv_pct(100));
     lv_obj_set_style_text_color(hdr,
-        to_me ? lv_color_make(0xB8, 0xA4, 0xFF) : lv_color_make(0x00, 0xCC, 0x66),
+        to_me ? lv_color_make(0xB8, 0xA4, 0xFF) : ARGUS_ACCENT,
         LV_PART_MAIN);
     lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_label_set_text(hdr, header);

@@ -1,4 +1,5 @@
 #include "nodes_screen.h"
+#include "theme.h"
 #include "meshtastic.h"
 #include "send_message_screen.h"
 #include <LilyGoLib.h>
@@ -227,7 +228,7 @@ static void make_node_entry(lv_obj_t *parent, const MeshNode *n)
              (unsigned long)n->node_id, n->time_str);
     lv_obj_t *hdr = lv_label_create(entry);
     lv_obj_set_width(hdr, lv_pct(100));
-    lv_obj_set_style_text_color(hdr, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_color(hdr, ARGUS_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_label_set_text(hdr, header);
     // LONG_DOT renders truncated content as "...". The header

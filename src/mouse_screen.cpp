@@ -1,4 +1,5 @@
 #include "mouse_screen.h"
+#include "theme.h"
 #include "mouse_hid.h"
 #include <LilyGoLib.h>
 #include <stdlib.h>   // abs
@@ -54,7 +55,7 @@ static void update_status()
         lv_obj_set_style_text_color(status_label, lv_color_make(0xFF, 0xCC, 0x00), LV_PART_MAIN);
     } else {
         lv_label_set_text(status_label, "Connected - drag to move, tap to click");
-        lv_obj_set_style_text_color(status_label, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+        lv_obj_set_style_text_color(status_label, ARGUS_ACCENT, LV_PART_MAIN);
     }
 }
 

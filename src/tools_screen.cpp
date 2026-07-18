@@ -1,4 +1,5 @@
 #include "tools_screen.h"
+#include "theme.h"
 #include "airtag.h"
 #include "flipper.h"
 #include "skimmer.h"
@@ -585,7 +586,7 @@ static void draw_pager_icon(lv_obj_t *tile)
     lv_obj_t *lcd = lv_obj_create(tile);
     lv_obj_set_size(lcd, 96, 30);
     lv_obj_set_style_radius(lcd, 2, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(lcd, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(lcd, ARGUS_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(lcd, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_color(lcd, lv_color_make(0x00, 0x77, 0x33), LV_PART_MAIN);
     lv_obj_set_style_border_width(lcd, 1, LV_PART_MAIN);
@@ -783,7 +784,7 @@ static void draw_aprs_icon(lv_obj_t *tile)
         lv_obj_set_style_arc_opa(wave, LV_OPA_TRANSP, LV_PART_MAIN);
         lv_obj_set_style_border_width(wave, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(wave, 0, LV_PART_MAIN);
-        lv_obj_set_style_arc_color(wave, lv_color_make(0x00, 0xCC, 0x66), LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(wave, ARGUS_ACCENT, LV_PART_INDICATOR);
         lv_obj_set_style_arc_width(wave, 4, LV_PART_INDICATOR);
         lv_obj_set_style_bg_opa(wave, LV_OPA_TRANSP, LV_PART_KNOB);
         lv_arc_set_bg_angles(wave, 0, 360);

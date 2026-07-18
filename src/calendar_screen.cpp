@@ -1,4 +1,5 @@
 #include "calendar_screen.h"
+#include "theme.h"
 #include <LilyGoLib.h>
 #include <time.h>
 #include <stdio.h>
@@ -116,7 +117,7 @@ static void populate_grid()
 
     lv_color_t col_white = lv_color_white();
     lv_color_t col_dim   = lv_color_make(0x55, 0x55, 0x55);
-    lv_color_t col_today = lv_color_make(0x00, 0xCC, 0x66);
+    lv_color_t col_today = ARGUS_ACCENT;
 
     for (int i = 0; i < 42; i++) {
         int day_num;
