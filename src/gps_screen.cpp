@@ -1,7 +1,9 @@
 #include "gps_screen.h"
 #include "theme.h"
 #include <LilyGoLib.h>
+#include <SD.h>
 #include "timezone.h"
+#include "usb_sd.h"
 
 // Defined in main.cpp
 void clock_screen_set_gps_active(bool active);
@@ -87,6 +89,20 @@ static lv_obj_t *val_fix_age;
 static bool gps_powered = false;
 static bool rtc_synced  = false; // reset each GPS power cycle
 
+// Persist the radio on/off state so GPS survives a reboot. Mirrors the
+// small-file pattern used by timezone.cpp / settings_screen.cpp.
+#define GPS_PATH "/Settings/gps.txt"
+
+static void gps_save_power(bool on)
+{
+    if (!instance.isCardReady() || usb_sd_is_running()) return; // host owns SD when mounted
+    if (!SD.exists("/Settings")) SD.mkdir("/Settings");
+    File f = SD.open(GPS_PATH, FILE_WRITE);   // FILE_WRITE = truncate
+    if (!f) return;
+    f.printf("%d\n", on ? 1 : 0);
+    f.close();
+}
+
 // TinyGPSPlus has no reset; after a power cycle it keeps the previous session's
 // values with isValid()==true until fresh NMEA overwrites them (a cold restart
 // can take 30s+). Gate on commit age so stale data reads as "no fix" — this also
@@ -123,6 +139,7 @@ static void on_toggle(lv_event_t *e)
     if (!gps_powered)
         rtc_synced = false; // allow re-sync on next power-on
     update_status();
+    gps_save_power(gps_powered); // survive reboot
 }
 
 // Creates one key/value row in the scrollable data panel.
@@ -373,4 +390,36 @@ bool gps_screen_has_lock()
         && gps_fresh(instance.gps.location)
         && gps_fresh(instance.gps.satellites)
         && instance.gps.satellites.value() >= 4;
+}
+
+// Boot-time restore: if /Settings/gps.txt says the radio was left on, power it
+// back up exactly the way on_toggle does and reflect it on the switch. Must run
+// after the SD card is mounted (instance.begin) and after gps_screen_create().
+void gps_screen_restore_power()
+{
+    if (!instance.isCardReady() || usb_sd_is_running()) return;
+    if (!SD.exists(GPS_PATH)) return;
+
+    File f = SD.open(GPS_PATH, FILE_READ);
+    if (!f) return;
+    char buf[8] = {0};
+    int n = f.readBytesUntil('\n', (uint8_t *)buf, sizeof(buf) - 1);
+    f.close();
+    if (n <= 0) return;
+    buf[n] = '\0';
+
+    if (atoi(buf) != 1) return;   // was off (or garbage) — nothing to restore
+
+    // Power GPS on the same way on_toggle does. See on_toggle for why Serial1
+    // is torn down before powerControl re-inits the UART on enable.
+    Serial1.end();
+    instance.powerControl(POWER_GPS, true);  // enableBLDO1 + Serial1.begin
+    gps_powered = true;
+    rtc_synced  = false;
+    clock_screen_set_gps_active(true);
+    update_status();
+
+    // Reflect on the toggle switch if the screen was already created.
+    if (toggle_sw)
+        lv_obj_add_state(toggle_sw, LV_STATE_CHECKED);
 }

@@ -1680,6 +1680,8 @@ void setup()
     // just data; meshtastic_set_active() reads from s_channels when
     // it starts transmitting.
     meshtastic_load_channels_from_sd();
+    // Restore persisted GPS radio power state (SD is mounted; gps_screen_create() ran above).
+    gps_screen_restore_power();
     realign_status_icons();
     layout_battery_indicators(); // seed packing so a boot-enabled alarm renders immediately
     update_clock();
