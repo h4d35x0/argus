@@ -16,11 +16,12 @@ ROOT="$(cd "$HERE/.." && pwd)"
 mkdir -p "$HERE/build"
 
 MODULES=("$ROOT"/src/mesh/aes.cpp "$ROOT"/src/mesh/crypto.cpp \
-         "$ROOT"/src/ble/adv_parser.cpp "$ROOT"/src/image_dims.cpp)
+         "$ROOT"/src/ble/adv_parser.cpp "$ROOT"/src/image_dims.cpp \
+         "$ROOT"/src/detect/evil_twin.cpp)
 BIN="$HERE/build/argus_tests.exe"
 
 g++ -std=c++17 -Wall -Wextra -I "$HERE" -I "$ROOT/src/mesh" -I "$ROOT/src/ble" \
-    -I "$ROOT/src" \
+    -I "$ROOT/src/detect" -I "$ROOT/src" \
     "${MODULES[@]}" "$HERE"/test_*.cpp -o "$BIN"
 
 "$BIN"
