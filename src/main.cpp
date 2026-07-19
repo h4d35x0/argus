@@ -1066,19 +1066,22 @@ void clock_screen_show()
 // cost is ~24 KB of glyph data instead of the ~120 KB a full-character
 // 96 px font would cost.
 extern "C" const lv_font_t lv_font_montserrat_clock_96;
+// Two smaller subset sizes for the adaptive-font clock (same 15 glyphs), so the
+// widest formats fit WITHOUT a runtime transform. See tools/gen_clock_font.py.
+extern "C" const lv_font_t lv_font_montserrat_clock_72;
+extern "C" const lv_font_t lv_font_montserrat_clock_56;
 
-// Resize the home-screen digital clock so the current format fills the
-// width with `CLOCK_TEXT_PAD_X` of padding on each side. Called from
-// update_clock() after the text is set; the scale only actually changes
-// when (12h, show_ampm, show_secs) or the screen width change, so the
-// expensive `lv_text_get_size` measurement is memoised against those
-// inputs and skipped on the common per-second tick.
+// Size the home-screen digital clock to fill the width, by SELECTING the largest
+// pre-generated font whose worst-case string fits - NOT by transform-scaling one
+// font. A runtime transform_scale fragmented/jumped the clock under LVGL
+// partial-refresh whenever an overlapping layer (Matrix rain, SD wallpaper) or a
+// busy radio invalidated part of it; a plain font has no transform, so partial
+// redraws are always pixel-correct and it is glitch-free in every display mode.
+// Memoised on (12h, ampm, secs, width) so the per-second tick is a no-op.
 static void resize_clock_text()
 {
     if (!time_label || !clock_screen) return;
 
-    // Hash the inputs that affect the natural width. Per-second seconds
-    // tick doesn't change this hash, so we early-out without remeasuring.
     int screen_w = lv_obj_get_width(clock_screen);
     int usable_w = screen_w - 2 * CLOCK_TEXT_PAD_X;
     if (usable_w <= 0) return;
@@ -1087,23 +1090,13 @@ static void resize_clock_text()
                  | (clock_12h        ? 0x4 : 0)
                  | (clock_show_ampm  ? 0x2 : 0)
                  | (clock_show_secs  ? 0x1 : 0);
-    static uint32_t s_cached_key   = 0;
-    static int      s_cached_scale = LV_SCALE_NONE;
-    if (key == s_cached_key) {
-        // Same format + width as last call — scale and transform pivot
-        // are still correct; the only thing that may have changed is the
-        // label's text (its width can wiggle by a few px because '1' is
-        // narrower than '8', but that's why we size off the worst-case
-        // "00:00…" string, not the live text, so the pivot stays put).
-        return;
-    }
+    static uint32_t s_cached_key = 0xFFFFFFFFu;   // force a pick on first call
+    if (key == s_cached_key) return;              // same format+width -> no-op
     s_cached_key = key;
 
-    // Worst-case digit string for the current format ("00…" all wide
-    // glyphs, plus the longest suffix). Sizing off the format rather than
-    // the live string keeps the scale stable as the seconds tick —
-    // Montserrat's "1" is narrower than "8", so a literal measurement
-    // would jiggle slightly each second.
+    // Worst-case digit string for the current format ("00…" wide glyphs + the
+    // longest suffix). Selecting off the format, not the live text, keeps the
+    // chosen size stable as the seconds tick.
     const char *ref;
     if (clock_12h) {
         if      (clock_show_secs && clock_show_ampm) ref = "00:00:00 PM";
@@ -1114,26 +1107,22 @@ static void resize_clock_text()
         ref = clock_show_secs ? "00:00:00" : "00:00";
     }
 
-    lv_point_t sz;
-    lv_text_get_size(&sz, ref, &lv_font_montserrat_clock_96, 0, 0,
-                     LV_COORD_MAX, LV_TEXT_FLAG_NONE);
-    int natural_w = sz.x;
-    if (natural_w <= 0) return;
-
-    int scale = (LV_SCALE_NONE * usable_w) / natural_w;
-    if (scale < CLOCK_TEXT_MIN_SCALE) scale = CLOCK_TEXT_MIN_SCALE;
-    if (scale > CLOCK_TEXT_MAX_SCALE) scale = CLOCK_TEXT_MAX_SCALE;
-    s_cached_scale = scale;
-
-    // Centre-pivot the transform so the visible centre doesn't drift —
-    // the default pivot is the object's top-left and would push the time
-    // off to the right when the scale changes.
-    lv_obj_update_layout(time_label);
-    int32_t lw = lv_obj_get_width(time_label);
-    int32_t lh = lv_obj_get_height(time_label);
-    lv_obj_set_style_transform_pivot_x(time_label, lw / 2, LV_PART_MAIN);
-    lv_obj_set_style_transform_pivot_y(time_label, lh / 2, LV_PART_MAIN);
-    lv_obj_set_style_transform_scale(time_label, scale, LV_PART_MAIN);
+    // Largest font (widest -> narrowest) whose worst-case string fits usable_w.
+    // The 56 px fallback fits every supported format, so a font is always chosen.
+    const lv_font_t *fonts[] = {
+        &lv_font_montserrat_clock_96,
+        &lv_font_montserrat_clock_72,
+        &lv_font_montserrat_clock_56,
+    };
+    const lv_font_t *chosen = fonts[2];
+    for (unsigned i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++) {
+        lv_point_t sz;
+        lv_text_get_size(&sz, ref, fonts[i], 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        if (sz.x <= usable_w) { chosen = fonts[i]; break; }
+    }
+    lv_obj_set_style_text_font(time_label, chosen, LV_PART_MAIN);
+    // No transform: guarantee any leftover scale from a prior build is cleared.
+    lv_obj_set_style_transform_scale(time_label, LV_SCALE_NONE, LV_PART_MAIN);
 }
 
 static void update_clock()

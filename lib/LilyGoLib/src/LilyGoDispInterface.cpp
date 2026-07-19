@@ -260,7 +260,15 @@ void LilyGoDispQSPI::pushColorsNoDMA(uint16_t *data, uint32_t len)
                 if (disp_tearing_effect == true) {
                     disp_tearing_effect = false;
                 }
-                while (disp_tearing_effect == false) ;
+                // ARGUS patch: bound the TE wait so a panel that never drives
+                // the TE line (or a missed edge) can NEVER hang the push. If TE
+                // fires we sync to v-blank (no tearing); if it does not, we fall
+                // through after one frame period and just push unsynced (same as
+                // TE-off), never a freeze/boot-hang.
+                { uint32_t _te_t0 = millis();
+                  while (disp_tearing_effect == false) {
+                      if ((uint32_t)(millis() - _te_t0) > 18u) break;
+                  } }
                 frame_top = 0;
             }
         }
@@ -314,7 +322,15 @@ void LilyGoDispQSPI::pushColorsDMA(uint16_t *data, uint32_t len)
                 if (disp_tearing_effect == true) {
                     disp_tearing_effect = false;
                 }
-                while (disp_tearing_effect == false) ;
+                // ARGUS patch: bound the TE wait so a panel that never drives
+                // the TE line (or a missed edge) can NEVER hang the push. If TE
+                // fires we sync to v-blank (no tearing); if it does not, we fall
+                // through after one frame period and just push unsynced (same as
+                // TE-off), never a freeze/boot-hang.
+                { uint32_t _te_t0 = millis();
+                  while (disp_tearing_effect == false) {
+                      if ((uint32_t)(millis() - _te_t0) > 18u) break;
+                  } }
                 frame_top = 0;
             }
         }

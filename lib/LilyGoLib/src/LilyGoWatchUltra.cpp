@@ -82,17 +82,22 @@ static bool _unlock_callback(void)
     return true;
 }
 
-// ARGUS patch: full_refresh true (was false). The Ultra already runs non-DMA
-// with full-screen PSRAM double-buffers, so flipping LVGL to FULL render mode
-// costs no extra memory and eliminates the partial-refresh artifact class:
-// the transform-scaled clock fragmenting under the Matrix rain / SD wallpaper,
-// and stale pixels when scrolling the Tools list. Every frame now redraws the
-// whole screen, so nothing stale can persist. See src/main.cpp clock notes.
-LilyGoUltra::LilyGoUltra() : LilyGo_Display(QSPI_DRIVER, true),
+// ARGUS: PARTIAL render mode (full_refresh=false). We briefly used FULL refresh
+// to stop the transform-scaled clock fragmenting under Matrix/wallpaper, but FULL
+// mode pushes the whole frame over polling SPI every redraw and WiFi activity
+// collided with those long pushes -> the screen tore/"jumped" whenever WiFi was
+// on. The real fix was to remove the clock's runtime transform entirely (adaptive
+// FONT selection instead, see src/main.cpp resize_clock_text), so PARTIAL mode -
+// which is WiFi-safe (tiny dirty-region pushes) - no longer fragments anything.
+LilyGoUltra::LilyGoUltra() : LilyGo_Display(QSPI_DRIVER, false),
     LilyGoDispQSPI(co5300_206_cmd, CO5300_206_INIT_SEQUENCE_LENGTH, DISP_WIDTH, DISP_HEIGHT),
     LilyGoPowerManage(&pmu),
     _effects(80), devices_probe(0), _boot_images_addr(NULL), _lock(NULL),
     _enableDMA(false),
+    // TE sync stays OFF: it did not cure the WiFi-on glitch (the contention was
+    // not simple tearing), and back in PARTIAL mode there is nothing to sync. The
+    // timeout-bounded TE wait patch in LilyGoDispInterface.cpp is left in place
+    // (dormant) so TE can be re-tried safely later without a hang risk.
     _enableTearingEffect(false)
 {
     // LilyGoDispQSPI::setGapOffset(22, 0);
