@@ -1,5 +1,6 @@
 #include "counter_tail.h"
 #include "threat_radar.h"   // TR_CAT_VEHICLE + threatradar_observe()
+#include "hexhound.h"       // feed HexHound an ambient-BLE nibble on promotion
 #include "tracker_rep.h"    // tracker_rep_hash() — shared MAC hashing
 #include <LilyGoLib.h>      // instance, isCardReady
 #include <SD.h>
@@ -46,7 +47,7 @@ static Cand *cand_get(const uint8_t *mac)
     return &c;
 }
 
-static void observe(const uint8_t *mac, int8_t rssi)
+static void observe(const uint8_t *mac, int8_t rssi, bool is_ble)
 {
     if (!s_enabled || rssi < CT_MIN_RSSI) return;
     uint32_t now = millis();
@@ -56,11 +57,14 @@ static void observe(const uint8_t *mac, int8_t rssi)
     if (c->hits >= CT_PROMOTE && now - c->feed_ms >= CT_FEED_MS) {
         c->feed_ms = now;
         threatradar_observe(mac, rssi, TR_CAT_VEHICLE);
+        // A real, repeatedly-seen BLE device -> a light nibble for HexHound.
+        // Only the BLE path feeds; WiFi APs already feed via hexhound_note_wifi.
+        if (is_ble) hexhound_note_ble(mac);
     }
 }
 
-void counter_tail_observe_ble(const uint8_t *mac6, int8_t rssi)  { observe(mac6, rssi); }
-void counter_tail_observe_wifi(const uint8_t *bssid, int8_t rssi){ observe(bssid, rssi); }
+void counter_tail_observe_ble(const uint8_t *mac6, int8_t rssi)  { observe(mac6, rssi, true);  }
+void counter_tail_observe_wifi(const uint8_t *bssid, int8_t rssi){ observe(bssid, rssi, false); }
 
 // ── Familiarity (your own daily vehicles/gear) ───────────────────────────────
 // Keyed by MAC hash (compact + privacy). Persisted to /CounterTail/familiar.txt

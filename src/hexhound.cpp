@@ -4,8 +4,10 @@
 #include <LilyGoLib.h>          // instance.isCardReady()
 #include <SD.h>
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>  // portMUX — the diet feeds arrive from BT/WiFi tasks
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>               // floor() for coarse GPS-cell quantisation
 
 // ── HexHound — engine implementation ─────────────────────────────
 //
@@ -30,6 +32,22 @@ constexpr int  FEED_PWND    = 25;   // hunger restored per handshake
 constexpr int  FEED_PEER    = 12;   // hunger restored per peer
 constexpr int  BOND_PWND    = 3;
 constexpr int  BOND_PEER    = 5;
+
+// Richer-diet reward tuning (Team HexFeed). A confirmed detector hit is a big
+// meal (on par with a handshake); ambient BLE is a light sniff; an NFC tag is a
+// bond-forward hand-fed treat; a fresh GPS cell is exploration XP.
+constexpr long XP_PER_DETECTOR = 40;  // per confirmed AirTag/Flipper/skimmer/flock/evil-twin
+constexpr int  FEED_DETECTOR   = 20;  // hunger restored per detector hit
+constexpr int  BOND_DETECTOR   = 4;
+constexpr long XP_PER_BLE      = 3;   // per newly-seen ambient BLE device
+constexpr long XP_PER_NFC      = 10;  // per NFC tag read (treat)
+constexpr int  FEED_NFC        = 8;   // hunger restored per NFC treat
+constexpr int  BOND_NFC        = 8;   // treats are bond-forward
+constexpr long XP_PER_CELL     = 15;  // per new coarse GPS cell (new territory)
+
+// Coarse GPS-cell grid. 0.01 deg ~= 1.1 km — "which block are we in", not a
+// precise fix, so a stationary user doesn't farm XP by jitter.
+constexpr double CELL_DEG = 0.01;
 
 // Decay tuning (real time).
 constexpr uint32_t DECAY_PERIOD_MS = 60000;  // one decay tick per minute
@@ -63,6 +81,34 @@ uint8_t  s_bssidRing[RING][6] = {};
 int      s_ringCount = 0;
 int      s_ringHead  = 0;
 
+// ── Diet feeds arriving from foreign tasks ─────────────────────────────────
+// hexhound_note_ble/detector/nfc/cell may fire on the BT controller task, the
+// WiFi beacon task, or the main task. They only touch these structures, all
+// guarded by s_feedMux, and defer the actual XP/hunger/bond into s_pending which
+// the main-task hexhound_update() drains. This keeps every reward mutation on
+// one task while letting the sensors feed from wherever they run.
+portMUX_TYPE s_feedMux = portMUX_INITIALIZER_UNLOCKED;
+
+struct Pending {
+    int det[HEX_DET_COUNT];   // confirmed detector hits, per category
+    int bleNew;               // fresh ambient BLE devices
+    int nfc;                  // NFC treats
+    int cells;                // fresh coarse GPS cells
+};
+Pending s_pending = {};
+
+// BLE-MAC dedup ring (distinct ambient BLE devices per session).
+constexpr int BLE_RING = 32;
+uint8_t  s_bleRing[BLE_RING][6] = {};
+int      s_bleCount = 0;
+int      s_bleHead  = 0;
+
+// Coarse GPS-cell dedup ring (recently-visited cells).
+constexpr int CELL_RING = 24;
+int32_t  s_cellRing[CELL_RING][2] = {};   // {latQuant, lonQuant}
+int      s_cellCount = 0;
+int      s_cellHead  = 0;
+
 int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 const char* const STAGE_NAMES[] = {
@@ -71,9 +117,9 @@ const char* const STAGE_NAMES[] = {
 const char* const STAGE_ABILITY[] = {
     "INCUBATING",
     "WIFI RECON",
-    "BLE BEACON SENSE",
+    "BLE / NFC SENSE",
     "MISCHIEF / CAPTURE",
-    "ANOMALY DETECTION"
+    "FULL-SPECTRUM RECON"
 };
 
 } // namespace
@@ -106,6 +152,9 @@ void hexhound_init() {
                 else if (!strcmp(key, "peers"))    s_st.peers   = (int)val;
                 else if (!strcmp(key, "wifiSeen")) s_st.wifiSeen= (int)val;
                 else if (!strcmp(key, "bleSeen"))  s_st.bleSeen = (int)val;
+                else if (!strcmp(key, "detSeen"))  s_st.detSeen = (int)val;
+                else if (!strcmp(key, "nfcSeen"))  s_st.nfcSeen = (int)val;
+                else if (!strcmp(key, "cellsSeen"))s_st.cellsSeen = (int)val;
             }
             f.close();
         }
@@ -128,6 +177,9 @@ void hexhound_save() {
     f.printf("peers=%d\n",    s_st.peers);
     f.printf("wifiSeen=%d\n", s_st.wifiSeen);
     f.printf("bleSeen=%d\n",  s_st.bleSeen);
+    f.printf("detSeen=%d\n",  s_st.detSeen);
+    f.printf("nfcSeen=%d\n",  s_st.nfcSeen);
+    f.printf("cellsSeen=%d\n",s_st.cellsSeen);
     f.close();
     s_dirty = false;
     s_lastSave = millis();
@@ -182,6 +234,57 @@ void hexhound_note_wifi(const uint8_t bssid[6]) {
     add_xp(XP_PER_AP);
 }
 
+// ── Richer diet feeds (thread-safe; drained by hexhound_update) ─────────────
+
+void hexhound_note_detector(uint8_t category) {
+    if (category >= HEX_DET_COUNT) return;
+    portENTER_CRITICAL(&s_feedMux);
+    s_pending.det[category]++;
+    portEXIT_CRITICAL(&s_feedMux);
+}
+
+void hexhound_note_ble(const uint8_t mac[6]) {
+    if (!mac) return;
+    portENTER_CRITICAL(&s_feedMux);
+    bool known = false;
+    for (int i = 0; i < s_bleCount; i++) {
+        if (memcmp(s_bleRing[i], mac, 6) == 0) { known = true; break; }
+    }
+    if (!known) {
+        memcpy(s_bleRing[s_bleHead], mac, 6);
+        s_bleHead = (s_bleHead + 1) % BLE_RING;
+        if (s_bleCount < BLE_RING) s_bleCount++;
+        s_pending.bleNew++;
+    }
+    portEXIT_CRITICAL(&s_feedMux);
+}
+
+void hexhound_note_nfc() {
+    portENTER_CRITICAL(&s_feedMux);
+    s_pending.nfc++;
+    portEXIT_CRITICAL(&s_feedMux);
+}
+
+void hexhound_note_cell(double lat, double lon) {
+    // Ignore the null island / no-fix sentinel so a 0,0 read isn't "territory".
+    if (lat == 0.0 && lon == 0.0) return;
+    int32_t lq = (int32_t)floor(lat / CELL_DEG);
+    int32_t nq = (int32_t)floor(lon / CELL_DEG);
+    portENTER_CRITICAL(&s_feedMux);
+    bool known = false;
+    for (int i = 0; i < s_cellCount; i++) {
+        if (s_cellRing[i][0] == lq && s_cellRing[i][1] == nq) { known = true; break; }
+    }
+    if (!known) {
+        s_cellRing[s_cellHead][0] = lq;
+        s_cellRing[s_cellHead][1] = nq;
+        s_cellHead = (s_cellHead + 1) % CELL_RING;
+        if (s_cellCount < CELL_RING) s_cellCount++;
+        s_pending.cells++;
+    }
+    portEXIT_CRITICAL(&s_feedMux);
+}
+
 void hexhound_set_threat_level(int level) {
     s_threat = level < 0 ? 0 : level;
 }
@@ -225,6 +328,41 @@ void hexhound_update() {
         add_xp(XP_PER_PEER * d);
         fed = true;
     }
+
+    // Drain the richer-diet feeds accumulated by the sensor tasks since the last
+    // tick. Snapshot + zero under the lock, then apply on this (main) task.
+    Pending pend;
+    portENTER_CRITICAL(&s_feedMux);
+    pend = s_pending;
+    memset(&s_pending, 0, sizeof(s_pending));
+    portEXIT_CRITICAL(&s_feedMux);
+
+    int detTotal = 0;
+    for (int c = 0; c < HEX_DET_COUNT; c++) detTotal += pend.det[c];
+    if (detTotal > 0) {
+        s_st.detSeen += detTotal;
+        s_st.hunger = clampi(s_st.hunger + FEED_DETECTOR * detTotal, 0, 100);
+        s_st.bond   = clampi(s_st.bond + BOND_DETECTOR * detTotal, 0, 100);
+        add_xp(XP_PER_DETECTOR * detTotal);
+        fed = true;
+    }
+    if (pend.bleNew > 0) {
+        s_st.bleSeen += pend.bleNew;
+        s_st.energy = clampi(s_st.energy + 1, 0, 100);   // BLE sniffing keeps it alert
+        add_xp(XP_PER_BLE * pend.bleNew);
+    }
+    if (pend.nfc > 0) {
+        s_st.nfcSeen += pend.nfc;
+        s_st.hunger = clampi(s_st.hunger + FEED_NFC * pend.nfc, 0, 100);
+        s_st.bond   = clampi(s_st.bond + BOND_NFC * pend.nfc, 0, 100);
+        add_xp(XP_PER_NFC * pend.nfc);
+        fed = true;
+    }
+    if (pend.cells > 0) {
+        s_st.cellsSeen += pend.cells;
+        add_xp(XP_PER_CELL * pend.cells);
+    }
+
     if (fed) s_excitedUntil = now + EXCITED_MS;
 
     // Time-based decay (per real minute while running).

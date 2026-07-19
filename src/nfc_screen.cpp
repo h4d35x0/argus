@@ -1,6 +1,7 @@
 #include "nfc_screen.h"
 #include "theme.h"
 #include "nfc_write_screen.h"
+#include "hexhound.h"      // an NFC read is a "treat" for the pet
 #include <LilyGoLib.h>
 
 static lv_obj_t *nfc_screen;
@@ -122,6 +123,8 @@ static void nfc_process_card()
 {
     rfalNfcDevice *dev;
     NFCReader.rfalNfcGetActiveDevice(&dev);
+
+    hexhound_note_nfc();   // hand-fed treat: bond + a little XP
 
     char buf[600];
     int  n = 0;

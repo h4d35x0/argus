@@ -2,6 +2,7 @@
 #include "theme.h"
 #include <LilyGoLib.h>
 #include "timezone.h"
+#include "hexhound.h"     // new GPS cell = new territory = pet exploration XP
 
 // Defined in main.cpp
 void clock_screen_set_gps_active(bool active);
@@ -242,6 +243,12 @@ static void on_gps_update(lv_timer_t *timer)
         strcpy(buf, "--");
     }
     clock_screen_set_sat_count(sat_count);
+
+    // Feed HexHound "new territory" XP when we enter a fresh coarse GPS cell.
+    // Runs even off-screen (GPS may be on while the user is elsewhere); the pet
+    // engine coarse-rounds and dedups, so a stationary fix won't farm XP.
+    if (gps_fresh(instance.gps.location))
+        hexhound_note_cell(instance.gps.location.lat(), instance.gps.location.lng());
 
     // From here down: pure GPS-screen UI labels. ~7 lv_label_set_text
     // calls per second + several gps.* field reads - skip when the user

@@ -57,7 +57,24 @@ struct HexHoundState {
     int      pwnd     = 0;    // handshakes eaten
     int      peers    = 0;    // Pwnagotchi peers met
     int      wifiSeen = 0;    // distinct APs catalogued
-    int      bleSeen  = 0;    // reserved for BLE integrator wiring
+    int      bleSeen  = 0;    // distinct ambient BLE devices sniffed
+    int      detSeen  = 0;    // confirmed detector hits eaten (AirTag/Flipper/...)
+    int      nfcSeen  = 0;    // NFC tags read (hand-fed "treats")
+    int      cellsSeen= 0;    // distinct coarse GPS cells explored
+};
+
+// ── Detector categories that "feed" HexHound ───────────────────────────────
+// Kept independent of threat_radar.h so this engine stays decoupled from the
+// Threat Radar bundle. The detector call sites already include threat_radar.h
+// and simply pass the matching HEX_DET_* constant one line below their existing
+// threatradar_observe() confirm call.
+enum HexDetector : uint8_t {
+    HEX_DET_AIRTAG = 0,
+    HEX_DET_FLIPPER,
+    HEX_DET_SKIMMER,
+    HEX_DET_FLOCK,
+    HEX_DET_EVILTWIN,
+    HEX_DET_COUNT
 };
 
 // Load persisted state from SD (idempotent — safe to call repeatedly).
@@ -71,6 +88,30 @@ void hexhound_update();
 // small session ring. Wire this to the shared WiFi beacon manager while the pet
 // screen is open ("sniffing the airwaves" trickle).
 void hexhound_note_wifi(const uint8_t bssid[6]);
+
+// ── Richer diet feeds — exercise the watch's other radios/sensors ───────────
+// These four are all SAFE TO CALL FROM ANY TASK/CONTEXT (the BLE controller
+// callback, the WiFi beacon task, or the LVGL/main task). Each only defers a
+// tiny reward into a spinlock-guarded pending accumulator that hexhound_update()
+// drains on the main task, so no feed ever touches game state or SD from a
+// foreign task. Rewards are retro-credited the next time the pet screen ticks.
+
+// A confirmed detector hit — the pet's "big meal" (more XP + hunger than an
+// ambient contact). The detectors already dedup, so every call is a fresh,
+// confirmed hit; `category` is a HexDetector value.
+void hexhound_note_detector(uint8_t category);
+
+// A BLE device seen on the airwaves — small XP trickle. Dedups against a
+// session MAC ring so one chatty beacon can't spam XP.
+void hexhound_note_ble(const uint8_t mac[6]);
+
+// An NFC tag was read — a hand-fed "treat" (bond-forward: more bond than XP).
+void hexhound_note_nfc();
+
+// Entered new territory — a coarse GPS cell not visited this session earns
+// exploration XP. Rounds lat/lon to a coarse grid and dedups against a small
+// ring of recently-visited cells; safe to call every fix.
+void hexhound_note_cell(double lat, double lon);
 
 // ── INTEGRATOR HOOK — threat level ─────────────────────────────────────────
 // Team-owned Threat Radar (threat_radar.h / threatradar_*) is intentionally NOT
