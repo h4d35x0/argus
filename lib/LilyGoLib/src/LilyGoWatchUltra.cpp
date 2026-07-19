@@ -82,7 +82,13 @@ static bool _unlock_callback(void)
     return true;
 }
 
-LilyGoUltra::LilyGoUltra() : LilyGo_Display(QSPI_DRIVER, false),
+// ARGUS patch: full_refresh true (was false). The Ultra already runs non-DMA
+// with full-screen PSRAM double-buffers, so flipping LVGL to FULL render mode
+// costs no extra memory and eliminates the partial-refresh artifact class:
+// the transform-scaled clock fragmenting under the Matrix rain / SD wallpaper,
+// and stale pixels when scrolling the Tools list. Every frame now redraws the
+// whole screen, so nothing stale can persist. See src/main.cpp clock notes.
+LilyGoUltra::LilyGoUltra() : LilyGo_Display(QSPI_DRIVER, true),
     LilyGoDispQSPI(co5300_206_cmd, CO5300_206_INIT_SEQUENCE_LENGTH, DISP_WIDTH, DISP_HEIGHT),
     LilyGoPowerManage(&pmu),
     _effects(80), devices_probe(0), _boot_images_addr(NULL), _lock(NULL),
