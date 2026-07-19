@@ -105,11 +105,16 @@ static void on_bt_update(lv_timer_t *)
     // Another module (wardriver, airtag) may bring the radio up or down
     // outside our toggle's knowledge — match the switch to the real state
     // so the UI never lies about what's running.
+    // Switch reflects INTENT or real state: on if we asked for it (s_radio_wanted)
+    // OR another module has the radio up. Keying only off radio_is_on() made the
+    // switch snap back off when the BLE controller idled between scan windows even
+    // though the user just turned it on.
     bool on_now = radio_is_on();
+    bool want   = s_radio_wanted || on_now;
     bool checked = lv_obj_has_state(toggle_sw, LV_STATE_CHECKED);
-    if (on_now != checked) {
-        if (on_now) lv_obj_add_state(toggle_sw,   LV_STATE_CHECKED);
-        else        lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
+    if (want != checked) {
+        if (want) lv_obj_add_state(toggle_sw,   LV_STATE_CHECKED);
+        else      lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
     }
     update_status();
 
@@ -201,6 +206,7 @@ void bluetooth_screen_create()
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
 
     toggle_sw = lv_switch_create(bt_screen_root);
+    lv_obj_set_ext_click_area(toggle_sw, 22);  // easier to hit
     lv_obj_set_size(toggle_sw, 100, 50);
     lv_obj_set_style_bg_color(toggle_sw, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(toggle_sw, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);

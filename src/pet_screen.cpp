@@ -103,7 +103,7 @@ static void refresh()
     lv_obj_set_style_bg_color(s_bar_fill, accent, LV_PART_MAIN);
 
     lv_label_set_text_fmt(s_stats,
-        "HUN %d  ENR %d  BND %d   PWND %d  peers %d  xp %ld",
+        "HUN %d   ENR %d   BND %d   PWND %d\nPEERS %d      XP %ld",
         st.hunger, st.energy, st.bond, st.pwnd, st.peers, st.xp);
 
     // Evolution banner (one-shot, 4 s).
@@ -288,8 +288,9 @@ void pet_screen_create()
     s_stats = lv_label_create(s_screen);
     lv_obj_set_style_text_font(s_stats, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_stats, ARGUS_ACCENT_DIM, LV_PART_MAIN);
-    lv_label_set_text(s_stats, "HUN 0  ENR 0  BND 0   PWND 0  peers 0  xp 0");
-    lv_obj_align(s_stats, LV_ALIGN_CENTER, 0, 168);
+    lv_obj_set_style_text_align(s_stats, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(s_stats, "HUN 0   ENR 0   BND 0   PWND 0\nPEERS 0      XP 0");
+    lv_obj_align(s_stats, LV_ALIGN_CENTER, 0, 176);
 
     // Evolution banner (hidden until an evolution fires).
     s_banner = lv_label_create(s_screen);
