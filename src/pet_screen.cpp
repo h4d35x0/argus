@@ -131,7 +131,7 @@ static void on_anim(lv_timer_t *)
     s_phase++;
 
     int dy = (int)(6.0f * sinf(s_phase * 0.16f));
-    lv_obj_align(s_dog, LV_ALIGN_CENTER, 0, -46 + dy);
+    lv_obj_align(s_dog, LV_ALIGN_CENTER, 0, -74 + dy);
 
     // Rings expand/fade in sequence to read as an outward recon sweep.
     for (int i = 0; i < 3; i++) {
@@ -211,7 +211,7 @@ void pet_screen_create()
     const int rd[3] = { 250, 190, 132 };
     for (int i = 0; i < 3; i++) {
         s_ring[i] = ring(s_screen, rd[i], ARGUS_ACCENT_DIM);
-        lv_obj_align(s_ring[i], LV_ALIGN_CENTER, 0, -46);
+        lv_obj_align(s_ring[i], LV_ALIGN_CENTER, 0, -74);
     }
 
     // The hound — a container so the whole head bobs as one.
@@ -221,7 +221,7 @@ void pet_screen_create()
     lv_obj_set_style_border_width(s_dog, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(s_dog, 0, LV_PART_MAIN);
     lv_obj_clear_flag(s_dog, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(s_dog, LV_ALIGN_CENTER, 0, -46);
+    lv_obj_align(s_dog, LV_ALIGN_CENTER, 0, -74);
 
     // Ears — angular diamonds poking up behind the skull.
     s_ear[0] = diamond(s_dog, 46, ARGUS_ACCENT);
@@ -254,32 +254,32 @@ void pet_screen_create()
     lv_obj_set_style_text_font(s_speech, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_speech, ARGUS_ACCENT_ACTIVE, LV_PART_MAIN);
     lv_label_set_text(s_speech, "...tick... incubating...");
-    lv_obj_align(s_speech, LV_ALIGN_CENTER, 0, 70);
+    lv_obj_align(s_speech, LV_ALIGN_CENTER, 0, 66);
 
     // Stage name + ability.
     s_stage_lbl = lv_label_create(s_screen);
     lv_obj_set_style_text_font(s_stage_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_stage_lbl, ARGUS_ACCENT, LV_PART_MAIN);
     lv_label_set_text(s_stage_lbl, "Egg");
-    lv_obj_align(s_stage_lbl, LV_ALIGN_CENTER, 0, 100);
+    lv_obj_align(s_stage_lbl, LV_ALIGN_CENTER, 0, 92);
 
     s_ability = lv_label_create(s_screen);
     lv_obj_set_style_text_font(s_ability, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_ability, ARGUS_ACCENT_DIM, LV_PART_MAIN);
     lv_label_set_text(s_ability, "INCUBATING");
-    lv_obj_align(s_ability, LV_ALIGN_CENTER, 0, 126);
+    lv_obj_align(s_ability, LV_ALIGN_CENTER, 0, 116);
 
     // Level + XP-into-stage bar.
     s_lvl = lv_label_create(s_screen);
     lv_obj_set_style_text_font(s_lvl, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_lvl, ARGUS_ACCENT, LV_PART_MAIN);
     lv_label_set_text(s_lvl, "LVL 1");
-    lv_obj_align(s_lvl, LV_ALIGN_CENTER, -150, 150);
+    lv_obj_align(s_lvl, LV_ALIGN_CENTER, -150, 138);
 
     lv_obj_t *bar_bg = box(s_screen, 300, 16, 8, lv_color_make(0x10, 0x18, 0x22));
     lv_obj_set_style_border_color(bar_bg, ARGUS_ACCENT_DIM, LV_PART_MAIN);
     lv_obj_set_style_border_width(bar_bg, 1, LV_PART_MAIN);
-    lv_obj_align(bar_bg, LV_ALIGN_CENTER, 0, 150);
+    lv_obj_align(bar_bg, LV_ALIGN_CENTER, 0, 138);
 
     s_bar_fill = box(bar_bg, 2, 14, 7, ARGUS_ACCENT);
     lv_obj_align(s_bar_fill, LV_ALIGN_LEFT_MID, 0, 0);
@@ -289,7 +289,7 @@ void pet_screen_create()
     lv_obj_set_style_text_font(s_stats, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_stats, ARGUS_ACCENT_DIM, LV_PART_MAIN);
     lv_label_set_text(s_stats, "HUN 0  ENR 0  BND 0   PWND 0  peers 0  xp 0");
-    lv_obj_align(s_stats, LV_ALIGN_CENTER, 0, 182);
+    lv_obj_align(s_stats, LV_ALIGN_CENTER, 0, 168);
 
     // Evolution banner (hidden until an evolution fires).
     s_banner = lv_label_create(s_screen);
