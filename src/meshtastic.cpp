@@ -4,7 +4,7 @@
 #include "gps_screen.h"
 #include <LilyGoLib.h>
 #include <SD.h>
-#include "mbedtls/aes.h"
+#include "mesh/crypto.h"   // vendored FIPS/NIST-tested AES-CTR (replaces mbedTLS)
 #include <math.h>         // NAN, isnan
 #include <string.h>
 #include <stdlib.h>       // strtol, sscanf
@@ -156,15 +156,13 @@ static void decrypt_ctr_n(const uint8_t *key, uint8_t key_bits,
                           const uint8_t *nonce,
                           const uint8_t *in, uint8_t *out, size_t len)
 {
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, key, key_bits);
-
-    uint8_t nc[16], sb[16] = {0};
-    memcpy(nc, nonce, 16);
-    size_t nc_off = 0;
-    mbedtls_aes_crypt_ctr(&aes, len, &nc_off, nc, sb, in, out);
-    mbedtls_aes_free(&aes);
+    // AES-CTR via the vendored src/mesh crypto (pure AES validated against
+    // FIPS-197 + NIST SP800-38A CTR vectors; see test/test_mesh_crypto.cpp).
+    // Byte-identical to the previous mbedTLS path: standard AES-CTR, big-endian
+    // counter incremented from the same 16-byte `nonce`. CTR is symmetric, so
+    // this serves both the RX decrypt and TX encrypt callers. key_bits (128/256)
+    // -> key_bytes (16/32).
+    wl::mesh::aes_ctr_xcrypt(key, key_bits / 8u, nonce, in, out, len);
 }
 
 // --- Node ID (derived from ESP32 base MAC, stable across reboots) ---
