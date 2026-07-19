@@ -21,7 +21,8 @@ MODULES=("$ROOT"/src/mesh/aes.cpp "$ROOT"/src/mesh/crypto.cpp \
          "$ROOT"/src/detect/evil_twin.cpp "$ROOT"/src/detect/tail_detect.cpp \
          "$ROOT"/src/detect/deauth_flood.cpp "$ROOT"/src/detect/ble_spam.cpp \
          "$ROOT"/src/detect/beacon_flood.cpp \
-         "$ROOT"/src/detect/threat_state.cpp "$ROOT"/src/detect/threat_map.cpp)
+         "$ROOT"/src/detect/threat_state.cpp "$ROOT"/src/detect/threat_map.cpp \
+         "$ROOT"/src/detect/tracker_ident.cpp "$ROOT"/src/detect/threat_log.cpp)
 BIN="$HERE/build/argus_tests.exe"
 
 g++ -std=c++17 -Wall -Wextra -I "$HERE" -I "$ROOT/src/mesh" -I "$ROOT/src/ble" \
