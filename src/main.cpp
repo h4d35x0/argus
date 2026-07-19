@@ -1710,8 +1710,13 @@ void setup()
     // just data; meshtastic_set_active() reads from s_channels when
     // it starts transmitting.
     meshtastic_load_channels_from_sd();
-    // Restore persisted GPS radio power state (SD is mounted; gps_screen_create() ran above).
+    // Restore persisted radio power states (SD is mounted; the screens' *_create() ran above).
+    // Bluetooth is intentionally excluded - bringing the BLE controller up at boot boot-looped
+    // the watch, so BT power is never auto-restored here.
     gps_screen_restore_power();
+    wifi_radio_screen_restore_power();
+    nfc_screen_restore_power();
+    lora_screen_restore_power();
     realign_status_icons();
     layout_battery_indicators(); // seed packing so a boot-enabled alarm renders immediately
     update_clock();

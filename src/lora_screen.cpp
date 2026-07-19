@@ -5,6 +5,8 @@
 #include "tpms.h"
 #include "aprs.h"
 #include <LilyGoLib.h>
+#include <SD.h>
+#include "usb_sd.h"
 
 // Defined in main.cpp
 void clock_screen_set_lora_active(bool active);
@@ -25,6 +27,20 @@ static lv_obj_t *boosted_switch;
 static bool      s_boosted_gain_enabled = true;
 
 static bool lora_powered = false;
+
+// Persist the radio on/off state so LoRa survives a reboot. Mirrors the
+// small-file pattern used by gps_screen.cpp.
+#define LORA_PATH "/Settings/lora.txt"
+
+static void lora_save_power(bool on)
+{
+    if (!instance.isCardReady() || usb_sd_is_running()) return; // host owns SD when mounted
+    if (!SD.exists("/Settings")) SD.mkdir("/Settings");
+    File f = SD.open(LORA_PATH, FILE_WRITE);   // FILE_WRITE = truncate
+    if (!f) return;
+    f.printf("%d\n", on ? 1 : 0);
+    f.close();
+}
 
 static void update_status()
 {
@@ -121,6 +137,7 @@ static void on_toggle(lv_event_t *e)
     meshtastic_set_active(lora_powered);
     clock_screen_set_lora_active(lora_powered);
     update_status();
+    lora_save_power(lora_powered); // survive reboot
 }
 
 static void on_boosted_changed(lv_event_t *e)
@@ -225,4 +242,40 @@ bool lora_screen_is_active()
 bool lora_screen_is_powered()
 {
     return lora_powered;
+}
+
+// Boot-time restore: if /Settings/lora.txt says the radio was left on, power it
+// back up exactly the way on_toggle does and reflect it on the switch. Must run
+// after the SD card is mounted (instance.begin) and after lora_screen_create().
+void lora_screen_restore_power()
+{
+    if (!instance.isCardReady() || usb_sd_is_running()) return;
+    if (!SD.exists(LORA_PATH)) return;
+
+    File f = SD.open(LORA_PATH, FILE_READ);
+    if (!f) return;
+    char buf[8] = {0};
+    int n = f.readBytesUntil('\n', (uint8_t *)buf, sizeof(buf) - 1);
+    f.close();
+    if (n <= 0) return;
+    buf[n] = '\0';
+
+    if (atoi(buf) != 1) return;   // was off (or garbage); nothing to restore
+
+    // Power LoRa on the same way on_toggle does: stop any FSK scanner sharing
+    // the SX1262, power the radio, init LoRa, then re-apply Boosted RX Gain.
+    pager_stop();
+    tpms_stop();
+    aprs_stop();
+    instance.powerControl(POWER_RADIO, true);
+    instance.initLoRa();
+    radio.setRxBoostedGainMode(s_boosted_gain_enabled, true);
+    lora_powered = true;
+    meshtastic_set_active(true);
+    clock_screen_set_lora_active(true);
+    update_status();
+
+    // Reflect on the toggle switch if the screen was already created.
+    if (toggle_sw)
+        lv_obj_add_state(toggle_sw, LV_STATE_CHECKED);
 }

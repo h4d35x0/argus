@@ -11,6 +11,7 @@
 // read of its current configuration.
 
 void wifi_radio_screen_create();
+void wifi_radio_screen_restore_power();
 void wifi_radio_screen_show();
 bool wifi_radio_screen_is_active();
 bool wifi_radio_screen_is_powered();

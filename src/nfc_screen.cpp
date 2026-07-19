@@ -3,6 +3,8 @@
 #include "nfc_write_screen.h"
 #include "hexhound.h"      // an NFC read is a "treat" for the pet
 #include <LilyGoLib.h>
+#include <SD.h>
+#include "usb_sd.h"
 
 static lv_obj_t *nfc_screen;
 static lv_obj_t *toggle_sw;
@@ -15,6 +17,20 @@ static lv_obj_t *data_panel;
 static lv_obj_t *data_label;
 
 static bool nfc_powered = false;
+
+// Persist the NFC on/off state so it survives a reboot. Mirrors the
+// small-file pattern used by gps_screen.cpp.
+#define NFC_PATH "/Settings/nfc.txt"
+
+static void nfc_save_power(bool on)
+{
+    if (!instance.isCardReady() || usb_sd_is_running()) return; // host owns SD when mounted
+    if (!SD.exists("/Settings")) SD.mkdir("/Settings");
+    File f = SD.open(NFC_PATH, FILE_WRITE);   // FILE_WRITE = truncate
+    if (!f) return;
+    f.printf("%d\n", on ? 1 : 0);
+    f.close();
+}
 
 enum NfcReadState { NFC_IDLE, NFC_DISCOVERING };
 static NfcReadState s_read_state  = NFC_IDLE;
@@ -191,6 +207,7 @@ static void on_toggle(lv_event_t *e)
         lv_label_set_text(data_label, "");
     }
     update_ui();
+    nfc_save_power(nfc_powered); // survive reboot
 }
 
 static void on_read_btn(lv_event_t *e)
@@ -326,6 +343,35 @@ void nfc_screen_show()
 bool nfc_screen_is_active()
 {
     return lv_screen_active() == nfc_screen;
+}
+
+// Boot-time restore: if /Settings/nfc.txt says NFC was left on, power it back up
+// exactly the way on_toggle does and reflect it on the switch. Must run after the
+// SD card is mounted (instance.begin) and after nfc_screen_create().
+void nfc_screen_restore_power()
+{
+    if (!instance.isCardReady() || usb_sd_is_running()) return;
+    if (!SD.exists(NFC_PATH)) return;
+
+    File f = SD.open(NFC_PATH, FILE_READ);
+    if (!f) return;
+    char buf[8] = {0};
+    int n = f.readBytesUntil('\n', (uint8_t *)buf, sizeof(buf) - 1);
+    f.close();
+    if (n <= 0) return;
+    buf[n] = '\0';
+
+    if (atoi(buf) != 1) return;   // was off (or garbage); nothing to restore
+
+    // Power NFC on the same way on_toggle does.
+    instance.powerControl(POWER_NFC, true);
+    instance.initNFC();
+    nfc_powered = true;
+    update_ui();
+
+    // Reflect on the toggle switch if the screen was already created.
+    if (toggle_sw)
+        lv_obj_add_state(toggle_sw, LV_STATE_CHECKED);
 }
 
 void nfc_screen_worker()
