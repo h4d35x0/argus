@@ -1,4 +1,5 @@
 #include "background.h"
+#include "image_dims.h"
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <string.h>
@@ -14,6 +15,50 @@ static char      bg_lv_path[96];       // "A:/backgrounds/<name>" for LVGL
 static bool      bg_loaded  = false;   // have we already found + set a source?
 
 static const char *kBgDir = "/backgrounds";
+
+// Largest source image we will hand to LVGL, in pixels. The panel is 410x502
+// (~206k px); LVGL decodes the SOURCE image at full resolution into an ARGB
+// buffer BEFORE the LV_IMAGE_ALIGN_COVER downscale, so a multi-megapixel phone
+// photo (e.g. 4000x3000 = 12M px ~ 48MB ARGB) OOMs the watch. 1.2M px gives
+// generous headroom for slightly-larger source art while still rejecting the
+// multi-megapixel photos students may upload. Reject over-budget images by
+// reading only the header, never decoding them.
+static constexpr uint32_t kMaxWallpaperPixels = 1200000u;
+
+// Inspect the header of the located wallpaper and reject it if decoding it
+// would blow the pixel budget. Reads only the first bytes of the file (never
+// the whole image) via the pure image_dims probe, so this cannot itself OOM.
+// Returns true if the image is safe to load OR if the header is unrecognized
+// (in which case we defer to LVGL exactly as before, to avoid regressing
+// currently-working small images). `lv_path` is the "A:/backgrounds/<file>"
+// LVGL source string filled in by find_wallpaper().
+static bool wallpaper_within_budget(const char *lv_path)
+{
+    // find_wallpaper() stores "A:<fs path>"; the SD API wants the path without
+    // the "A:" LVGL drive letter.
+    const char *fs_path = lv_path;
+    if (fs_path[0] == 'A' && fs_path[1] == ':') fs_path += 2;
+
+    File f = SD.open(fs_path);
+    if (!f) return true;   // cannot inspect -> let LVGL try (no regression)
+
+    uint8_t head[64];
+    int rd = f.read(head, sizeof(head));
+    f.close();
+    size_t n = (rd > 0) ? (size_t)rd : 0;
+
+    ImageDims dims;
+    if (!image_probe_dims(head, n, &dims))
+        return true;       // unknown/unrecognized header -> defer to LVGL
+
+    if (image_dims_within_budget(dims, kMaxWallpaperPixels))
+        return true;
+
+    Serial.printf("[background] skipping oversized wallpaper %s (%lux%lu px > %lu px budget)\n",
+                  fs_path, (unsigned long)dims.width, (unsigned long)dims.height,
+                  (unsigned long)kMaxWallpaperPixels);
+    return false;
+}
 
 // Case-insensitive "does `name` end with `ext`?"
 static bool ends_with_ci(const char *name, const char *ext)
@@ -93,6 +138,9 @@ static bool load_source()
 {
     if (!bg_img) return false;
     if (!find_wallpaper()) return false;
+    // Guard against an oversized source image OOMing the LVGL decode: inspect
+    // the header BEFORE handing the path to LVGL. Over-budget -> stay hidden.
+    if (!wallpaper_within_budget(bg_lv_path)) return false;
 
     int32_t w = lv_display_get_horizontal_resolution(NULL);
     int32_t h = lv_display_get_vertical_resolution(NULL);
