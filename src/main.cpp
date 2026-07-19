@@ -60,6 +60,7 @@
 #include "tracker_rep.h"
 #include "counter_tail.h"
 #include "matrix_bg.h"
+#include "background.h"
 #include "nfc_icon.h"
 
 static lv_obj_t *clock_screen;
@@ -844,6 +845,13 @@ void clock_screen_set_matrix(bool enabled)
     matrix_bg_set_enabled(enabled);
 }
 
+// Called by settings screen to enable/disable the SD-card wallpaper. Coexists
+// with the matrix rain: when both are on the faint image sits behind the rain.
+void clock_screen_set_wallpaper(bool enabled)
+{
+    background_set_enabled(enabled);
+}
+
 // Dim timer state — updated by settings screen callbacks
 static uint32_t s_dim_timeout_ms   = 0;   // 0 = disabled
 static uint8_t  s_dim_brightness   = DEVICE_MAX_BRIGHTNESS_LEVEL / 4;
@@ -1278,6 +1286,11 @@ void setup()
     clock_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(clock_screen, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_border_width(clock_screen, 0, LV_PART_MAIN);
+
+    // Lowest z-order: the SD-card wallpaper renders behind everything,
+    // including the matrix rain. Created before matrix_bg_create so it is
+    // the first child. Hidden until the "Wallpaper" setting turns it on.
+    background_create(clock_screen);
 
     // First child → renders behind every other widget on the clock screen
     matrix_bg_create(clock_screen);

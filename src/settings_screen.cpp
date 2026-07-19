@@ -10,6 +10,7 @@ void main_loop_request_lvgl_priority(int cycles);
 void clock_screen_set_analog_face(bool analog);
 void clock_screen_set_12h(bool use_12h);
 void clock_screen_set_matrix(bool enabled);
+void clock_screen_set_wallpaper(bool enabled);
 void clock_screen_set_dim_timeout(uint32_t ms);
 void clock_screen_set_dim_brightness(uint8_t level);
 void clock_screen_set_show_day(bool show);
@@ -37,6 +38,8 @@ static lv_obj_t *hour_format_switch;
 static lv_obj_t *hour_format_val_label;
 static lv_obj_t *matrix_switch;
 static lv_obj_t *matrix_val_label;
+static lv_obj_t *wallpaper_switch;
+static lv_obj_t *wallpaper_val_label;
 static lv_obj_t *dim_dropdown;
 static lv_obj_t *dim_brightness_slider;
 static lv_obj_t *dim_brightness_val_label;
@@ -195,6 +198,14 @@ static void on_matrix_changed(lv_event_t *e)
     bool on = lv_obj_has_state(matrix_switch, LV_STATE_CHECKED);
     lv_label_set_text(matrix_val_label, on ? "On" : "Off");
     clock_screen_set_matrix(on);
+    settings_save_to_sd();
+}
+
+static void on_wallpaper_changed(lv_event_t *e)
+{
+    bool on = lv_obj_has_state(wallpaper_switch, LV_STATE_CHECKED);
+    lv_label_set_text(wallpaper_val_label, on ? "On" : "Off");
+    clock_screen_set_wallpaper(on);
     settings_save_to_sd();
 }
 
@@ -921,6 +932,63 @@ void settings_screen_create()
     lv_obj_align(screenshot_hint, LV_ALIGN_TOP_MID, 0, 1190);
     register_shiftable(screenshot_hint, 1190);
 
+    // ---- Wallpaper (SD-card background image) section -----------------------
+    // Independent of the Matrix BG toggle so the two can coexist: with both
+    // on, a faint SD image sits behind the matrix rain (the intended default
+    // look). Placed at the bottom of the list so it doesn't disturb the tuned
+    // absolute-Y positions of the rows above. Mirrors the Matrix BG toggle
+    // wiring exactly (switch + on/off label + save/load key).
+    lv_obj_t *sep_bg = lv_obj_create(settings_screen);
+    lv_obj_set_size(sep_bg, 380, 1);
+    lv_obj_set_style_bg_color(sep_bg, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sep_bg, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sep_bg, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(sep_bg, 0, LV_PART_MAIN);
+    lv_obj_align(sep_bg, LV_ALIGN_TOP_MID, 0, 1250);
+    register_shiftable(sep_bg, 1250);
+
+    lv_obj_t *wallpaper_row = lv_obj_create(settings_screen);
+    lv_obj_set_size(wallpaper_row, 380, 40);
+    lv_obj_set_style_bg_opa(wallpaper_row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(wallpaper_row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(wallpaper_row, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(wallpaper_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(wallpaper_row, LV_ALIGN_TOP_MID, 0, 1264);
+    register_shiftable(wallpaper_row, 1264);
+
+    lv_obj_t *wp_lbl = lv_label_create(wallpaper_row);
+    lv_obj_set_style_text_color(wp_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
+    lv_obj_set_style_text_font(wp_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_label_set_text(wp_lbl, "Wallpaper");
+    lv_obj_align(wp_lbl, LV_ALIGN_LEFT_MID, 0, 0);
+
+    wallpaper_val_label = lv_label_create(wallpaper_row);
+    lv_obj_set_style_text_color(wallpaper_val_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
+    lv_obj_set_style_text_font(wallpaper_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_label_set_text(wallpaper_val_label, "Off");
+    lv_obj_align(wallpaper_val_label, LV_ALIGN_RIGHT_MID, -80, 0);
+
+    wallpaper_switch = lv_switch_create(wallpaper_row);
+    lv_obj_set_size(wallpaper_switch, 70, 34);
+    lv_obj_set_style_bg_color(wallpaper_switch, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(wallpaper_switch, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
+    // default off — no image until the user drops one on the card + enables it
+    lv_obj_add_event_cb(wallpaper_switch, on_wallpaper_changed, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_align(wallpaper_switch, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    // Hint — tells the user where to drop the image on the SD card.
+    lv_obj_t *wp_hint = lv_label_create(settings_screen);
+    lv_obj_set_style_text_color(wp_hint, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_font(wp_hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_align(wp_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_width(wp_hint, 360);
+    lv_label_set_long_mode(wp_hint, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(wp_hint,
+        "Drop a PNG/BMP/JPG at /backgrounds/wallpaper.png on the SD card. "
+        "Shown faintly behind the clock; works alongside Matrix BG.");
+    lv_obj_align(wp_hint, LV_ALIGN_TOP_MID, 0, 1312);
+    register_shiftable(wp_hint, 1312);
+
     // Reflect the current SD state in the row's interactability + checked
     // state. Boot order matters here — instance.isCardReady() may flip
     // later, but settings_screen_apply_sd_state() is also called from
@@ -979,6 +1047,7 @@ static void settings_save_to_sd()
     f.printf("show_ampm=%d\n",       lv_obj_has_state(ampm_switch,        LV_STATE_CHECKED) ? 1 : 0);
     f.printf("show_secs=%d\n",       lv_obj_has_state(secs_switch,        LV_STATE_CHECKED) ? 1 : 0);
     f.printf("matrix=%d\n",          lv_obj_has_state(matrix_switch,      LV_STATE_CHECKED) ? 1 : 0);
+    f.printf("wallpaper=%d\n",       lv_obj_has_state(wallpaper_switch,   LV_STATE_CHECKED) ? 1 : 0);
     f.printf("show_day=%d\n",        lv_obj_has_state(show_day_switch,    LV_STATE_CHECKED) ? 1 : 0);
     f.printf("show_date=%d\n",       lv_obj_has_state(show_date_switch,   LV_STATE_CHECKED) ? 1 : 0);
     f.printf("vibrate=%d\n",         lv_obj_has_state(vibrate_switch,     LV_STATE_CHECKED) ? 1 : 0);
@@ -1045,6 +1114,10 @@ void settings_screen_load()
             apply_switch(matrix_switch, b);
             lv_label_set_text(matrix_val_label, b ? "On" : "Off");
             clock_screen_set_matrix(b);
+        } else if (key == "wallpaper") {
+            apply_switch(wallpaper_switch, b);
+            lv_label_set_text(wallpaper_val_label, b ? "On" : "Off");
+            clock_screen_set_wallpaper(b);
         } else if (key == "show_day") {
             apply_switch(show_day_switch, b);
             clock_screen_set_show_day(b);
