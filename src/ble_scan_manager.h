@@ -18,7 +18,7 @@ typedef void (*ble_scan_cb_t)(esp_ble_gap_cb_param_t *param);
 
 // Register a consumer. Idempotent — calling twice with the same cb is a no-op.
 // Returns false if the controller fails to come up on the first add or the
-// consumer table is full (capacity 4 — raise BLE_SCAN_MAX_CONSUMERS if needed).
+// consumer table is full (capacity 8 — raise BLE_SCAN_MAX_CONSUMERS if needed).
 bool ble_scan_add(ble_scan_cb_t cb);
 
 // Unregister a consumer. The controller is torn down when the last consumer
