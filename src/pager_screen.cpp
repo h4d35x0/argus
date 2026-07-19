@@ -560,8 +560,8 @@ void pager_screen_create()
     // below sits at y=70 which leaves a 14 px gap clear of the bigger
     // title (font_48 extends to ~y=56 from the y=8 origin).
     lv_obj_t *title = lv_label_create(pager_screen);
-    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "PAGER");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
 

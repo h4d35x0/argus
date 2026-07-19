@@ -1,4 +1,5 @@
 #include "timer_screen.h"
+#include "theme.h"
 #include "alarm.h"     // alarm_play_chime_loop / alarm_stop_chime_loop
 #include <LilyGoLib.h>
 #include <stdio.h>
@@ -540,8 +541,8 @@ static void build_expired_panel()
     lv_obj_add_flag(expired_panel, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *title = lv_label_create(expired_panel);
-    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TIME'S UP");
     lv_obj_align(title, LV_ALIGN_CENTER, 0, -40);
 
@@ -565,8 +566,8 @@ void timer_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(timer_screen);
-    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TIMER");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
 

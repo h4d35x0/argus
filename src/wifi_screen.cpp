@@ -488,8 +488,8 @@ void wifi_screen_create()
 
     // Title — font_48 to match the PAGER / TPMS / SETTINGS / analyze headers.
     lv_obj_t *title = lv_label_create(wifi_screen);
-    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "WiFi");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 

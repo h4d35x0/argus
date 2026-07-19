@@ -1205,6 +1205,33 @@ void setup()
 
     instance.begin();
     instance.powerControl(POWER_NFC, false); // ensure NFC is off on boot
+
+    // Time fallback: with no GPS fix and no WiFi/NTP, the RTC can come up unset
+    // (garbage/epoch) and the clock reads wildly wrong. If the RTC year is
+    // implausible, seed it from the firmware BUILD time (__DATE__/__TIME__),
+    // treated as local wall-clock so the face shows it directly (clock_utc_offset
+    // stays 0). Approximate only (build time, not flash time); a later GPS fix or
+    // NTP sync overrides it precisely, and the timezone auto-detects on GPS lock.
+    {
+        struct tm rn;
+        instance.rtc.getDateTime(&rn);
+        if (rn.tm_year + 1900 < 2025) {
+            const char *D = __DATE__;   // "Mmm dd yyyy" (day may be space-padded)
+            const char *T = __TIME__;   // "hh:mm:ss"
+            const char *M = "JanFebMarAprMayJunJulAugSepOctNovDec";
+            int mon = 1;
+            for (int i = 0; i < 12; i++)
+                if (D[0]==M[i*3] && D[1]==M[i*3+1] && D[2]==M[i*3+2]) { mon = i+1; break; }
+            int day = (D[4]==' ' ? 0 : (D[4]-'0')*10) + (D[5]-'0');
+            int yr  = (D[7]-'0')*1000 + (D[8]-'0')*100 + (D[9]-'0')*10 + (D[10]-'0');
+            int hh  = (T[0]-'0')*10 + (T[1]-'0');
+            int mm  = (T[3]-'0')*10 + (T[4]-'0');
+            int ss  = (T[6]-'0')*10 + (T[7]-'0');
+            instance.rtc.setDateTime(yr, mon, day, hh, mm, ss);
+            instance.rtc.hwClockRead();
+        }
+    }
+
     beginLvglHelper(instance);
 
     // Boot splash — ARGUS lockup on the panel before the clock comes up.

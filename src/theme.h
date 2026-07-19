@@ -28,3 +28,6 @@
 // Radar screen) call this so the brand flips to the alert state live; static
 // low-traffic screens keep using the ARGUS_ACCENT macro. Defined in theme.cpp.
 lv_color_t argus_accent(void);
+
+// Full-alphabet Bank Gothic brand font for screen titles (src/font_argus_ui.c).
+LV_FONT_DECLARE(font_argus_ui);

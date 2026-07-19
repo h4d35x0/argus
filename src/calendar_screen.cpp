@@ -248,8 +248,8 @@ void calendar_screen_create()
     lv_obj_add_event_cb(next_btn, on_next, LV_EVENT_CLICKED, NULL);
 
     month_label = lv_label_create(calendar_screen);
-    lv_obj_set_style_text_color(month_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(month_label, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_color(month_label, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(month_label, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(month_label, "");
     lv_obj_align(month_label, LV_ALIGN_TOP_MID, 0, 77);
 

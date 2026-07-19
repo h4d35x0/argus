@@ -267,8 +267,8 @@ void meshtastic_screen_create()
     // Title — font_montserrat_48 (~60 px tall) at y=21 (5 px lower
     // than the previous y=16 for a touch more bezel clearance).
     lv_obj_t *title = lv_label_create(mesh_screen);
-    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "MESHTASTIC");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 21);
 

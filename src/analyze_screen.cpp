@@ -1,4 +1,5 @@
 #include "analyze_screen.h"
+#include "theme.h"
 #include "bt_analyze_screen.h"
 #include <LilyGoLib.h>
 #include <WiFi.h>
@@ -235,8 +236,8 @@ void analyze_screen_create()
     lv_obj_set_style_pad_all(screen, 0, LV_PART_MAIN);
 
     title_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(title_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title_label, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title_label, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title_label, "WiFi");
     // Anchored at the top centre to match the PAGER / TPMS / SETTINGS
     // screens. font_48 extends to ~y=56 from this origin; status/legend

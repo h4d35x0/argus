@@ -320,8 +320,8 @@ static void create_settings_screen()
 
 
     lv_obj_t *title = lv_label_create(settings_scr);
-    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "ALARM");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
@@ -513,8 +513,8 @@ static void create_ringing_screen()
     lv_obj_set_style_pad_all(ring_scr, 0, LV_PART_MAIN);
 
     lv_obj_t *title = lv_label_create(ring_scr);
-    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "ALARM");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 60);
 
