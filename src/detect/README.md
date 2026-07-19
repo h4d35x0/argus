@@ -89,8 +89,15 @@ Do not batch-wire blind.
 ## Tests
 
 `bash test/run.sh` (host g++; `make`/cmake not installed on the MSI - see the
-project memory). Current: 140 tests / 1335 checks, all green. Each module has its
+project memory). Current: ~142 tests / 1541 checks, all green. Each module has its
 own `test/test_<module>.cpp`, plus `test_subsystem_e2e.cpp` which drives real
-detector inputs through map -> aggregator -> log to prove they COMPOSE (an evil
-twin + a concurrent deauth flood escalating to Critical, then decaying to Calm).
-Add cases there; keep everything pure.
+detector inputs through map -> aggregator -> log/Airtag to prove they COMPOSE:
+an evil twin + concurrent deauth flood escalating to Critical then decaying; and
+an AirTag following across geo cells escalating the Airtag domain.
+
+The e2e test has already caught TWO real cross-module integration bugs that no
+unit test could (each module passed its own tests): (1) the forensic log must be
+polled for EVERY domain each cycle or a first-rise is swallowed as baseline;
+(2) geo::coarse_cell must be non-negative or tail_detect drops it as "unknown".
+When wiring the hardware integration, extend the e2e first - it is cheaper than a
+flash cycle. Keep everything pure.
