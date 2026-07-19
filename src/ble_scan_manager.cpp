@@ -1,5 +1,4 @@
 #include "ble_scan_manager.h"
-#include <Arduino.h>          // Serial (BLE bring-up diagnostics)
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 
@@ -31,25 +30,18 @@ static void gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 // initialised by something outside our control.
 static bool bring_up_controller()
 {
-    esp_err_t e = ESP_OK;
+    bool ok = true;
     if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE) {
         esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-        e = esp_bt_controller_init(&bt_cfg);
-        if (e != ESP_OK) { Serial.printf("[BLE] controller_init FAIL: %s\n", esp_err_to_name(e)); return false; }
+        ok = (esp_bt_controller_init(&bt_cfg) == ESP_OK);
     }
-    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED) {
-        e = esp_bt_controller_enable(ESP_BT_MODE_BLE);
-        if (e != ESP_OK) { Serial.printf("[BLE] controller_enable FAIL: %s\n", esp_err_to_name(e)); return false; }
-    }
-    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_UNINITIALIZED) {
-        e = esp_bluedroid_init();
-        if (e != ESP_OK) { Serial.printf("[BLE] bluedroid_init FAIL: %s\n", esp_err_to_name(e)); return false; }
-    }
-    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
-        e = esp_bluedroid_enable();
-        if (e != ESP_OK) { Serial.printf("[BLE] bluedroid_enable FAIL: %s\n", esp_err_to_name(e)); return false; }
-    }
-    Serial.println("[BLE] controller up OK");
+    if (ok && esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED)
+        ok = (esp_bt_controller_enable(ESP_BT_MODE_BLE) == ESP_OK);
+    if (ok && esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_UNINITIALIZED)
+        ok = (esp_bluedroid_init() == ESP_OK);
+    if (ok && esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED)
+        ok = (esp_bluedroid_enable() == ESP_OK);
+    if (!ok) return false;
 
     esp_ble_gap_register_callback(gap_cb);
 
@@ -120,4 +112,19 @@ bool ble_scan_active()
 int ble_scan_consumer_count()
 {
     return s_consumer_count;
+}
+
+// Permanent keep-alive consumer: registered once at boot and never removed, so
+// the BT controller comes up a single time (at boot, before WiFi, so it's fast
+// and coexistence-safe) and stays up. All later add/remove calls (BT toggle,
+// detectors) then run against an already-live controller — instant, no UI freeze.
+static void keepalive_cb(esp_ble_gap_cb_param_t *) { /* passive-scan keep-alive */ }
+
+void ble_scan_boot_keepalive()
+{
+    // NOTE: NOT currently invoked — calling this from setup() crashed boot (BLE
+    // brought up too early). Kept as the intended proper fix for the WiFi/BT
+    // coexistence freeze, to be wired at a safe, verified init point later. The
+    // interim mitigation is UI ordering (Bluetooth screen before WiFi).
+    (void)ble_scan_add(keepalive_cb);
 }

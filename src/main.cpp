@@ -56,6 +56,7 @@
 #include "flock.h"
 #include "threat_radar.h"
 #include "hexhound.h"
+#include "ble_scan_manager.h"
 #include "threat_radar_screen.h"
 #include "tracker_rep.h"
 #include "counter_tail.h"
@@ -1216,6 +1217,10 @@ void setup()
     instance.begin();
     instance.powerControl(POWER_NFC, false); // ensure NFC is off on boot
     beginLvglHelper(instance);
+    // NOTE: bringing the BLE controller up here (ble_scan_boot_keepalive) crashed
+    // boot — too early / unsafe at this point in init. Reverted. The keep-alive
+    // approach is still right, but it must be invoked LATER (after full init) and
+    // verified. For now the BT toggle brings the controller up on demand.
 
     // Time fallback: with no GPS fix and no WiFi/NTP, the RTC can come up unset and
     // the clock reads wildly wrong. If the RTC year is implausible, seed it from the
@@ -1662,10 +1667,10 @@ void setup()
             else if (gps_screen_is_active())
                 lora_screen_show();
             else if (lora_screen_is_active())
-                wifi_radio_screen_show();
-            else if (wifi_radio_screen_is_active())
-                bluetooth_screen_show();
+                bluetooth_screen_show();      // BT before WiFi: bring BLE up before
             else if (bluetooth_screen_is_active())
+                wifi_radio_screen_show();      // WiFi comes up second (coexistence order)
+            else if (wifi_radio_screen_is_active())
                 nfc_screen_show();
             else if (meshtastic_screen_is_active())
                 nodes_screen_show();
@@ -1753,10 +1758,10 @@ void loop()
             } else if (nfc_write_screen_is_active()) {
                 nfc_screen_show();
             } else if (nfc_screen_is_active()) {
-                bluetooth_screen_show();
-            } else if (bluetooth_screen_is_active()) {
                 wifi_radio_screen_show();
             } else if (wifi_radio_screen_is_active()) {
+                bluetooth_screen_show();      // BT before WiFi (see forward chain)
+            } else if (bluetooth_screen_is_active()) {
                 lora_screen_show();
             } else if (lora_screen_is_active()) {
                 gps_screen_show();

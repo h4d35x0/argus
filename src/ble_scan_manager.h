@@ -25,6 +25,13 @@ bool ble_scan_add(ble_scan_cb_t cb);
 // is removed.
 void ble_scan_remove(ble_scan_cb_t cb);
 
+// Bring the BLE controller up ONCE at boot and keep it up for the app's life.
+// Call this early in setup() (before WiFi is used). It moves the slow, UI-freezing
+// controller/stack init to boot, avoids WiFi/BT coexistence failures (BLE inits
+// first), and makes the Bluetooth toggle + detectors instant — they just add/remove
+// scan consumers on an already-running controller instead of re-initialising it.
+void ble_scan_boot_keepalive();
+
 // True if at least one consumer is registered.
 bool ble_scan_active();
 

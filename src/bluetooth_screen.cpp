@@ -37,7 +37,7 @@ static void noop_scan_cb(esp_ble_gap_cb_param_t *) { /* intentionally empty */ }
 // can hold the controller up while our claim is off.
 static bool s_radio_wanted = false;
 
-static bool radio_is_on()
+static inline __attribute__((unused)) bool radio_is_on()
 {
     return esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE;
 }
@@ -54,7 +54,7 @@ static const char *bt_status_name()
 
 static void update_status()
 {
-    lv_label_set_text(status_label, radio_is_on() ? "Radio: ON" : "Radio: OFF");
+    lv_label_set_text(status_label, s_radio_wanted ? "Radio: ON" : "Radio: OFF");
 }
 
 // Convert the ESP-IDF BLE TX power enum to dBm. Levels are 3 dBm apart;
@@ -101,24 +101,18 @@ static void on_bt_update(lv_timer_t *)
     // Toggle state re-syncs within 1 s of opening the screen.
     if (!bluetooth_screen_is_active()) return;
 
-    // Reconcile the toggle with whatever the controller is *actually* doing.
-    // Another module (wardriver, airtag) may bring the radio up or down
-    // outside our toggle's knowledge — match the switch to the real state
-    // so the UI never lies about what's running.
-    // Switch reflects INTENT or real state: on if we asked for it (s_radio_wanted)
-    // OR another module has the radio up. Keying only off radio_is_on() made the
-    // switch snap back off when the BLE controller idled between scan windows even
-    // though the user just turned it on.
-    bool on_now = radio_is_on();
-    bool want   = s_radio_wanted || on_now;
+    // The BLE controller is kept up for the app's life (boot keep-alive), so
+    // radio_is_on() is always true and no longer distinguishes this screen's
+    // intent. The switch therefore reflects s_radio_wanted (did the user turn BT
+    // on from here?). Keep it matched in case the state was set elsewhere.
     bool checked = lv_obj_has_state(toggle_sw, LV_STATE_CHECKED);
-    if (want != checked) {
-        if (want) lv_obj_add_state(toggle_sw,   LV_STATE_CHECKED);
-        else      lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
+    if (s_radio_wanted != checked) {
+        if (s_radio_wanted) lv_obj_add_state(toggle_sw,   LV_STATE_CHECKED);
+        else                lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
     }
     update_status();
 
-    if (!on_now) {
+    if (!s_radio_wanted) {
         lv_label_set_text(val_mode,        "OFF");
         lv_label_set_text(val_status,      "Idle");
         lv_label_set_text(val_mac,         "--");
@@ -173,31 +167,13 @@ static void on_bt_update(lv_timer_t *)
 
 static void on_toggle(lv_event_t *)
 {
-    // BLE controller bring-up is slow (~hundreds of ms) and blocks the LVGL loop;
-    // with WiFi up it's slower still. The touch can then deliver a SECOND, spurious
-    // VALUE_CHANGED that immediately flips the switch back off and tears the radio
-    // down (the "on-then-off" bug). Debounce: ignore a re-fire within 700ms and
-    // snap the switch back to the real intent so BT stays on.
-    static uint32_t last_ms = 0;
-    uint32_t now = millis();
+    // The BLE controller is already up (boot keep-alive), so this just adds/removes
+    // this screen's scan consumer against a live controller — instant, no blocking
+    // bring-up, no UI freeze, no spurious re-fire. A single tap sticks.
     bool checked = lv_obj_has_state(toggle_sw, LV_STATE_CHECKED);
-    if (now - last_ms < 700) {
-        if (s_radio_wanted) lv_obj_add_state(toggle_sw,   LV_STATE_CHECKED);
-        else                lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
-        return;
-    }
-    last_ms = now;
-
     if (checked && !s_radio_wanted) {
-        // First add brings the BT controller + Bluedroid stack up; the
-        // ref-counted manager handles the case where someone else already
-        // had it on.
-        if (ble_scan_add(noop_scan_cb))
-            s_radio_wanted = true;
-        else
-            // Controller refused to start — revert the switch so the UI
-            // doesn't lie about radio state.
-            lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
+        ble_scan_add(noop_scan_cb);   // controller live -> returns immediately
+        s_radio_wanted = true;
     } else if (!checked && s_radio_wanted) {
         ble_scan_remove(noop_scan_cb);
         s_radio_wanted = false;
@@ -260,7 +236,7 @@ void bluetooth_screen_create()
     // If the controller is already running (something else brought it
     // up before this screen was opened), reflect that on the toggle so
     // the very first frame doesn't show OFF over a live radio.
-    if (radio_is_on()) lv_obj_add_state(toggle_sw, LV_STATE_CHECKED);
+    if (s_radio_wanted) lv_obj_add_state(toggle_sw, LV_STATE_CHECKED);
 
     lv_timer_create(on_bt_update, 1000, NULL);
 }
