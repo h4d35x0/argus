@@ -10,6 +10,7 @@
 #include "tail_detect.h"
 #include "deauth_flood.h"
 #include "ble_spam.h"
+#include "beacon_flood.h"
 
 namespace detect {
 
@@ -19,6 +20,7 @@ Severity severity_of(RogueFlag f);
 Severity severity_of(TailFlag f);
 Severity severity_of(DeauthFlag f);
 Severity severity_of(SpamFlag f);
+Severity severity_of(BeaconFlag f);
 
 // Convenience: translate a detector verdict and report it to the aggregator
 // under that detector's fixed domain, in one call at the scan-loop call site.
@@ -27,5 +29,6 @@ void feed(ThreatState &ts, RogueFlag f, uint32_t t_sec);
 void feed(ThreatState &ts, TailFlag f, uint32_t t_sec);
 void feed(ThreatState &ts, DeauthFlag f, uint32_t t_sec);
 void feed(ThreatState &ts, SpamFlag f, uint32_t t_sec);
+void feed(ThreatState &ts, BeaconFlag f, uint32_t t_sec);
 
 } // namespace detect

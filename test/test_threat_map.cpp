@@ -41,6 +41,22 @@ WL_TEST(map_spam_severity) {
   WL_CHECK(severity_of(SpamFlag::Spam) == Severity::Medium);
 }
 
+WL_TEST(map_beacon_severity) {
+  WL_CHECK(severity_of(BeaconFlag::None) == Severity::None);
+  WL_CHECK(severity_of(BeaconFlag::Elevated) == Severity::Low);
+  // WiFi beacon flood, like BLE spam, tops out at Medium on its own.
+  WL_CHECK(severity_of(BeaconFlag::Flood) == Severity::Medium);
+}
+
+WL_TEST(map_feed_beacon_routes_to_its_domain) {
+  ThreatState ts;
+  feed(ts, BeaconFlag::Flood, 10);
+  WL_CHECK(ts.domain_severity(ThreatDomain::BeaconFlood) == Severity::Medium);
+  WL_CHECK(ts.level() == ThreatLevel::Alert);
+  WL_CHECK_EQ(ts.active_mask(),
+              (uint8_t)(1u << (uint8_t)ThreatDomain::BeaconFlood));
+}
+
 // ---- feed() reports under the correct domain and drives the aggregator ------
 WL_TEST(map_feed_confirmed_tail_is_critical) {
   ThreatState ts;

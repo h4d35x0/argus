@@ -36,6 +36,7 @@ enum class ThreatDomain : uint8_t {
   Tail,          // physical follow / device-tail (src/detect/tail_detect)
   DeauthFlood,   // deauth / disassoc flood (src/detect/deauth_flood)
   BleSpam,       // BLE advertisement spam / flood (src/detect/ble_spam)
+  BeaconFlood,   // WiFi beacon-flood / fake-AP spam (src/detect/beacon_flood)
   Airtag,        // future: unwanted-tracker (AirTag / Tile) tail
   Skimmer,       // future: card-skimmer BLE beacon
   _Count,        // sentinel: number of domains (keep last)

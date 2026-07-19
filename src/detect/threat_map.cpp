@@ -64,6 +64,19 @@ Severity severity_of(SpamFlag f)
     return Severity::None;
 }
 
+Severity severity_of(BeaconFlag f)
+{
+    switch (f) {
+    case BeaconFlag::None:     return Severity::None;
+    case BeaconFlag::Elevated: return Severity::Low;
+    // A WiFi beacon flood is disruptive (buries real APs, confuses scanners)
+    // but harasses rather than compromises the wearer, so - like BLE spam - it
+    // tops out at Medium (Alert) alone and reaches Critical only in correlation.
+    case BeaconFlag::Flood:    return Severity::Medium;
+    }
+    return Severity::None;
+}
+
 // --- feed() convenience -----------------------------------------------------
 // Each detector owns exactly one ThreatDomain; report the mapped severity there.
 
@@ -85,6 +98,11 @@ void feed(ThreatState &ts, DeauthFlag f, uint32_t t_sec)
 void feed(ThreatState &ts, SpamFlag f, uint32_t t_sec)
 {
     ts.report(ThreatDomain::BleSpam, severity_of(f), t_sec);
+}
+
+void feed(ThreatState &ts, BeaconFlag f, uint32_t t_sec)
+{
+    ts.report(ThreatDomain::BeaconFlood, severity_of(f), t_sec);
 }
 
 } // namespace detect
