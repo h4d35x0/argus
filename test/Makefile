@@ -16,7 +16,7 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -I. -I../src/mesh -I../src/ble -I../src/det
 BUILD    := build
 
 # Pure modules under test (add more as they're extracted). NO hardware includes.
-MODULES  := ../src/mesh/aes.cpp ../src/mesh/crypto.cpp ../src/ble/adv_parser.cpp ../src/image_dims.cpp ../src/detect/evil_twin.cpp ../src/detect/tail_detect.cpp
+MODULES  := ../src/mesh/aes.cpp ../src/mesh/crypto.cpp ../src/ble/adv_parser.cpp ../src/image_dims.cpp ../src/detect/evil_twin.cpp ../src/detect/tail_detect.cpp ../src/detect/deauth_flood.cpp
 # Every test_*.cpp self-registers via WL_TEST; test_main.cpp provides main().
 TESTS    := $(wildcard test_*.cpp)
 BIN      := $(BUILD)/argus_tests.exe
