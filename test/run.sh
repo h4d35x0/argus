@@ -17,6 +17,7 @@ mkdir -p "$HERE/build"
 
 MODULES=("$ROOT"/src/mesh/aes.cpp "$ROOT"/src/mesh/crypto.cpp \
          "$ROOT"/src/ble/adv_parser.cpp "$ROOT"/src/image_dims.cpp \
+         "$ROOT"/src/geo_cell.cpp \
          "$ROOT"/src/detect/evil_twin.cpp "$ROOT"/src/detect/tail_detect.cpp \
          "$ROOT"/src/detect/deauth_flood.cpp "$ROOT"/src/detect/ble_spam.cpp \
          "$ROOT"/src/detect/beacon_flood.cpp \

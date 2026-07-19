@@ -56,9 +56,12 @@ Do not batch-wire blind.
    (addr + raw adv + len), `ingest`, `tick(now)`, `feed()`.
    **beacon_flood** - in the same beacon path as evil_twin, build a
    `BeaconObservation` (bssid/ssid/channel), `ingest`, `tick(now)`, `feed()`.
-5. **tail_detect** - quantize the current GNSS fix to a coarse integer cell; for
-   each BLE/WiFi device seen, `ingest({device_id, now, cell, rssi})`, `decay(now)`
-   on a slow cadence, `feed()`.
+5. **tail_detect** - quantize the current GNSS fix with `geo::coarse_cell(lat,
+   lon)` (src/geo_cell.*, ~120 m default cell) to get the integer cell; for each
+   BLE/WiFi device seen, `ingest({device_id, now, cell, rssi})`, `decay(now)` on
+   a slow cadence, `feed()`. Tune the cell size to the deployment (tighter for a
+   mall/school, wider for a road trip) - it sets how far a follower must move to
+   count as a new cell.
 6. **threat_state -> UI** - once per UI tick call `threat.tick(now)` then read
    `threat.level()`; drive `argus_accent()` (Calm=steel-blue, Alert/Critical=HADES
    red) and a HexHound reaction; use `dominant()` + `active_mask()` for the
