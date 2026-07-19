@@ -173,7 +173,21 @@ static void on_bt_update(lv_timer_t *)
 
 static void on_toggle(lv_event_t *)
 {
+    // BLE controller bring-up is slow (~hundreds of ms) and blocks the LVGL loop;
+    // with WiFi up it's slower still. The touch can then deliver a SECOND, spurious
+    // VALUE_CHANGED that immediately flips the switch back off and tears the radio
+    // down (the "on-then-off" bug). Debounce: ignore a re-fire within 700ms and
+    // snap the switch back to the real intent so BT stays on.
+    static uint32_t last_ms = 0;
+    uint32_t now = millis();
     bool checked = lv_obj_has_state(toggle_sw, LV_STATE_CHECKED);
+    if (now - last_ms < 700) {
+        if (s_radio_wanted) lv_obj_add_state(toggle_sw,   LV_STATE_CHECKED);
+        else                lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
+        return;
+    }
+    last_ms = now;
+
     if (checked && !s_radio_wanted) {
         // First add brings the BT controller + Bluedroid stack up; the
         // ref-counted manager handles the case where someone else already
