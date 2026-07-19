@@ -86,7 +86,9 @@ static lv_obj_t *hand_min;
 static lv_obj_t *hand_sec;
 static bool      analog_face = false;
 static uint32_t last_update_ms   = 0;
-static int      clock_utc_offset = 0; // hours, set after GPS fix
+static int      clock_utc_offset = -4; // hours; default US Eastern (EDT).
+                                       // The RTC holds UTC; GPS fix refines this
+                                       // (incl. DST) from longitude when available.
 static bool     manual_time_override = false; // user-set time; blocks GPS sync
 static bool     clock_12h        = true;
 static bool     clock_show_day   = true;
@@ -1205,12 +1207,33 @@ void setup()
 
     instance.begin();
     instance.powerControl(POWER_NFC, false); // ensure NFC is off on boot
-    // NOTE: an early build-time RTC seed here (right after instance.begin(), before
-    // beginLvglHelper) appeared to hang boot before USB-CDC init on hardware
-    // (port stuck at 303A:1001, never reaching the app's :8227). Reverted; the
-    // time-fix must be placed AFTER full init (near the first update_clock/timezone
-    // setup) and verified on-device. See tasks/OVERNIGHT-REVIEW.md.
     beginLvglHelper(instance);
+
+    // Time fallback: with no GPS fix and no WiFi/NTP, the RTC can come up unset and
+    // the clock reads wildly wrong. If the RTC year is implausible, seed it from the
+    // firmware BUILD time (__DATE__/__TIME__) as local wall-clock so the face shows
+    // it directly (clock_utc_offset stays 0). Approximate (build time, not flash
+    // time); a later GPS fix / NTP sync overrides it precisely. Placed after
+    // beginLvglHelper so USB/console are up first.
+    {
+        struct tm rn;
+        instance.rtc.getDateTime(&rn);
+        if (rn.tm_year + 1900 < 2025) {
+            const char *D = __DATE__;   // "Mmm dd yyyy" (day may be space-padded)
+            const char *T = __TIME__;   // "hh:mm:ss"
+            const char *M = "JanFebMarAprMayJunJulAugSepOctNovDec";
+            int mon = 1;
+            for (int i = 0; i < 12; i++)
+                if (D[0]==M[i*3] && D[1]==M[i*3+1] && D[2]==M[i*3+2]) { mon = i+1; break; }
+            int day = (D[4]==' ' ? 0 : (D[4]-'0')*10) + (D[5]-'0');
+            int yr  = (D[7]-'0')*1000 + (D[8]-'0')*100 + (D[9]-'0')*10 + (D[10]-'0');
+            int hh  = (T[0]-'0')*10 + (T[1]-'0');
+            int mm  = (T[3]-'0')*10 + (T[4]-'0');
+            int ss  = (T[6]-'0')*10 + (T[7]-'0');
+            instance.rtc.setDateTime(yr, mon, day, hh, mm, ss);
+            instance.rtc.hwClockRead();
+        }
+    }
 
     // Boot splash — ARGUS lockup on the panel before the clock comes up.
     // Backlight on now so it's visible; the splash stays up through the rest of
