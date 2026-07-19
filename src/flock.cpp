@@ -1,6 +1,7 @@
 #include "flock.h"
 #include "wifi_beacon_manager.h"
 #include "threat_radar.h"
+#include "hexhound.h"       // feed HexHound on a confirmed detector hit
 
 void clock_screen_get_local_time(struct tm *out);
 #include "ble_scan_manager.h"
@@ -185,6 +186,7 @@ bool flock_check(const uint8_t *mac6, int8_t rssi, const char *name, char source
 
     xQueueSend(s_queue, &hit, 0);
     threatradar_observe(mac6, rssi, TR_CAT_FLOCK);
+    hexhound_note_detector(HEX_DET_FLOCK);   // feed the pet a big meal
     return true;
 }
 

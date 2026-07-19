@@ -1,5 +1,6 @@
 #include "flipper.h"
 #include "threat_radar.h"
+#include "hexhound.h"       // feed HexHound on a confirmed detector hit
 
 void clock_screen_get_local_time(struct tm *out);
 #include "ble_scan_manager.h"
@@ -129,6 +130,7 @@ bool flipper_check(const uint8_t *mac6, int8_t rssi, uint8_t addr_type,
 
     if (s_queue) xQueueSend(s_queue, &hit, 0);
     threatradar_observe(mac6, rssi, TR_CAT_FLIPPER);
+    hexhound_note_detector(HEX_DET_FLIPPER);   // feed the pet a big meal
     s_count++;
     return true;
 }
