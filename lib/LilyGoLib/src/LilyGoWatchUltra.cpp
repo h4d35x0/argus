@@ -93,6 +93,12 @@ LilyGoUltra::LilyGoUltra() : LilyGo_Display(QSPI_DRIVER, false),
     LilyGoDispQSPI(co5300_206_cmd, CO5300_206_INIT_SEQUENCE_LENGTH, DISP_WIDTH, DISP_HEIGHT),
     LilyGoPowerManage(&pmu),
     _effects(80), devices_probe(0), _boot_images_addr(NULL), _lock(NULL),
+    // ARGUS: DMA left OFF. Moving LVGL's buffers into INTERNAL DMA RAM did cure
+    // the WiFi-PSRAM-stall ghost, but the ~82 KB of internal RAM it took starved
+    // WiFi's own init (WiFi could no longer start - the toggle flipped itself
+    // back off). A working WiFi outweighs an intermittent cosmetic ghost, so the
+    // framebuffer stays in PSRAM (non-DMA). Properly fixing both would require
+    // shrinking WiFi's static buffer config to free internal RAM - deferred.
     _enableDMA(false),
     // TE sync stays OFF: it did not cure the WiFi-on glitch (the contention was
     // not simple tearing), and back in PARTIAL mode there is nothing to sync. The

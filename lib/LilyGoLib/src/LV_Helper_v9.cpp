@@ -184,18 +184,32 @@ void beginLvglHelper(LilyGo_Display &board, bool debug)
 
         log_d("Using DMA pushColors..");
 
-        lv_buffer_size = (board.width() * board.height() / 6) * sizeof(lv_color16_t);
+        // ARGUS: /10 (was /6) to keep the two INTERNAL DMA buffers small enough
+        // to fit alongside the WiFi + BLE stacks; the whole point is to keep the
+        // framebuffer out of PSRAM (WiFi stalls PSRAM -> flush ghost), so a
+        // smaller internal buffer + a few more partial strips is the right trade.
+        lv_buffer_size = (board.width() * board.height() / 10) * sizeof(lv_color16_t);
 
-        // lv_buffer_size = (board.width() * board.height() / 10) * sizeof(lv_color16_t);
+        buf  = (lv_color16_t *)heap_caps_malloc(lv_buffer_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+        buf1 = (lv_color16_t *)heap_caps_malloc(lv_buffer_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
 
-        buf = (lv_color16_t *)heap_caps_malloc(lv_buffer_size, MALLOC_CAP_DMA);
-        assert(buf);
-        buf1 = (lv_color16_t *)heap_caps_malloc(lv_buffer_size, MALLOC_CAP_DMA);
-        assert(buf1);
-
-        if (!esp_ptr_dma_capable(buf) || !esp_ptr_dma_capable(buf1)) {
-            log_e("Error: Buffers are not DMA-capable!");
+        if (!buf || !buf1) {
+            // ARGUS: not enough internal DMA RAM (WiFi/BLE up) -> fall back to
+            // PSRAM so we NEVER assert/crash at boot. The WiFi flush-ghost stays
+            // in that case, but the watch boots; better than a boot loop.
+            log_e("Internal DMA buffers did not fit; falling back to PSRAM");
+            if (buf)  { heap_caps_free(buf);  buf  = NULL; }
+            if (buf1) { heap_caps_free(buf1); buf1 = NULL; }
+            buf  = (lv_color16_t *)ps_malloc(lv_buffer_size);
+            buf1 = (lv_color16_t *)ps_malloc(lv_buffer_size);
         }
+        assert(buf);
+        assert(buf1);
+        // ARGUS: report where the buffers landed so the WiFi-ghost fix can be
+        // verified over serial. INTERNAL = fix engaged; PSRAM = fell back.
+        Serial.printf("[disp] LVGL DMA buffers: %s (%u B x2)\n",
+                      esp_ptr_internal(buf) ? "INTERNAL (WiFi-safe)" : "PSRAM (fallback)",
+                      (unsigned)lv_buffer_size);
 
     } else {
         log_d("Using Not DMA pushColors..");
