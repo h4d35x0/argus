@@ -37,7 +37,12 @@ int32_t coarse_cell(double lat_deg, double lon_deg, double cell_m)
     h ^= h >> 27;
     h *= 0x94D049BB133111EBULL;
     h ^= h >> 31;
-    return static_cast<int32_t>(static_cast<uint32_t>(h));
+    // Mask to 31 bits so the id is ALWAYS non-negative. Consumers (tail_detect)
+    // reserve negative cell_id as the "unknown location" sentinel (-1); a hash
+    // that landed in the sign bit would be silently dropped as unknown and
+    // contribute no location evidence. 31 bits still makes collisions across a
+    // tail's handful of cells negligible.
+    return static_cast<int32_t>(h & 0x7FFFFFFFu);
 }
 
 }  // namespace geo

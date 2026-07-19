@@ -7,9 +7,12 @@
 #include "wl_test.h"
 #include "evil_twin.h"
 #include "deauth_flood.h"
+#include "tail_detect.h"
+#include "tracker_ident.h"
 #include "threat_map.h"
 #include "threat_state.h"
 #include "threat_log.h"
+#include "geo_cell.h"
 
 #include <cstdint>
 #include <cstring>
@@ -142,4 +145,50 @@ WL_TEST(e2e_two_medium_threats_correlate_to_critical) {
   WL_CHECK(dv.flag == DeauthFlag::Elevated);
   WL_CHECK(ts.domain_severity(ThreatDomain::DeauthFlood) == Severity::Medium);
   WL_CHECK(ts.level() == ThreatLevel::Critical);  // correlation escalation
+}
+
+// Anti-stalking chain (the trickiest integration): tracker_ident gates which BLE
+// adverts are unwanted trackers, geo_cell turns GNSS fixes into cells, a DEDICATED
+// TailDetector (separate from the generic-tail one) measures the follow, and
+// feed_tracker() routes the result to the Airtag domain. An AirTag physically
+// following the wearer across places escalates to Critical under Airtag, distinct
+// from generic device tailing.
+WL_TEST(e2e_airtag_tracker_following_escalates_airtag_domain) {
+  ThreatState ts;
+  TailDetector tracker_follow;   // fed ONLY sightings tracker_ident flags
+
+  // A separated (lost-mode) AirTag advert - status 0xA0 has the maintained bit
+  // clear. Layout matches make_findmy_adv() in the tracker_ident tests.
+  const uint8_t adv[] = {
+    0x1E, 0xFF, 0x4C, 0x00, 0x12, 0x19, 0xA0,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A,
+    0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25,
+    0x3F, 0x00,
+  };
+  WL_CHECK(is_unwanted_tracker(adv, sizeof(adv)));   // gate: worth following
+
+  const uint32_t tracker_id = 0xA1B2C3D4u;  // stable within a MAC-rotation window
+  struct { double lat; double lon; uint32_t t; } path[] = {
+    {45.000, -93.0,    0},
+    {45.005, -93.0,  400},
+    {45.010, -93.0,  800},
+    {45.015, -93.0, 1200},
+  };
+  TailVerdict tv{};
+  for (const auto &p : path) {
+    DeviceSighting s{};
+    s.device_id = tracker_id;
+    s.t_sec = p.t;
+    s.cell_id = geo::coarse_cell(p.lat, p.lon);
+    s.rssi = -40;
+    tv = tracker_follow.ingest(s);
+    feed_tracker(ts, tv.flag, p.t);
+  }
+  // 4 distinct cells over 20 min = a tracker moving WITH the wearer -> Confirmed.
+  WL_CHECK(tv.flag == TailFlag::ConfirmedTail);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+  WL_CHECK(ts.level() == ThreatLevel::Critical);
+  WL_CHECK(ts.dominant() == ThreatDomain::Airtag);
+  // It routed to Airtag, NOT the generic Tail domain.
+  WL_CHECK(ts.domain_severity(ThreatDomain::Tail) == Severity::None);
 }

@@ -66,6 +66,18 @@ WL_TEST(geo_bad_cell_size_uses_default) {
   WL_CHECK_EQ(coarse_cell(kLat, kLon, -5.0), def);
 }
 
+// ---- Non-negative: tail_detect uses cell_id < 0 as "unknown location", so a
+// negative cell would be silently dropped. coarse_cell must NEVER return < 0.
+WL_TEST(geo_cell_is_never_negative) {
+  // Sweep a spread of coordinates (many of which hashed into the sign bit before
+  // the fix) and assert every id is non-negative.
+  for (int i = 0; i < 200; i++) {
+    double lat = -89.0 + (i * 179.0) / 200.0;   // -89 .. +90
+    double lon = -179.0 + (i * 359.0) / 200.0;  // -179 .. +180
+    WL_CHECK(coarse_cell(lat, lon) >= 0);
+  }
+}
+
 // ---- Pole safety: an extreme but valid latitude does not blow up. -----------
 // cos(lat)->0 near the poles; the clamp must keep the result finite/defined.
 WL_TEST(geo_pole_is_safe) {

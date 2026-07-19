@@ -20,6 +20,10 @@ namespace geo {
 // grid indices are hashed into int32, so it is for equality/distinct-count only
 // (tail_detect's exact need), not for recovering coordinates. Collisions across
 // the handful of cells one tail path traverses are negligible (~1e-8).
+//
+// ALWAYS returns a NON-NEGATIVE id (31-bit hash). tail_detect reserves a
+// negative cell_id as its "unknown location" sentinel (-1), so a negative cell
+// would be silently dropped; keeping this >= 0 makes the two compose correctly.
 int32_t coarse_cell(double lat_deg, double lon_deg, double cell_m = 120.0);
 
 }  // namespace geo
