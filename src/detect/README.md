@@ -77,9 +77,20 @@ Do not batch-wire blind.
    red) and a HexHound reaction; use `dominant()` + `active_mask()` for the
    headline / which-threat glyphs. `threat_state` already handles rise/decay
    hysteresis and correlated-threat escalation, so the UI just reflects `level()`.
+9. **threat_log (forensic history)** - each cycle, after tick(), loop EVERY domain
+   `for d in 0..ThreatDomain::_Count: log.update(d, threat.domain_severity(d), now)`
+   and, when update() returns true, append `ThreatLog::format(event)` to
+   /Settings/threat_log.txt (guard isCardReady()/usb_sd_is_running()).
+   GOTCHA (proved by test_subsystem_e2e): you MUST poll EVERY domain every cycle,
+   not just the one that changed - the log's first update() per domain sets its
+   None baseline silently, so a domain that goes hot before its first poll would
+   have that rise swallowed. Polling all domains from boot (all None) avoids it.
 
 ## Tests
 
 `bash test/run.sh` (host g++; `make`/cmake not installed on the MSI - see the
-project memory). Current: 102 tests / 944 checks, all green. Each module has its
-own `test/test_<module>.cpp`; add cases there, keep everything pure.
+project memory). Current: 140 tests / 1335 checks, all green. Each module has its
+own `test/test_<module>.cpp`, plus `test_subsystem_e2e.cpp` which drives real
+detector inputs through map -> aggregator -> log to prove they COMPOSE (an evil
+twin + a concurrent deauth flood escalating to Critical, then decaying to Calm).
+Add cases there; keep everything pure.
