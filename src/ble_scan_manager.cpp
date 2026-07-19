@@ -1,8 +1,9 @@
 #include "ble_scan_manager.h"
+#include <Arduino.h>          // Serial (BLE bring-up diagnostics)
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 
-#define BLE_SCAN_MAX_CONSUMERS 4
+#define BLE_SCAN_MAX_CONSUMERS 8   // headroom: 5 detectors + wardriver + BT-toggle no-op
 
 static ble_scan_cb_t s_consumers[BLE_SCAN_MAX_CONSUMERS] = {};
 static int           s_consumer_count = 0;
@@ -30,18 +31,25 @@ static void gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 // initialised by something outside our control.
 static bool bring_up_controller()
 {
-    bool ok = true;
+    esp_err_t e = ESP_OK;
     if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE) {
         esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-        ok = (esp_bt_controller_init(&bt_cfg) == ESP_OK);
+        e = esp_bt_controller_init(&bt_cfg);
+        if (e != ESP_OK) { Serial.printf("[BLE] controller_init FAIL: %s\n", esp_err_to_name(e)); return false; }
     }
-    if (ok && esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED)
-        ok = (esp_bt_controller_enable(ESP_BT_MODE_BLE) == ESP_OK);
-    if (ok && esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_UNINITIALIZED)
-        ok = (esp_bluedroid_init() == ESP_OK);
-    if (ok && esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED)
-        ok = (esp_bluedroid_enable() == ESP_OK);
-    if (!ok) return false;
+    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED) {
+        e = esp_bt_controller_enable(ESP_BT_MODE_BLE);
+        if (e != ESP_OK) { Serial.printf("[BLE] controller_enable FAIL: %s\n", esp_err_to_name(e)); return false; }
+    }
+    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_UNINITIALIZED) {
+        e = esp_bluedroid_init();
+        if (e != ESP_OK) { Serial.printf("[BLE] bluedroid_init FAIL: %s\n", esp_err_to_name(e)); return false; }
+    }
+    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
+        e = esp_bluedroid_enable();
+        if (e != ESP_OK) { Serial.printf("[BLE] bluedroid_enable FAIL: %s\n", esp_err_to_name(e)); return false; }
+    }
+    Serial.println("[BLE] controller up OK");
 
     esp_ble_gap_register_callback(gap_cb);
 
