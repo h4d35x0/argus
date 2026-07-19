@@ -105,4 +105,9 @@ void feed(ThreatState &ts, BeaconFlag f, uint32_t t_sec)
     ts.report(ThreatDomain::BeaconFlood, severity_of(f), t_sec);
 }
 
+void feed_tracker(ThreatState &ts, TailFlag f, uint32_t t_sec)
+{
+    ts.report(ThreatDomain::Airtag, severity_of(f), t_sec);
+}
+
 } // namespace detect

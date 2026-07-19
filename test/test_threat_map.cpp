@@ -57,6 +57,16 @@ WL_TEST(map_feed_beacon_routes_to_its_domain) {
               (uint8_t)(1u << (uint8_t)ThreatDomain::BeaconFlood));
 }
 
+// A confirmed FindMy-tracker follow reports under the Airtag domain (not Tail).
+WL_TEST(map_feed_tracker_routes_to_airtag_domain) {
+  ThreatState ts;
+  feed_tracker(ts, TailFlag::ConfirmedTail, 100);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Tail) == Severity::None);
+  WL_CHECK(ts.level() == ThreatLevel::Critical);
+  WL_CHECK(ts.dominant() == ThreatDomain::Airtag);
+}
+
 // ---- feed() reports under the correct domain and drives the aggregator ------
 WL_TEST(map_feed_confirmed_tail_is_critical) {
   ThreatState ts;

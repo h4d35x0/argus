@@ -31,6 +31,8 @@ g++ harness (`bash test/run.sh`).
 | `deauth_flood.*` | Deauth/disassoc flood | mgmt-frame events (type/bssid/time) | `DeauthFlag` |
 | `ble_spam.*` | BLE-spam flood (Flipper etc.) | BLE adv observations | `SpamFlag` |
 | `beacon_flood.*` | WiFi beacon-flood / fake-AP spam | AP beacons (bssid/ssid/channel) | `BeaconFlag` |
+| `tracker_ident.*` | AirTag / Find My tracker payload ident | one BLE adv | `TrackerId` + `is_unwanted_tracker()` |
+| `../geo_cell.*` | GPS lat/lon -> coarse cell id | a WGS84 fix | `int32` cell |
 | `threat_map.*` | Verdict -> unified Severity + `feed()` | any detector flag | reports to aggregator |
 | `threat_state.*` | Aggregator: unified posture | `(domain, severity, time)` | `ThreatLevel` + dominant/active_mask |
 
@@ -62,7 +64,15 @@ Do not batch-wire blind.
    a slow cadence, `feed()`. Tune the cell size to the deployment (tighter for a
    mall/school, wider for a road trip) - it sets how far a follower must move to
    count as a new cell.
-6. **threat_state -> UI** - once per UI tick call `threat.tick(now)` then read
+7. **tracker_ident (Airtag domain)** - for each BLE adv, if
+   `is_unwanted_tracker(adv, len)`, feed a sighting `{addr, now, geo::coarse_cell,
+   rssi}` into a SEPARATE `TailDetector` instance (distinct from step 5's), then
+   `detect::feed_tracker(threat, verdict.flag, now)` -> reports under the Airtag
+   domain. Reuses the follow engine but gated to Find My / AirTag payloads, so a
+   tracker physically following the wearer is flagged distinctly. Note: AirTag
+   MACs rotate ~15 min when separated, so attribution is best-effort (documented
+   in tracker_ident.h); the follow signal is the actionable part.
+8. **threat_state -> UI** - once per UI tick call `threat.tick(now)` then read
    `threat.level()`; drive `argus_accent()` (Calm=steel-blue, Alert/Critical=HADES
    red) and a HexHound reaction; use `dominant()` + `active_mask()` for the
    headline / which-threat glyphs. `threat_state` already handles rise/decay

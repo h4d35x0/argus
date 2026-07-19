@@ -31,4 +31,12 @@ void feed(ThreatState &ts, DeauthFlag f, uint32_t t_sec);
 void feed(ThreatState &ts, SpamFlag f, uint32_t t_sec);
 void feed(ThreatState &ts, BeaconFlag f, uint32_t t_sec);
 
+// AirTag / Find My unwanted-tracker follow path. The follow evidence reuses a
+// SEPARATE TailDetector instance fed ONLY sightings that tracker_ident flags as
+// unwanted trackers (is_unwanted_tracker) - see src/detect/README.md. That
+// TailFlag is reported under the Airtag domain (not Tail), so the aggregator
+// tracks a physical tracker following the wearer distinctly from generic device
+// tailing. Same TailFlag severities as feed(TailFlag), different domain.
+void feed_tracker(ThreatState &ts, TailFlag f, uint32_t t_sec);
+
 } // namespace detect
