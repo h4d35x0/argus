@@ -15,10 +15,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 mkdir -p "$HERE/build"
 
-MODULES=("$ROOT"/src/mesh/aes.cpp "$ROOT"/src/mesh/crypto.cpp)
+MODULES=("$ROOT"/src/mesh/aes.cpp "$ROOT"/src/mesh/crypto.cpp \
+         "$ROOT"/src/ble/adv_parser.cpp)
 BIN="$HERE/build/argus_tests.exe"
 
-g++ -std=c++17 -Wall -Wextra -I "$HERE" -I "$ROOT/src/mesh" \
+g++ -std=c++17 -Wall -Wextra -I "$HERE" -I "$ROOT/src/mesh" -I "$ROOT/src/ble" \
     "${MODULES[@]}" "$HERE"/test_*.cpp -o "$BIN"
 
 "$BIN"

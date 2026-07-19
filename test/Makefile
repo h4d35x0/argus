@@ -12,11 +12,11 @@ MINGW_BIN ?= /c/msys64/mingw64/bin
 export PATH := $(MINGW_BIN):$(PATH)
 
 CXX      ?= g++
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -I. -I../src/mesh
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -I. -I../src/mesh -I../src/ble
 BUILD    := build
 
 # Pure modules under test (add more as they're extracted). NO hardware includes.
-MODULES  := ../src/mesh/aes.cpp ../src/mesh/crypto.cpp
+MODULES  := ../src/mesh/aes.cpp ../src/mesh/crypto.cpp ../src/ble/adv_parser.cpp
 # Every test_*.cpp self-registers via WL_TEST; test_main.cpp provides main().
 TESTS    := $(wildcard test_*.cpp)
 BIN      := $(BUILD)/argus_tests.exe
