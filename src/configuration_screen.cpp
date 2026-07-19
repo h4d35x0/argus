@@ -360,7 +360,7 @@ void configuration_screen_create()
     lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "CONFIGURATION");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
 
     long_ta  = make_field("Long Name",  60,  MESH_MAX_LONG_NAME  - 1);
     short_ta = make_field("Short Name", 150, MESH_MAX_SHORT_NAME - 1);
