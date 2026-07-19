@@ -17,7 +17,10 @@
 // image -> the object stays hidden and the screen stays black/matrix. It
 // never crashes and never blocks.
 
-// Create the (hidden) wallpaper image as the first child of `parent`.
+// Create the (hidden) wallpaper image as the first child of `parent`. Also
+// ensures the /backgrounds directory exists on the SD card (with a short
+// README explaining how to add a wallpaper) so the drop-in folder is
+// discoverable instead of something the user has to know to create.
 lv_obj_t *background_create(lv_obj_t *parent);
 
 // Enable/disable the wallpaper. On first enable it scans the SD card for an

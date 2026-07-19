@@ -159,8 +159,39 @@ static bool load_source()
     return true;
 }
 
+// Make the /backgrounds drop-in folder discoverable: create it on the SD card
+// if it is missing, and leave a short README so a student/kid knows exactly
+// what to put there. The firmware only ever READS wallpapers, so without this
+// the folder never appears and the feature looks broken ("there is no
+// backgrounds folder"). Runs once at UI setup after the card is mounted; a
+// missing card or an existing folder is a graceful no-op, never a crash.
+static void ensure_backgrounds_dir()
+{
+    if (!instance.isCardReady()) return;
+    if (SD.exists(kBgDir)) return;
+    if (!SD.mkdir(kBgDir)) return;   // read-only / full card -> silently skip
+
+    File readme = SD.open("/backgrounds/README.txt", FILE_WRITE);
+    if (readme) {
+        readme.print(
+            "ARGUS - wallpaper drop folder\r\n"
+            "\r\n"
+            "Put an image here to use it as your watch background:\r\n"
+            "  - Name it wallpaper.png (or .bmp / .jpg), or drop any image file.\r\n"
+            "  - Keep it small: at or below the 410x502 screen is ideal.\r\n"
+            "    Very large photos are skipped automatically so they cannot\r\n"
+            "    crash the watch (budget is about 1.2 million pixels).\r\n"
+            "  - It shows faintly behind the clock and the Matrix rain.\r\n"
+            "\r\n"
+            "Then turn Wallpaper ON in Settings.\r\n");
+        readme.close();
+    }
+}
+
 lv_obj_t *background_create(lv_obj_t *parent)
 {
+    ensure_backgrounds_dir();
+
     bg_img = lv_image_create(parent);
     lv_obj_remove_style_all(bg_img);
     lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
