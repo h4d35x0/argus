@@ -1734,15 +1734,9 @@ void setup()
     timezone_init();
 }
 
-// DIAG (temporary): log any wrapped call that blocks > 200 ms, to pinpoint the
-// SD stall that makes the clock tick by 3-4s when a card is inserted. Read over
-// serial; remove once the offending call is identified.
-#define DIAG_TIME(call) do { uint32_t _t = millis(); call; uint32_t _d = millis() - _t; \
-    if (_d > 200) Serial.printf("[slow] " #call " %lums\n", (unsigned long)_d); } while (0)
-
 void loop()
 {
-    DIAG_TIME(instance.loop()); // required for power button and PMU event dispatch
+    instance.loop(); // required for power button and PMU event dispatch
 
     // NOTE: auto-bringing the BLE controller up here (ble_scan_boot_keepalive at
     // ~4 s) boot-looped/froze the watch - the BLE bring-up is unstable regardless
@@ -1751,7 +1745,7 @@ void loop()
     // proper fix needs an async/off-thread bring-up, tracked separately.
 
     motion_wake_poll();   // accel-driven wake; no-op when toggle is off
-    DIAG_TIME(timezone_bg_tick());   // apply background WiFi NTP/geolocation results
+    timezone_bg_tick();   // apply background WiFi NTP/geolocation results
     // Cheap on every iteration (an indev_state read + a millis() compare);
     // only crosses into the heavy capture+SD-write path on the 3 s edge.
     screenshot_poll();
@@ -1917,23 +1911,23 @@ void loop()
     // Missing one 1Hz tick during a screen transition is invisible.
     if (millis() - last_update_ms >= 1000 && !lvgl_priority) {
         last_update_ms = millis();
-        DIAG_TIME(update_clock());
-        DIAG_TIME(alarm_tick());              // fires the alarm at the set time
-        DIAG_TIME(layout_battery_indicators()); // pack alarm/stopwatch/timer icons R->L
-        DIAG_TIME(update_battery());
-        DIAG_TIME(update_lora_indicator());
-        DIAG_TIME(update_bt_indicator());
-        DIAG_TIME(update_wifi_indicator());
-        DIAG_TIME(update_sd_indicator());
-        DIAG_TIME(update_nfc_indicator());
-        DIAG_TIME(update_scan_indicators());
+        update_clock();
+        alarm_tick();              // fires the alarm at the set time
+        layout_battery_indicators(); // pack alarm/stopwatch/timer icons R→L
+        update_battery();
+        update_lora_indicator();
+        update_bt_indicator();
+        update_wifi_indicator();
+        update_sd_indicator();
+        update_nfc_indicator();
+        update_scan_indicators();
         if (!usb_sd_is_running())   // host owns the SD card while mounted
-            DIAG_TIME(wardriver_bg_tick());
-        DIAG_TIME(update_wardriver_indicator());
+            wardriver_bg_tick();
+        update_wardriver_indicator();
         if (wardriver_screen_is_active())
-            DIAG_TIME(wardriver_screen_update());
+            wardriver_screen_update();
         if (configuration_screen_is_active())
-            DIAG_TIME(configuration_screen_update());
+            configuration_screen_update();
     }
     // Multiple LVGL passes per loop iteration. Each lv_task_handler call
     // renders at most one partial-refresh tile, and the watch panel needs
@@ -1941,9 +1935,9 @@ void loop()
     // into SD writes between iterations, having only one pass per loop
     // means a single screen transition takes 6+ loop iterations to fully
     // redraw - long enough that the user sees the old screen "freeze".
-    DIAG_TIME(lv_task_handler());
+    lv_task_handler();
     delay(2);
-    DIAG_TIME(lv_task_handler());
+    lv_task_handler();
     delay(2);
-    DIAG_TIME(lv_task_handler());
+    lv_task_handler();
 }
