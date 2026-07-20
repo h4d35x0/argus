@@ -63,6 +63,15 @@
 #include "matrix_bg.h"
 #include "background.h"
 #include "nfc_icon.h"
+#include "detect_pipeline.h"
+// WiFi threat-detection pipeline (evil-twin + beacon-flood -> HADES-red + log).
+// OFF by default: activating it registers a wifi_beacon consumer whose first
+// attach POWERS the WiFi radio into promiscuous mode ~1s after boot and holds it
+// for the session (wifi_beacon_manager start_wifi()). That is an unverified
+// power/behavior change (and bypasses the WiFi toggle), so it must be verified
+// on-device and its attach/detach policy decided (passive piggyback vs opt-in
+// setting) before shipping. Set to 1 only after that. See tasks/todo.md.
+#define ARGUS_WIFI_THREAT_PIPELINE 0
 
 static lv_obj_t *clock_screen;
 static lv_obj_t *time_label;
@@ -1979,6 +1988,13 @@ void loop()
         if (configuration_screen_is_active())
             configuration_screen_update();
         low_mem_check();   // warn (once/min) if internal RAM is running low
+        // Fold the live WiFi beacon stream through the pure evil-twin +
+        // beacon-flood detectors -> ThreatState -> forensic log + HADES accent /
+        // HexHound. millis()/1000 is a monotonic seconds base (never rewinds),
+        // which the detectors' sliding windows + decay require.
+#if ARGUS_WIFI_THREAT_PIPELINE
+        detect_pipeline_tick(millis() / 1000);
+#endif
     }
     // Multiple LVGL passes per loop iteration. Each lv_task_handler call
     // renders at most one partial-refresh tile, and the watch panel needs

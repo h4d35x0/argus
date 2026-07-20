@@ -29,5 +29,14 @@
 // low-traffic screens keep using the ARGUS_ACCENT macro. Defined in theme.cpp.
 lv_color_t argus_accent(void);
 
+// Pipeline-driven threat override for the brand accent. The detect_pipeline
+// (WiFi evil-twin + beacon-flood aggregator, src/detect_pipeline.*) calls this
+// to flip argus_accent() to HADES_RED when its ThreatState posture reaches
+// Alert or above, independently of the GPS-co-movement Threat Radar. Passing
+// false clears the override, so the accent falls back to the Threat Radar state.
+// Default (never called) is false, so existing behavior is unchanged until the
+// pipeline drives it. Defined in theme.cpp.
+void argus_set_threat(bool active);
+
 // Full-alphabet Bank Gothic brand font for screen titles (src/font_argus_ui.c).
 LV_FONT_DECLARE(font_argus_ui);

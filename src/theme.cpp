@@ -12,7 +12,19 @@
 // watch visibly "opens its red eyes"; otherwise it stays steel-blue. The flip is
 // glanceable and returns to calm on its own once the tail clears the staleness
 // window (threatradar_top_level() reads only live contacts).
+// Pipeline-driven threat override. The WiFi detect_pipeline sets this true when
+// its ThreatState posture is Alert+; it flips the accent to HADES_RED the same
+// way a Threat Radar tail does, on top of (independent of) the radar path. Both
+// sources OR together, so either one flips the brand to the alert state.
+static bool s_pipeline_threat = false;
+
+void argus_set_threat(bool active)
+{
+    s_pipeline_threat = active;
+}
+
 lv_color_t argus_accent(void)
 {
+    if (s_pipeline_threat) return HADES_RED;
     return threatradar_top_level() >= TR_LVL_LIKELY ? HADES_RED : ARGUS_ACCENT;
 }
