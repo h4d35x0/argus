@@ -1734,6 +1734,56 @@ void setup()
     timezone_init();
 }
 
+// ── Low-memory warning ────────────────────────────────────────────────────
+// Internal RAM (not PSRAM) is the scarce resource: WiFi + BLE + the display and
+// detection state all draw from it, and when it runs low a radio can fail to
+// start or the display can glitch. Rather than fail silently, pop a dismissable
+// HADES-red toast so the user knows to shed load (turn off wallpaper / matrix /
+// a radio). Created LAZILY on the LVGL top layer only when memory is low - never
+// at setup - so it cannot affect boot. Rate-limited so it never spams.
+#define LOW_MEM_WARN_BYTES   28672u   // ~28 KB internal free
+#define LOW_MEM_WARN_GAP_MS  60000u   // at most once a minute
+
+static void low_mem_toast_dismiss(lv_timer_t *t)
+{
+    lv_obj_t *toast = (lv_obj_t *)lv_timer_get_user_data(t);
+    if (toast) lv_obj_del(toast);
+    lv_timer_del(t);
+}
+
+static void low_mem_check()
+{
+    static uint32_t s_last_warn_ms = 0;
+    size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    if (free_internal >= LOW_MEM_WARN_BYTES) return;
+
+    uint32_t now = millis();
+    if (s_last_warn_ms != 0 && (now - s_last_warn_ms) < LOW_MEM_WARN_GAP_MS) return;
+    s_last_warn_ms = now;
+
+    lv_obj_t *toast = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(toast, 340, 150);
+    lv_obj_center(toast);
+    lv_obj_set_style_bg_color(toast, lv_color_make(0x18, 0x0A, 0x0A), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(toast, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(toast, HADES_RED, LV_PART_MAIN);
+    lv_obj_set_style_border_width(toast, 3, LV_PART_MAIN);
+    lv_obj_set_style_radius(toast, 12, LV_PART_MAIN);
+    lv_obj_clear_flag(toast, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *lbl = lv_label_create(toast);
+    lv_label_set_text(lbl,
+        "#LOW MEMORY#\n\nDisplay may glitch.\nTurn off Wallpaper,\nMatrix, or a radio.");
+    lv_label_set_recolor(lbl, true);
+    lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_center(lbl);
+
+    // Auto-dismiss after 5 s (fires once, then deletes itself + the toast).
+    lv_timer_t *t = lv_timer_create(low_mem_toast_dismiss, 5000, toast);
+    lv_timer_set_repeat_count(t, 1);
+}
+
 void loop()
 {
     instance.loop(); // required for power button and PMU event dispatch
@@ -1928,6 +1978,7 @@ void loop()
             wardriver_screen_update();
         if (configuration_screen_is_active())
             configuration_screen_update();
+        low_mem_check();   // warn (once/min) if internal RAM is running low
     }
     // Multiple LVGL passes per loop iteration. Each lv_task_handler call
     // renders at most one partial-refresh tile, and the watch panel needs
