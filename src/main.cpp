@@ -69,6 +69,7 @@ static lv_obj_t *time_label;
 static lv_span_t *s_span_hours;
 static lv_span_t *s_span_colon;
 static lv_span_t *s_span_rest;
+static lv_span_t *s_span_ampm;   // AM/PM in a smaller font than the digits
 static lv_obj_t *date_label;
 static lv_obj_t *gps_indicator;
 static lv_obj_t *wardriver_container;
@@ -1141,20 +1142,19 @@ static void update_clock()
         update_analog_clock(&t);
     } else {
         char hours_buf[4];
-        char rest_buf[16];
+        char rest_buf[12];
+        char ampm_buf[6];
+        ampm_buf[0] = '\0';   // AM/PM span stays empty unless 12h + show_ampm
         if (clock_12h) {
             int h = t.tm_hour % 12;
             if (h == 0) h = 12;
-            const char *ap = t.tm_hour < 12 ? "AM" : "PM";
             snprintf(hours_buf, sizeof(hours_buf), "%d", h);
-            if (clock_show_secs && clock_show_ampm)
-                snprintf(rest_buf, sizeof(rest_buf), "%02d:%02d %s", t.tm_min, t.tm_sec, ap);
-            else if (clock_show_secs)
+            if (clock_show_secs)
                 snprintf(rest_buf, sizeof(rest_buf), "%02d:%02d", t.tm_min, t.tm_sec);
-            else if (clock_show_ampm)
-                snprintf(rest_buf, sizeof(rest_buf), "%02d %s", t.tm_min, ap);
             else
                 snprintf(rest_buf, sizeof(rest_buf), "%02d", t.tm_min);
+            if (clock_show_ampm)
+                snprintf(ampm_buf, sizeof(ampm_buf), " %s", t.tm_hour < 12 ? "AM" : "PM");
         } else {
             snprintf(hours_buf, sizeof(hours_buf), "%02d", t.tm_hour);
             if (clock_show_secs)
@@ -1164,6 +1164,7 @@ static void update_clock()
         }
         lv_span_set_text(s_span_hours, hours_buf);
         lv_span_set_text(s_span_rest,  rest_buf);
+        lv_span_set_text(s_span_ampm,  ampm_buf);   // smaller font; "" when unused
         // Blink by toggling the colon span's color — the character stays in
         // the string so the total width never changes and the digits stay put.
         static bool s_colon_on = true;
@@ -1387,6 +1388,14 @@ void setup()
 
     s_span_rest = lv_spangroup_new_span(time_label);
     lv_span_set_text(s_span_rest, "00");
+
+    // AM/PM in its own span at a smaller fixed font, so it reads as a suffix
+    // rather than a full-height part of the time. Stays empty (invisible) unless
+    // the format is 12h with AM/PM shown. Baseline-aligned with the digits.
+    s_span_ampm = lv_spangroup_new_span(time_label);
+    lv_span_set_text(s_span_ampm, "");
+    lv_style_set_text_font(&s_span_ampm->style, &lv_font_montserrat_36);
+    lv_style_set_text_color(&s_span_ampm->style, lv_color_white());
 
     date_label = lv_label_create(clock_screen);
     lv_obj_set_style_text_color(date_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
