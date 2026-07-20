@@ -1184,18 +1184,15 @@ static void update_clock()
         date_buf[0] = '\0';
     lv_label_set_text(date_label, date_buf);
 
-    // Invalidate the WHOLE clock screen each tick, not just time_label. The
-    // digital clock carries a transform_scale (up to 1.5x, see resize_clock_text),
-    // and under LVGL partial-refresh a scaled label draws past the small area a
-    // label-only invalidate clears, so the previous second's enlarged glyphs
-    // ghost (two overlapping times) and any stale pixels from a prior screen
-    // (e.g. Settings text on return) are never repainted. The matrix rain used
-    // to mask this by repainting the background 8x/sec; with it off the ghost is
-    // exposed. A full-screen invalidate once per second guarantees a clean clear
-    // and costs one extra frame redraw per second - trivial on this panel. This
-    // mirrors the deliberate full lv_refr_now that clock_screen_show() already
-    // does on screen load for the same partial-refresh reason.
-    if (clock_screen) lv_obj_invalidate(clock_screen);
+    // Invalidate ONLY the clock's own area, not the whole screen. The earlier
+    // full-screen-per-tick invalidate was a workaround for the transform_scale
+    // (a scaled label drew past a label-only clear); that transform is gone now
+    // (adaptive font selection), so the fixed-width time_label's own bounds cover
+    // the whole time line and clear it cleanly. Just as important: a full-screen
+    // flush every second maximised the window for WiFi to stall the PSRAM
+    // framebuffer mid-flush -> the intermittent ghost. A tiny clock-area flush
+    // (what base 13-37 does) barely exposes PSRAM, so the WiFi ghost goes away.
+    lv_obj_invalidate(time_label);
 }
 
 // Firmware name + version surfaced in the boot banner so support tickets carry
