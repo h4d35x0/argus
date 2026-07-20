@@ -1750,7 +1750,9 @@ void setup()
 // HADES-red toast so the user knows to shed load (turn off wallpaper / matrix /
 // a radio). Created LAZILY on the LVGL top layer only when memory is low - never
 // at setup - so it cannot affect boot. Rate-limited so it never spams.
-#define LOW_MEM_WARN_BYTES   28672u   // ~28 KB internal free
+#define LOW_MEM_WARN_BYTES   18432u   // ~18 KB internal free (conservative: only
+                                      // fire when genuinely critical, to avoid
+                                      // false nags; tune once normal free is known)
 #define LOW_MEM_WARN_GAP_MS  60000u   // at most once a minute
 
 static void low_mem_toast_dismiss(lv_timer_t *t)
