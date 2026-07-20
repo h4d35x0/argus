@@ -57,6 +57,8 @@
 #include "threat_radar.h"
 #include "hexhound.h"
 #include "ble_scan_manager.h"
+#include <esp_wifi.h>   // DIAG: esp_wifi_get_mode for the RAM telemetry line
+#include <esp_bt.h>     // DIAG: esp_bt_controller_get_status for the RAM telemetry line
 #include "threat_radar_screen.h"
 #include "tracker_rep.h"
 #include "counter_tail.h"
@@ -78,6 +80,7 @@ static lv_obj_t *time_label;
 static lv_span_t *s_span_hours;
 static lv_span_t *s_span_colon;
 static lv_span_t *s_span_rest;
+static lv_span_t *s_span_ampm;   // AM/PM suffix in a smaller font than the digits
 static lv_obj_t *date_label;
 static lv_obj_t *gps_indicator;
 static lv_obj_t *wardriver_container;
@@ -1132,6 +1135,9 @@ static void resize_clock_text()
     lv_obj_set_style_text_font(time_label, chosen, LV_PART_MAIN);
     // No transform: guarantee any leftover scale from a prior build is cleared.
     lv_obj_set_style_transform_scale(time_label, LV_SCALE_NONE, LV_PART_MAIN);
+    // Group font just changed; recompute FIXED-mode line geometry so the digit
+    // spans and the smaller AM/PM span stay consistently laid out.
+    lv_spangroup_refr_mode(time_label);
 }
 
 static void update_clock()
@@ -1150,20 +1156,19 @@ static void update_clock()
         update_analog_clock(&t);
     } else {
         char hours_buf[4];
-        char rest_buf[16];
+        char rest_buf[12];
+        char ampm_buf[6];
+        ampm_buf[0] = '\0';   // AM/PM span stays empty (invisible) unless 12h + show_ampm
         if (clock_12h) {
             int h = t.tm_hour % 12;
             if (h == 0) h = 12;
-            const char *ap = t.tm_hour < 12 ? "AM" : "PM";
             snprintf(hours_buf, sizeof(hours_buf), "%d", h);
-            if (clock_show_secs && clock_show_ampm)
-                snprintf(rest_buf, sizeof(rest_buf), "%02d:%02d %s", t.tm_min, t.tm_sec, ap);
-            else if (clock_show_secs)
+            if (clock_show_secs)
                 snprintf(rest_buf, sizeof(rest_buf), "%02d:%02d", t.tm_min, t.tm_sec);
-            else if (clock_show_ampm)
-                snprintf(rest_buf, sizeof(rest_buf), "%02d %s", t.tm_min, ap);
             else
                 snprintf(rest_buf, sizeof(rest_buf), "%02d", t.tm_min);
+            if (clock_show_ampm)
+                snprintf(ampm_buf, sizeof(ampm_buf), " %s", t.tm_hour < 12 ? "AM" : "PM");
         } else {
             snprintf(hours_buf, sizeof(hours_buf), "%02d", t.tm_hour);
             if (clock_show_secs)
@@ -1173,6 +1178,7 @@ static void update_clock()
         }
         lv_span_set_text(s_span_hours, hours_buf);
         lv_span_set_text(s_span_rest,  rest_buf);
+        lv_span_set_text(s_span_ampm,  ampm_buf);   // smaller font; "" when unused
         // Blink by toggling the colon span's color — the character stays in
         // the string so the total width never changes and the digits stay put.
         static bool s_colon_on = true;
@@ -1396,6 +1402,22 @@ void setup()
 
     s_span_rest = lv_spangroup_new_span(time_label);
     lv_span_set_text(s_span_rest, "00");
+
+    // AM/PM in its own span at a smaller fixed font, so it reads as a suffix
+    // rather than a full-height part of the time. Stays empty (invisible) unless
+    // the format is 12h with AM/PM shown. Montserrat 32 is roughly half the
+    // adaptive digit font (56-96 px), so it's a clear, readable suffix.
+    s_span_ampm = lv_spangroup_new_span(time_label);
+    lv_span_set_text(s_span_ampm, "");
+    lv_style_set_text_font(&s_span_ampm->style, &lv_font_montserrat_32);
+    lv_style_set_text_color(&s_span_ampm->style, lv_color_white());
+    // The digit spans get their font from the group (swapped adaptively by
+    // resize_clock_text). This span carries its OWN smaller font, so the group's
+    // cached FIXED-mode line geometry must be recomputed to account for the
+    // mixed font metrics - without this refresh the group renders stale/invalid
+    // geometry (the earlier crash). Recompute once here; the adaptive resize
+    // re-triggers its own refresh whenever it swaps the group font.
+    lv_spangroup_refr_mode(time_label);
 
     date_label = lv_label_create(clock_screen);
     lv_obj_set_style_text_color(date_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
@@ -1755,44 +1777,100 @@ void setup()
                                       // false nags; tune once normal free is known)
 #define LOW_MEM_WARN_GAP_MS  60000u   // at most once a minute
 
-static void low_mem_toast_dismiss(lv_timer_t *t)
+// The warning is a MODAL dialog the user must acknowledge (OK button), not a
+// timed toast: the earlier auto-dismiss toast flashed for a fraction of a second
+// during a radio-toggle failure and could not be read. One dialog at a time -
+// s_low_mem_dialog is the live instance (nullptr when none is open).
+static lv_obj_t *s_low_mem_dialog = nullptr;
+
+void low_mem_show_dialog(const char *msg);   // defined below; called by the 1 Hz check
+
+static void low_mem_dialog_ok(lv_event_t *e)
 {
-    lv_obj_t *toast = (lv_obj_t *)lv_timer_get_user_data(t);
-    if (toast) lv_obj_del(toast);
-    lv_timer_del(t);
+    (void)e;
+    if (s_low_mem_dialog) {
+        lv_obj_del(s_low_mem_dialog);   // deletes the modal + its children
+        s_low_mem_dialog = nullptr;
+    }
 }
 
 static void low_mem_check()
 {
     static uint32_t s_last_warn_ms = 0;
     size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+
+    // DIAG (temporary): print internal-RAM headroom + radio state once/sec so we
+    // can see exactly what each radio costs and where WiFi hits the wall.
+    // wifi = esp_wifi mode (0=OFF,1=STA,...); ble = controller status
+    // (0=IDLE/down, 1=INITED, 2=ENABLED/up). Remove after tuning.
+    wifi_mode_t wm = WIFI_MODE_NULL;
+    esp_wifi_get_mode(&wm);   // returns ESP_ERR_WIFI_NOT_INIT (wm stays NULL) if off
+    Serial.printf("[ram] int free=%u largest=%u wifi=%d ble=%d\n",
+                  (unsigned)free_internal,
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                  (int)wm, (int)esp_bt_controller_get_status());
     if (free_internal >= LOW_MEM_WARN_BYTES) return;
+
+    // Never stack a second dialog on top of an unacknowledged one.
+    if (s_low_mem_dialog) return;
 
     uint32_t now = millis();
     if (s_last_warn_ms != 0 && (now - s_last_warn_ms) < LOW_MEM_WARN_GAP_MS) return;
     s_last_warn_ms = now;
 
-    lv_obj_t *toast = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(toast, 340, 150);
-    lv_obj_center(toast);
-    lv_obj_set_style_bg_color(toast, lv_color_make(0x18, 0x0A, 0x0A), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(toast, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(toast, HADES_RED, LV_PART_MAIN);
-    lv_obj_set_style_border_width(toast, 3, LV_PART_MAIN);
-    lv_obj_set_style_radius(toast, 12, LV_PART_MAIN);
-    lv_obj_clear_flag(toast, LV_OBJ_FLAG_SCROLLABLE);
+    low_mem_show_dialog(
+        "#ff5555 LOW MEMORY#\n\n"
+        "Not enough free memory to\n"
+        "start another radio.\n\n"
+        "Turn off Bluetooth, Wallpaper,\n"
+        "or Matrix, then try again.");
+}
 
-    lv_obj_t *lbl = lv_label_create(toast);
-    lv_label_set_text(lbl,
-        "#LOW MEMORY#\n\nDisplay may glitch.\nTurn off Wallpaper,\nMatrix, or a radio.");
+// Build the modal low-memory dialog: a full-screen dim scrim on the top layer so
+// nothing behind it is interactive, a HADES-red-bordered card, the message, and
+// an OK button that tears the whole modal down. Stays up until the user taps OK.
+// Placed on lv_layer_top so it floats above every screen. Safe to call from the
+// WiFi/BLE toggle-failure path as well as the 1 Hz background check.
+void low_mem_show_dialog(const char *msg)
+{
+    if (s_low_mem_dialog) return;   // one at a time
+
+    // Modal scrim: covers the whole display, eats touches, dims the background.
+    lv_obj_t *scrim = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(scrim);
+    lv_obj_set_size(scrim, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(scrim, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(scrim, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_clear_flag(scrim, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(scrim, LV_OBJ_FLAG_CLICKABLE);   // swallow taps behind the card
+    s_low_mem_dialog = scrim;
+
+    lv_obj_t *card = lv_obj_create(scrim);
+    lv_obj_set_size(card, 350, 220);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_make(0x18, 0x0A, 0x0A), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(card, HADES_RED, LV_PART_MAIN);
+    lv_obj_set_style_border_width(card, 3, LV_PART_MAIN);
+    lv_obj_set_style_radius(card, 12, LV_PART_MAIN);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *lbl = lv_label_create(card);
+    lv_label_set_text(lbl, msg);
     lv_label_set_recolor(lbl, true);
     lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_center(lbl);
 
-    // Auto-dismiss after 5 s (fires once, then deletes itself + the toast).
-    lv_timer_t *t = lv_timer_create(low_mem_toast_dismiss, 5000, toast);
-    lv_timer_set_repeat_count(t, 1);
+    lv_obj_t *btn = lv_button_create(card);
+    lv_obj_set_style_bg_color(btn, HADES_RED, LV_PART_MAIN);
+    lv_obj_set_style_margin_top(btn, 12, LV_PART_MAIN);
+    lv_obj_add_event_cb(btn, low_mem_dialog_ok, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *btn_lbl = lv_label_create(btn);
+    lv_label_set_text(btn_lbl, "OK");
+    lv_obj_set_style_text_color(btn_lbl, lv_color_white(), LV_PART_MAIN);
+    lv_obj_center(btn_lbl);
 }
 
 void loop()

@@ -7,6 +7,10 @@
 #include <esp_bt_main.h>
 #include <esp_gap_ble_api.h>
 
+// Modal low-memory dialog, defined in main.cpp. Shown when a radio fails to
+// start for lack of free internal SRAM.
+void low_mem_show_dialog(const char *msg);
+
 // Status / power-control screen for the on-board Bluetooth (BLE) radio.
 // Layout mirrors the GPS / LoRa / WiFi radio screens: title + toggle +
 // status line + 7-row data table. The toggle hooks into the existing
@@ -172,7 +176,21 @@ static void on_toggle(lv_event_t *)
     // bring-up, no UI freeze, no spurious re-fire. A single tap sticks.
     bool checked = lv_obj_has_state(toggle_sw, LV_STATE_CHECKED);
     if (checked && !s_radio_wanted) {
-        ble_scan_add(noop_scan_cb);   // controller live -> returns immediately
+        // First consumer brings the BLE controller up. It needs internal SRAM,
+        // and with WiFi already up there may not be enough - ble_scan_add()
+        // returns false. Revert the switch and tell the user rather than
+        // leaving a dead toggle stuck "on".
+        if (!ble_scan_add(noop_scan_cb)) {
+            lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
+            low_mem_show_dialog(
+                "#ff5555 BLUETOOTH COULD NOT START#\n\n"
+                "Not enough free memory while\n"
+                "WiFi is on.\n\n"
+                "Turn WiFi off, then\n"
+                "turn Bluetooth on.");
+            update_status();
+            return;
+        }
         s_radio_wanted = true;
     } else if (!checked && s_radio_wanted) {
         ble_scan_remove(noop_scan_cb);

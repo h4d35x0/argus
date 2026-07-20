@@ -6,6 +6,10 @@
 #include <SD.h>
 #include "usb_sd.h"
 
+// Modal low-memory dialog, defined in main.cpp. Shown when a radio fails to
+// start for lack of free internal SRAM.
+void low_mem_show_dialog(const char *msg);
+
 // Status / power-control screen for the on-board WiFi radio. Layout mirrors
 // the GPS and LoRa screens: title + toggle + status line + 7-row data
 // panel. The toggle just flips the radio between WIFI_OFF and WIFI_STA;
@@ -188,7 +192,24 @@ static void on_toggle(lv_event_t *)
         // STA is the default mode — scanning, evil twin, etc. transition
         // away from it as needed. WiFi.mode() is a no-op if already in
         // that mode, so this is safe to call repeatedly.
-        WiFi.mode(WIFI_STA);
+        // On this board WiFi + the BLE controller together exceed the free
+        // CONTIGUOUS internal SRAM, so esp_wifi_init fails (returns false) when
+        // Bluetooth is already up. Detect that, revert the switch, and tell the
+        // user plainly rather than leaving a dead toggle stuck "on".
+        if (!WiFi.mode(WIFI_STA) || WiFi.getMode() != WIFI_MODE_STA) {
+            wifi_powered = false;
+            lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
+            WiFi.mode(WIFI_OFF);   // release any partial allocation
+            low_mem_show_dialog(
+                "#ff5555 WiFi COULD NOT START#\n\n"
+                "Not enough free memory while\n"
+                "Bluetooth is on.\n\n"
+                "Turn Bluetooth off, then\n"
+                "turn WiFi on.");
+            update_status();
+            wifi_save_power(false);
+            return;
+        }
     } else {
         // Disconnect cleanly before turning the radio off so any open
         // socket gets a proper close rather than a stuck-half-open state.
