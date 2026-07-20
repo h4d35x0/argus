@@ -1737,6 +1737,13 @@ void setup()
 void loop()
 {
     instance.loop(); // required for power button and PMU event dispatch
+
+    // NOTE: auto-bringing the BLE controller up here (ble_scan_boot_keepalive at
+    // ~4 s) boot-looped/froze the watch - the BLE bring-up is unstable regardless
+    // of timing on this setup. Reverted. The Bluetooth toggle stays on its
+    // on-demand bring-up (works when BT is toggled BEFORE WiFi is up); a robust
+    // proper fix needs an async/off-thread bring-up, tracked separately.
+
     motion_wake_poll();   // accel-driven wake; no-op when toggle is off
     timezone_bg_tick();   // apply background WiFi NTP/geolocation results
     // Cheap on every iteration (an indev_state read + a millis() compare);
