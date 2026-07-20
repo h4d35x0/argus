@@ -23,7 +23,13 @@ static const char *kBgDir = "/backgrounds";
 // generous headroom for slightly-larger source art while still rejecting the
 // multi-megapixel photos students may upload. Reject over-budget images by
 // reading only the header, never decoding them.
-static constexpr uint32_t kMaxWallpaperPixels = 1200000u;
+// ~400k px (e.g. up to ~630x630, comfortably above the 410x502 panel). Two
+// reasons: a huge source image OOMs the full-res decode, AND the decoded image
+// must fit the 2 MB LVGL image cache (LV_CACHE_DEF_SIZE) or it gets re-decoded
+// from SD every render (~2.9s -> clock skips seconds). 400k px ARGB ~= 1.6 MB,
+// under the cache. Panel-sized art (like the bundled 410x502 backgrounds) is
+// well within this.
+static constexpr uint32_t kMaxWallpaperPixels = 400000u;
 
 // Inspect the header of the located wallpaper and reject it if decoding it
 // would blow the pixel budget. Reads only the first bytes of the file (never

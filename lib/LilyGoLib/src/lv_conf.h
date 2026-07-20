@@ -363,7 +363,13 @@
  *Used by image decoders such as `lv_lodepng` to keep the decoded image in the memory.
  *If size is not set to 0, the decoder will fail to decode when the cache is full.
  *If size is 0, the cache function is not enabled and the decoded mem will be released immediately after use.*/
-#define LV_CACHE_DEF_SIZE       0
+// ARGUS patch: was 0 (cache OFF), which forced the SD wallpaper PNG to be
+// re-decoded from the card on EVERY render (~2.9s in lv_task_handler -> the clock
+// skipped seconds). lv_malloc_core uses ps_malloc, so this 2 MB cache lives in
+// PSRAM; it keeps the decoded wallpaper (410x502 ~= 0.8 MB) resident so it is
+// decoded once. The wallpaper size budget (src/background.cpp) is capped so an
+// allowed image always fits here.
+#define LV_CACHE_DEF_SIZE       (2 * 1024 * 1024)
 
 /*Default number of image header cache entries. The cache is used to store the headers of images
  *The main logic is like `LV_CACHE_DEF_SIZE` but for image headers.*/
