@@ -3,6 +3,7 @@
 #include "usb_sd.h"
 #include "boot_prefs.h"
 #include "argus_mode.h"
+#include "pin_pad_screen.h"
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <time.h>
@@ -1276,6 +1277,24 @@ void settings_screen_create()
     lv_label_set_text(mode_hint, "Defense shows the anti-surveillance detectors. Daily hides them for an innocent look.");
     lv_obj_align(mode_hint, LV_ALIGN_TOP_MID, 0, 2050);
     register_shiftable(mode_hint, 2050);
+
+    // TEMPORARY fallback entry to the Offense PIN pad. The REAL entry is the hidden
+    // BOOT-button knock (Phase B, long-short-long). Kept here until the knock is
+    // verified working on-wrist - do NOT remove it before then, or a watch with a
+    // non-firing knock has no way into Offense short of an erase+reflash.
+    lv_obj_t *ofs_btn = lv_button_create(settings_screen);
+    lv_obj_set_size(ofs_btn, 380, 44);
+    lv_obj_set_style_bg_color(ofs_btn, lv_color_make(0x2A, 0x1E, 0x10), LV_PART_MAIN);
+    lv_obj_set_style_border_color(ofs_btn, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(ofs_btn, 1, LV_PART_MAIN);
+    lv_obj_align(ofs_btn, LV_ALIGN_TOP_MID, 0, 2110);
+    register_shiftable(ofs_btn, 2110);
+    lv_obj_t *ofs_lbl = lv_label_create(ofs_btn);
+    lv_obj_set_style_text_font(ofs_lbl, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(ofs_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_label_set_text(ofs_lbl, "Unlock Offense (test)");
+    lv_obj_center(ofs_lbl);
+    lv_obj_add_event_cb(ofs_btn, [](lv_event_t *) { pin_pad_screen_show(); }, LV_EVENT_CLICKED, NULL);
 
     // Reflect the current SD state in the row's interactability + checked
     // state. Boot order matters here — instance.isCardReady() may flip

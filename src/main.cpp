@@ -58,6 +58,7 @@
 #include "spycam_screen.h"
 #include "nfc_field_screen.h"
 #include "pin_pad_screen.h"
+#include "offense_wipe.h"
 #include "airtag.h"
 #include "flipper.h"
 #include "skimmer.h"
@@ -1718,6 +1719,7 @@ void setup()
     spycam_screen_create();
     nfc_field_screen_create();
     pin_pad_screen_create();
+    offense_wipe_register();   // arm the duress-shred Tier-1 wipe hook
     time_screen_create();
     wardriver_screen_create();
     lv_obj_add_event_cb(clock_screen, on_clock_gesture, LV_EVENT_GESTURE, NULL);
