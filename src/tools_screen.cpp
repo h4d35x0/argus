@@ -11,6 +11,11 @@
 #include "tesla_cp_screen.h"
 #include "tpms_screen.h"
 #include "pager_screen.h"
+#include "argus_mode.h"
+#include "tracker_sweep.h"
+#include "spycam_screen.h"
+#include "nfc_field_screen.h"
+#include <string.h>
 #include "mouse_screen.h"
 #include "usb_sd_screen.h"
 #include "aprs_screen.h"
@@ -52,6 +57,7 @@ static void show_radio_conflict_dialog(bool is_ble_feature)
 static lv_obj_t *tools_screen;
 static lv_obj_t *tools_title;   // repainted on show() so it flips to HADES red under threat
 static lv_obj_t *t_airtag;    // referenced by on_airtag_clicked for colour swap
+static lv_obj_t *t_trackers;  // referenced by on_trackers_clicked for colour swap
 static lv_obj_t *t_flipper;   // referenced by on_flipper_clicked for colour swap
 static lv_obj_t *t_skimmer;   // referenced by on_skimmer_clicked for colour swap
 static lv_obj_t *t_eviltwin;  // referenced by on_eviltwin_clicked for colour swap
@@ -106,6 +112,28 @@ static void on_airtag_clicked(lv_event_t *e)
         bool ok = airtag_start();
         if (!ok) show_radio_conflict_dialog(true);  // BLE feature blocked by WiFi
         set_airtag_tile_running(ok);   // stays gray if it couldn't start
+    }
+}
+
+static void set_trackers_tile_running(bool running)
+{
+    lv_obj_set_style_bg_color(t_trackers,
+        running ? lv_color_make(0x00, 0x55, 0x22)
+                : lv_color_make(0x11, 0x11, 0x11),
+        LV_PART_MAIN);
+}
+
+// Universal non-Apple tracker sweep (Tile/SmartTag/Chipolo). Passive BLE; feeds
+// the Threat Radar correlation store. Same BLE-vs-WiFi conflict path as AirTag.
+static void on_trackers_clicked(lv_event_t *)
+{
+    if (tracker_sweep_is_running()) {
+        tracker_sweep_stop();
+        set_trackers_tile_running(false);
+    } else {
+        bool ok = tracker_sweep_start();
+        if (!ok) show_radio_conflict_dialog(true);  // BLE feature blocked by WiFi
+        set_trackers_tile_running(ok);
     }
 }
 
@@ -370,6 +398,127 @@ static void draw_analyzer_icon(lv_obj_t *tile)
                      start + i * (bar_w + gap),
                      116 - heights[i]);
     }
+}
+
+// Trackers — a Tile-style tag (rounded square + hanging hole + a red centre dot)
+// for the universal non-Apple BLE tracker sweep. Procedural fallback for
+// /Icons/trackers.png.
+static void draw_trackers_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t steel = lv_color_make(0x9B, 0xBC, 0xD6);
+    lv_color_t dark  = lv_color_make(0x1A, 0x24, 0x30);
+
+    lv_obj_t *body = lv_obj_create(tile);
+    lv_obj_set_size(body, 84, 100);
+    lv_obj_set_style_radius(body, 16, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(body, dark, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(body, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(body, steel, LV_PART_MAIN);
+    lv_obj_set_style_border_width(body, 5, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(body, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 44);
+
+    lv_obj_t *hole = lv_obj_create(tile);
+    lv_obj_set_size(hole, 20, 20);
+    lv_obj_set_style_radius(hole, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(hole, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_color(hole, steel, LV_PART_MAIN);
+    lv_obj_set_style_border_width(hole, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(hole, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(hole, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(hole, LV_ALIGN_TOP_MID, 0, 56);
+
+    lv_obj_t *dot = lv_obj_create(tile);
+    lv_obj_set_size(dot, 24, 24);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(dot, HADES_RED, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(dot, LV_ALIGN_TOP_MID, 0, 96);
+}
+
+// NFC Field — concentric RF-field rings with a red core, for the reader-field
+// (pocket-skim) detector. Procedural fallback for /Icons/nfcfield.png.
+static void draw_nfcfield_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t steel = ARGUS_ACCENT;
+    const int d[3] = { 100, 68, 36 };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *r = lv_obj_create(tile);
+        lv_obj_set_size(r, d[i], d[i]);
+        lv_obj_set_style_radius(r, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_color(r, steel, LV_PART_MAIN);
+        lv_obj_set_style_border_width(r, 5, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(r, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(r, LV_ALIGN_TOP_MID, 0, 30 + (100 - d[i]) / 2);
+    }
+    lv_obj_t *dot = lv_obj_create(tile);
+    lv_obj_set_size(dot, 22, 22);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(dot, HADES_RED, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(dot, LV_ALIGN_TOP_MID, 0, 69);
+}
+
+// Spycam — a CCTV camera (body + lens + mount) in threat-red, for the passive
+// wireless-camera fingerprint results tile. Procedural fallback for /Icons/spycam.png.
+static void draw_spycam_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t red  = HADES_RED;
+    lv_color_t dark = lv_color_make(0x1A, 0x24, 0x30);
+
+    lv_obj_t *mount = lv_obj_create(tile);       // ceiling mount stalk
+    lv_obj_set_size(mount, 8, 22);
+    lv_obj_set_style_radius(mount, 2, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(mount, red, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(mount, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(mount, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(mount, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(mount, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(mount, LV_ALIGN_TOP_MID, -28, 40);
+
+    lv_obj_t *body = lv_obj_create(tile);        // camera body
+    lv_obj_set_size(body, 96, 54);
+    lv_obj_set_style_radius(body, 12, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(body, dark, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(body, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(body, red, LV_PART_MAIN);
+    lv_obj_set_style_border_width(body, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(body, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, -6, 58);
+
+    lv_obj_t *lens = lv_obj_create(tile);        // lens ring
+    lv_obj_set_size(lens, 34, 34);
+    lv_obj_set_style_radius(lens, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(lens, dark, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(lens, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(lens, red, LV_PART_MAIN);
+    lv_obj_set_style_border_width(lens, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(lens, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(lens, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(lens, LV_ALIGN_TOP_MID, 32, 68);
+
+    lv_obj_t *dot = lv_obj_create(tile);         // glowing lens centre
+    lv_obj_set_size(dot, 12, 12);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(dot, red, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(dot, LV_ALIGN_TOP_MID, 32, 79);
 }
 
 // Upper-right: AirTag — round disc with a small dot in the centre
@@ -1076,6 +1225,7 @@ static void set_handshake_tile_running(bool on)
 
 static void on_handshake_clicked(lv_event_t *)
 {
+    if (argus_mode_current() != ArgusMode::Offense) return;   // offensive: Offense mode only
     if (handshake_is_running()) {
         handshake_stop();
         set_handshake_tile_running(false);
@@ -1354,6 +1504,9 @@ void tools_screen_create()
     // screen (swipe up from the clock face), not here.
     lv_obj_t *t_radar   = make_tile(grid, "Radar");
     t_airtag            = make_tile(grid, "AirTag");
+    t_trackers          = make_tile(grid, "Trackers");
+    lv_obj_t *t_spycam  = make_tile(grid, "Spycam");
+    lv_obj_t *t_nfcfld  = make_tile(grid, "NFC Field");
     t_flock             = make_tile(grid, "Flock");
     t_skimmer           = make_tile(grid, "Skimmers");
     t_flipper           = make_tile(grid, "Flipper");
@@ -1382,6 +1535,9 @@ void tools_screen_create()
     tile_icon(t_aprs,     "aprs",     draw_aprs_icon);
     tile_icon(t_tesla,    "tesla",    draw_tesla_cp_icon);
     tile_icon(t_airtag,   "airtag",   draw_airtag_icon);
+    tile_icon(t_trackers, "trackers", draw_trackers_icon);
+    tile_icon(t_spycam,   "spycam",   draw_spycam_icon);
+    tile_icon(t_nfcfld,   "nfcfield", draw_nfcfield_icon);
     draw_flipper_icon(t_flipper);                               // keep 13-37 Flipper logo
     tile_icon(t_skimmer,  "skimmer",  draw_skimmer_icon);
     tile_icon(t_eviltwin, "eviltwin", draw_eviltwin_icon);
@@ -1408,6 +1564,9 @@ void tools_screen_create()
         { t_aprs,     "aprs"      },
         { t_tesla,    "tesla"     },
         { t_airtag,   "airtag"    },
+        { t_trackers, "trackers"  },
+        { t_spycam,   "spycam"    },
+        { t_nfcfld,   "nfcfield"  },
         { t_flipper,  "flipper"   },
         { t_skimmer,  "skimmer"   },
         { t_eviltwin, "eviltwin"  },
@@ -1428,12 +1587,16 @@ void tools_screen_create()
     }
 
     // Tesla CP tile opens the 315 MHz charge-port-open transmit screen.
-    lv_obj_add_event_cb(t_tesla, [](lv_event_t *) { tesla_cp_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_tesla, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; tesla_cp_screen_show(); }, LV_EVENT_CLICKED, NULL);
 
     // AirTag tile toggles the BLE Find My sniffer and swaps to a dim green
     // background while running.
     lv_obj_add_event_cb(t_airtag, on_airtag_clicked, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_trackers, on_trackers_clicked, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_spycam, [](lv_event_t *) { spycam_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_nfcfld, [](lv_event_t *) { nfc_field_screen_show(); }, LV_EVENT_CLICKED, NULL);
     set_airtag_tile_running(airtag_is_running());
+    set_trackers_tile_running(tracker_sweep_is_running());
 
     // Flipper tile toggles the BLE Flipper Zero detector. Same dim-green
     // running indication as AirTag.
@@ -1466,7 +1629,7 @@ void tools_screen_create()
     lv_obj_add_event_cb(t_pager, [](lv_event_t *) { pager_screen_show(); }, LV_EVENT_CLICKED, NULL);
 
     // Mouse tile opens the Bluetooth HID mouse screen.
-    lv_obj_add_event_cb(t_mouse, [](lv_event_t *) { mouse_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_mouse, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; mouse_screen_show(); }, LV_EVENT_CLICKED, NULL);
 
     // USB SD tile opens the USB mass-storage card-reader screen.
     lv_obj_add_event_cb(t_usbsd, [](lv_event_t *) { usb_sd_screen_show(); }, LV_EVENT_CLICKED, NULL);
@@ -1515,11 +1678,49 @@ void tools_screen_create()
 
     lv_obj_add_event_cb(tools_screen, on_gesture, LV_EVENT_GESTURE, NULL);
     lv_obj_add_event_cb(grid, on_grid_scroll, LV_EVENT_SCROLL, NULL);   // smooth-scroll priority
+
+    // Gate the grid to the current ARGUS mode now, and re-apply on every mode
+    // change (even when Tools isn't the active screen) so it's correct on entry.
+    argus_mode_on_change([](ArgusMode) { tools_apply_mode(); });
+    tools_apply_mode();
+}
+
+// Lowest ArgusMode at which a tile is allowed to appear. Offensive tools require
+// Offense; the three innocent utilities are Daily; everything else is a Defense
+// detector/recon tool. (Classification per tasks/MODE-ARCHITECTURE-PLAN.md sec 4.)
+static ArgusMode tile_mode(const char *key)
+{
+    if (!key) return ArgusMode::Defense;
+    if (!strcmp(key, "handshake") || !strcmp(key, "mouse") || !strcmp(key, "tesla"))
+        return ArgusMode::Offense;
+    if (!strcmp(key, "notify") || !strcmp(key, "aprs") || !strcmp(key, "usbsd"))
+        return ArgusMode::Daily;
+    return ArgusMode::Defense;
+}
+
+void tools_apply_mode()
+{
+    if (!tools_grid) return;
+    ArgusMode cur = argus_mode_current();
+    uint32_t n = lv_obj_get_child_count(tools_grid);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_obj_t *tile = lv_obj_get_child(tools_grid, i);
+        ArgusMode tm = tile_mode((const char *)lv_obj_get_user_data(tile));
+        bool visible;
+        switch (cur) {
+        case ArgusMode::Offense: visible = true;                       break;
+        case ArgusMode::Defense: visible = (tm != ArgusMode::Offense); break;
+        default:                 visible = false;                      break;  // Daily: hide all (grid is gated anyway)
+        }
+        if (visible) lv_obj_clear_flag(tile, LV_OBJ_FLAG_HIDDEN);
+        else         lv_obj_add_flag(tile, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void tools_screen_show()
 {
     main_loop_request_lvgl_priority(12);
+    tools_apply_mode();   // reflect the current mode before the screen paints
     // Repaint the title with the live accent on entry: HADES red if a tail is
     // currently flagged, calm steel-blue otherwise.
     if (tools_title) lv_obj_set_style_text_color(tools_title, argus_accent(), LV_PART_MAIN);

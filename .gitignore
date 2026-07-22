@@ -5,3 +5,5 @@
 .vscode/ipch
 test/build/
 .claude/
+__pycache__/
+*.pyc

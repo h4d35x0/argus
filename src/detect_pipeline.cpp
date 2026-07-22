@@ -14,6 +14,8 @@
 #include "detect/beacon_flood.h"   // BeaconFloodDetector, BeaconObservation
 #include "detect/threat_state.h"   // ThreatState, ThreatDomain, Severity, ThreatLevel
 #include "detect/threat_map.h"     // detect::feed() verdict -> aggregator
+#include "detect/surveillance_device.h"  // classify_wifi() spy-cam fingerprint (#9)
+#include "spycam.h"                       // camera results store (Spycam tile)
 #include "detect/threat_log.h"     // ThreatLog forensic edge recorder
 
 // --- Owned pure-detector state (single long-lived instances). --------------
@@ -116,12 +118,30 @@ static void beacon_cb(const WifiBeacon *b)
     bo.t_sec   = now;
     bo.rssi    = b->rssi;
 
+    // Passive spy-camera / surveillance-device fingerprint (#9): classify the AP by
+    // OUI/SSID and fold any camera hit into the Surveillance domain of the SAME
+    // shared aggregator. Purely additive - does not touch the rogue/flood verdicts.
+    // classify_wifi() is pure; only the feed() needs the lock. A {None,None} verdict
+    // (no camera signature) feeds as a harmless no-op.
+    detect::WifiApSighting ws;
+    memset(&ws, 0, sizeof(ws));
+    memcpy(ws.bssid, b->bssid, sizeof(ws.bssid));
+    strncpy(ws.ssid, b->ssid, sizeof(ws.ssid) - 1);
+    detect::DeviceVerdict spycam = detect::classify_wifi(ws);
+
     portENTER_CRITICAL(&s_mux);
     detect::RogueVerdict rv = s_rogue.ingest(ap);
     detect::feed(s_threat, rv.flag, now);
     detect::BeaconVerdict bv = s_beacon_flood.ingest(bo);
     detect::feed(s_threat, bv.flag, now);
+    detect::feed(s_threat, spycam, now);   // #9 surveillance-device sighting
     portEXIT_CRITICAL(&s_mux);
+
+    // Record camera hits for the Spycam results screen (outside the lock; spycam
+    // takes its own). classify_wifi only yields camera classes - BleTracker is
+    // BLE-only - so any non-None verdict here is a camera.
+    if (spycam.cls != detect::DeviceClass::None)
+        spycam_note(b->bssid, b->ssid, (uint8_t)spycam.cls, (uint8_t)spycam.conf, b->rssi);
 }
 
 // --- Shared feed point for the BLE detect pipeline --------------------------

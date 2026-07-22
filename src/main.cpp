@@ -54,6 +54,10 @@
 #include "world_clock_screen.h"
 #include "sun_moon_screen.h"
 #include "time_screen.h"
+#include "argus_mode.h"
+#include "spycam_screen.h"
+#include "nfc_field_screen.h"
+#include "pin_pad_screen.h"
 #include "airtag.h"
 #include "flipper.h"
 #include "skimmer.h"
@@ -670,15 +674,19 @@ static void on_clock_gesture(lv_event_t *e)
 {
     lv_indev_t *indev = lv_event_get_indev(e);
     lv_dir_t dir = lv_indev_get_gesture_dir(indev);
-    if (dir == LV_DIR_LEFT)
-        wardriver_screen_show();
-    else if (dir == LV_DIR_RIGHT) {
-        meshtastic_mark_read();
+    // Daily keeps the innocent surfaces reachable. Meshtastic (mesh comms) and Time
+    // are day-to-day features allowed in every mode; Wardriver (recon) and the Tools
+    // grid are gated to Defense/Offense so a Daily glance/confiscation reveals nothing.
+    bool daily = (argus_mode_current() == ArgusMode::Daily);
+    if (dir == LV_DIR_LEFT) {
+        if (!daily) wardriver_screen_show();   // recon, gated in Daily
+    } else if (dir == LV_DIR_RIGHT) {
+        meshtastic_mark_read();                // comms, available in every mode
         meshtastic_screen_show();
     } else if (dir == LV_DIR_BOTTOM) {   // swipe down from clock face
-        tools_screen_show();
+        if (!daily) tools_screen_show();       // Tools gated in Daily
     } else if (dir == LV_DIR_TOP) {      // swipe up from clock face
-        time_screen_show();
+        time_screen_show();              // Time is innocent - allowed in every mode
     }
 }
 
@@ -1667,6 +1675,11 @@ void setup()
     lv_obj_set_style_text_color(flock_count_label, lv_color_make(0xFF, 0x88, 0x00), LV_PART_MAIN);
     lv_label_set_text(flock_count_label, "0");
 
+    // ARGUS mode state machine (Daily/Defense/Offense). Init BEFORE any screen is
+    // created so gating/theming can read the mode as screens build. Forces Daily
+    // at boot (or Defense only if the user enabled Defense-persistence).
+    argus_mode_init();
+
     gps_screen_create();
     lora_screen_create();
     nfc_screen_create();
@@ -1702,6 +1715,9 @@ void setup()
     calendar_screen_create();
     world_clock_screen_create();
     sun_moon_screen_create();
+    spycam_screen_create();
+    nfc_field_screen_create();
+    pin_pad_screen_create();
     time_screen_create();
     wardriver_screen_create();
     lv_obj_add_event_cb(clock_screen, on_clock_gesture, LV_EVENT_GESTURE, NULL);
@@ -1773,6 +1789,14 @@ void setup()
     update_sd_indicator();
     update_nfc_indicator();
     update_wardriver_indicator();
+
+    // Per-mode indicator overlay (Daily hidden / Defense "DEF" chip / Offense
+    // border + "OFF"). Init now that LVGL + argus_mode are up; refresh on every
+    // mode change. The 1 Hz loop tick also refreshes it so the Offense border
+    // flips to threat-red live.
+    argus_mode_indicator_init();
+    argus_mode_on_change([](ArgusMode) { argus_mode_indicator_refresh(); });
+
     instance.setBrightness(DEVICE_MAX_BRIGHTNESS_LEVEL);
 
     // Bring the motion-wake accelerometer up to its default state before
@@ -2031,6 +2055,61 @@ static void screenshot_auto_run()
 }
 #endif
 
+// The BOOT-button SHORT-press "back" chain: step to the previous screen for
+// whatever is active (and open Settings from the clock, which the user likes).
+// Factored out of loop() so the short-press path calls it while the new
+// long-press path jumps home. Behaviour here is UNCHANGED from before.
+static void do_boot_back_action()
+{
+    if (settings_screen_is_active()) {
+        clock_screen_show();
+    } else if (nfc_write_screen_is_active()) {
+        nfc_screen_show();
+    } else if (nfc_screen_is_active()) {
+        wifi_radio_screen_show();
+    } else if (wifi_radio_screen_is_active()) {
+        bluetooth_screen_show();      // BT before WiFi (see forward chain)
+    } else if (bluetooth_screen_is_active()) {
+        lora_screen_show();
+    } else if (lora_screen_is_active()) {
+        gps_screen_show();
+    } else if (configuration_screen_is_active()) {
+        // BOOT mirrors swipe-LEFT: commit edits then step back through the chain
+        // Config -> Map (if tiles present) -> Send Message.
+        configuration_screen_commit();
+        if (map_screen_available()) map_screen_show();
+        else                        send_message_screen_show();
+    } else if (map_screen_is_active()) {
+        send_message_screen_show();
+    } else if (send_message_screen_is_active()) {
+        nodes_screen_show();
+    } else if (nodes_screen_is_active()) {
+        meshtastic_screen_show();
+    } else if (meshtastic_screen_is_active()) {
+        clock_screen_show();
+    } else if (spycam_screen_is_active()) {
+        tools_screen_show();          // back to the Defense grid
+    } else if (nfc_field_screen_is_active()) {
+        tools_screen_show();          // its own tick powers NFC back down on exit
+    } else if (pin_pad_screen_is_active()) {
+        clock_screen_show();          // cancel the unlock
+    } else if (analyze_screen_is_active()
+            || bt_analyze_screen_is_active()
+            || lora_analyze_screen_is_active()) {
+        // Each *_stop() is a no-op when its analyzer isn't running, so calling all
+        // three keeps the exit path the same regardless of which one is active.
+        analyze_screen_stop();
+        bt_analyze_screen_stop();
+        lora_analyze_screen_stop();
+        if (argus_mode_current() != ArgusMode::Daily) tools_screen_show();
+        else clock_screen_show();     // Daily gates Tools; fall back to the clock
+    } else if (lv_screen_active() == clock_screen) {
+        settings_screen_show();       // from the clock, BOOT opens Settings
+    } else {
+        clock_screen_show();
+    }
+}
+
 void loop()
 {
     instance.loop(); // required for power button and PMU event dispatch
@@ -2056,64 +2135,35 @@ void loop()
     // only crosses into the heavy capture+SD-write path on the 3 s edge.
     screenshot_poll();
 
-    // Back button (GPIO0) — consumed here, outside ISR context.
-    // 250 ms debounce: mechanical bounce on GPIO0 can fire several FALLING
-    // edges per press, which would skip multiple screens in one tap.
-    static uint32_t last_back_ms = 0;
-    if (back_btn_pressed) {
-        back_btn_pressed = false;
-        uint32_t now = millis();
-        if (now - last_back_ms < 250) {
-            // ignore bounce
-        } else {
-            last_back_ms = now;
+    // BOOT button (GPIO0, INPUT_PULLUP -> pressed = LOW). Polled duration state
+    // machine: SHORT press = back / Settings-from-clock (do_boot_back_action, the
+    // old behaviour); LONG press (>= BOOT_LONG_MS held) = jump HOME to the clock
+    // from anywhere. Built once as a duration machine so the future Offense knock
+    // (long-short-long -> PIN pad) layers onto these same edges - it will defer the
+    // lone-long "home" while a sequence is in progress. The FALLING ISR flag is no
+    // longer used for actions (we poll for press DURATION), but attachInterrupt is
+    // kept as a possible wake source; clear the flag so it can't linger.
+    back_btn_pressed = false;
+    static const uint32_t BOOT_LONG_MS     = 600;   // >= this held = long press
+    static const uint32_t BOOT_DEBOUNCE_MS = 40;    // shorter = contact bounce
+    static const uint32_t BOOT_COOLDOWN_MS = 150;   // swallow release bounce
+    static bool     s_boot_down     = false;
+    static uint32_t s_boot_down_ms  = 0;
+    static uint32_t s_boot_cooldown = 0;
+    bool     boot_down = (digitalRead(0) == LOW);
+    uint32_t boot_ms   = millis();
+    if (boot_down && !s_boot_down && (boot_ms - s_boot_cooldown) > BOOT_COOLDOWN_MS) {
+        s_boot_down    = true;
+        s_boot_down_ms = boot_ms;
+    } else if (!boot_down && s_boot_down) {
+        s_boot_down     = false;
+        s_boot_cooldown = boot_ms;
+        uint32_t held   = boot_ms - s_boot_down_ms;
+        if (held >= BOOT_DEBOUNCE_MS) {                       // else: bounce, ignore
             dim_reset_activity();
             if (clock_vibrate) instance.vibrator();
-            if (settings_screen_is_active()) {
-                clock_screen_show();
-            } else if (nfc_write_screen_is_active()) {
-                nfc_screen_show();
-            } else if (nfc_screen_is_active()) {
-                wifi_radio_screen_show();
-            } else if (wifi_radio_screen_is_active()) {
-                bluetooth_screen_show();      // BT before WiFi (see forward chain)
-            } else if (bluetooth_screen_is_active()) {
-                lora_screen_show();
-            } else if (lora_screen_is_active()) {
-                gps_screen_show();
-            } else if (configuration_screen_is_active()) {
-                // BOOT mirrors swipe-LEFT: commit edits then step back
-                // through the chain Config -> Map (if tiles present)
-                // -> Send Message.
-                configuration_screen_commit();
-                if (map_screen_available()) map_screen_show();
-                else                        send_message_screen_show();
-            } else if (map_screen_is_active()) {
-                send_message_screen_show();
-            } else if (send_message_screen_is_active()) {
-                nodes_screen_show();
-            } else if (nodes_screen_is_active()) {
-                meshtastic_screen_show();
-            } else if (meshtastic_screen_is_active()) {
-                clock_screen_show();
-            } else if (analyze_screen_is_active()
-                    || bt_analyze_screen_is_active()
-                    || lora_analyze_screen_is_active()) {
-                // Each *_stop() is a no-op when its analyzer isn't running,
-                // so calling all three keeps the boot-button exit path the
-                // same regardless of which one the user is currently on.
-                // Without this, leaving via the back button would leave
-                // WiFi promiscuous channel-hopping, BLE still scanning, or
-                // pager/TPMS/APRS silently dropped — never re-armed.
-                analyze_screen_stop();
-                bt_analyze_screen_stop();
-                lora_analyze_screen_stop();
-                tools_screen_show();
-            } else if (lv_screen_active() == clock_screen) {
-                settings_screen_show();
-            } else {
-                clock_screen_show();
-            }
+            if (held >= BOOT_LONG_MS) clock_screen_show();    // LONG press  = home
+            else                      do_boot_back_action();  // SHORT press = back / Settings
         }
     }
 
@@ -2223,6 +2273,7 @@ void loop()
     if (millis() - last_update_ms >= 1000 && !lvgl_priority) {
         last_update_ms = millis();
         update_clock();
+        argus_mode_indicator_refresh();   // Offense border flips to threat-red live
         alarm_tick();              // fires the alarm at the set time
         layout_battery_indicators(); // pack alarm/stopwatch/timer icons R→L
         update_battery();

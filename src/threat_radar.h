@@ -28,6 +28,7 @@ enum TrCategory {
     TR_CAT_FLOCK,
     TR_CAT_EVILTWIN,
     TR_CAT_VEHICLE,        // ambient BLE/WiFi promoted by counter-tail (a car)
+    TR_CAT_TRACKER,        // non-Apple commercial BLE tracker (Tile/SmartTag/Chipolo)
     TR_CAT_COUNT
 };
 

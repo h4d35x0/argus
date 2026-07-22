@@ -75,7 +75,7 @@ static uint32_t  s_buzz_last_ms = 0;
 // ---------------------------------------------------------------------------
 
 static const char *kCatNames[TR_CAT_COUNT] = {
-    "AirTag", "Flipper", "Skimmer", "Flock", "Evil-Twin", "Vehicle"
+    "AirTag", "Flipper", "Skimmer", "Flock", "Evil-Twin", "Vehicle", "Tracker"
 };
 static const char *kLvlNames[4] = { "—", "POSSIBLE", "LIKELY", "CONFIRMED" };
 

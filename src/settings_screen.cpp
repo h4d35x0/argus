@@ -2,6 +2,8 @@
 #include "theme.h"
 #include "usb_sd.h"
 #include "boot_prefs.h"
+#include "argus_mode.h"
+#include "pin_pad_screen.h"
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <time.h>
@@ -111,6 +113,12 @@ static lv_obj_t *minute_roller;
 // loaded values via lv_obj_add_state / lv_dropdown_set_selected — which fire
 // LV_EVENT_VALUE_CHANGED — doesn't redundantly rewrite the file we just read.
 static bool g_loading = false;
+
+// ARGUS Daily/Defense mode controls (appended to the bottom of the list).
+static lv_obj_t *defense_switch;
+static lv_obj_t *defense_val_label;
+static lv_obj_t *defpersist_switch;
+static lv_obj_t *defpersist_val_label;
 
 // ---- Shiftable-row registry ------------------------------------------------
 //
@@ -527,6 +535,23 @@ static lv_obj_t *make_boot_row(const char *label, int y, bool checked,
 
     *val_out = val;
     return sw;
+}
+
+// Daily<->Defense toggle. Offense is never reachable from here (hidden knock+PIN
+// only), so this switch is a plain two-state Daily(off)/Defense(on) control.
+static void on_defense_mode_changed(lv_event_t *)
+{
+    bool on = lv_obj_has_state(defense_switch, LV_STATE_CHECKED);
+    lv_label_set_text(defense_val_label, on ? "On" : "Off");
+    argus_mode_set(on ? ArgusMode::Defense : ArgusMode::Daily);
+}
+
+// "Keep on boot": persist Defense across reboots (default off = always boot Daily).
+static void on_defpersist_changed(lv_event_t *)
+{
+    bool on = lv_obj_has_state(defpersist_switch, LV_STATE_CHECKED);
+    lv_label_set_text(defpersist_val_label, on ? "On" : "Off");
+    argus_mode_set_defense_persist(on);
 }
 
 void settings_screen_create()
@@ -1217,6 +1242,57 @@ void settings_screen_create()
     lv_label_set_text(sysinfo_label, "");
     lv_obj_align(sysinfo_label, LV_ALIGN_TOP_MID, 0, 1750);
     register_shiftable(sysinfo_label, 1750);
+
+    // --- Mode (ARGUS Daily / Defense) ----------------------------------------
+    // Appended at the bottom (safe insertion into the fixed-Y layout). Offense is
+    // NOT here - it is reached only via the hidden BOOT-button knock + PIN (P4/P5).
+    lv_obj_t *sep_mode = lv_obj_create(settings_screen);
+    lv_obj_set_size(sep_mode, 380, 1);
+    lv_obj_set_style_bg_color(sep_mode, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sep_mode, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sep_mode, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(sep_mode, 0, LV_PART_MAIN);
+    lv_obj_align(sep_mode, LV_ALIGN_TOP_MID, 0, 1900);
+    register_shiftable(sep_mode, 1900);
+
+    lv_obj_t *mode_hdr = lv_label_create(settings_screen);
+    lv_obj_set_style_text_color(mode_hdr, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(mode_hdr, &font_argus_label_20, LV_PART_MAIN);
+    lv_label_set_text(mode_hdr, "Mode");
+    lv_obj_align(mode_hdr, LV_ALIGN_TOP_MID, 0, 1914);
+    register_shiftable(mode_hdr, 1914);
+
+    defense_switch = make_boot_row("Defense", 1954,
+        argus_mode_current() == ArgusMode::Defense,
+        on_defense_mode_changed, &defense_val_label);
+
+    defpersist_switch = make_boot_row("Keep on boot", 2002,
+        argus_mode_defense_persist(),
+        on_defpersist_changed, &defpersist_val_label);
+
+    lv_obj_t *mode_hint = lv_label_create(settings_screen);
+    lv_obj_set_style_text_color(mode_hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(mode_hint, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_width(mode_hint, 360);
+    lv_label_set_text(mode_hint, "Defense shows the anti-surveillance detectors. Daily hides them for an innocent look.");
+    lv_obj_align(mode_hint, LV_ALIGN_TOP_MID, 0, 2050);
+    register_shiftable(mode_hint, 2050);
+
+    // TEMPORARY (Phase C testing): opens the Offense PIN pad. The REAL entry is
+    // the hidden side-button knock (Phase B) - remove this row when the knock lands.
+    lv_obj_t *ofs_btn = lv_button_create(settings_screen);
+    lv_obj_set_size(ofs_btn, 380, 44);
+    lv_obj_set_style_bg_color(ofs_btn, lv_color_make(0x2A, 0x1E, 0x10), LV_PART_MAIN);
+    lv_obj_set_style_border_color(ofs_btn, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(ofs_btn, 1, LV_PART_MAIN);
+    lv_obj_align(ofs_btn, LV_ALIGN_TOP_MID, 0, 2110);
+    register_shiftable(ofs_btn, 2110);
+    lv_obj_t *ofs_lbl = lv_label_create(ofs_btn);
+    lv_obj_set_style_text_font(ofs_lbl, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(ofs_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_label_set_text(ofs_lbl, "Unlock Offense (test)");
+    lv_obj_center(ofs_lbl);
+    lv_obj_add_event_cb(ofs_btn, [](lv_event_t *) { pin_pad_screen_show(); }, LV_EVENT_CLICKED, NULL);
 
     // Reflect the current SD state in the row's interactability + checked
     // state. Boot order matters here — instance.isCardReady() may flip
