@@ -2110,6 +2110,82 @@ static void do_boot_back_action()
     }
 }
 
+// ---- Offense unlock "knock": a Long-Short-Long BOOT-button sequence ----------
+//
+// The offensive tools have no visible entry point. The only way in is a private
+// gesture: LONG, SHORT, LONG on the BOOT button, each beat landing within
+// KNOCK_GAP_MS of the last. A match opens the PIN pad; a correct PIN then enters
+// Offense (pin_pad_screen -> enter_offense()).
+//
+// Because a knock starts with a LONG, the normal lone-LONG "home" action can no
+// longer fire the instant the button is released - it might be beat one. So a
+// LONG is DEFERRED by KNOCK_GAP_MS; if no SHORT follows, the deferred "home"
+// runs. A SHORT that is not continuing a knock still fires immediately (a knock
+// never starts with a short), so everyday back-navigation stays snappy. The
+// buffer only ever holds a knock prefix ([L] or [L,S]); anything that can't
+// extend toward [L,S,L] is flushed - its presses run as normal actions, in
+// order - and the buffer resets.
+enum BootPress { BP_SHORT, BP_LONG };
+static const uint32_t KNOCK_GAP_MS = 700;   // max gap between knock beats (tunable)
+static BootPress s_knock_seq[3];
+static int       s_knock_len     = 0;
+static uint32_t  s_knock_last_ms = 0;
+
+static void boot_run_action(BootPress p)
+{
+    if (p == BP_LONG) clock_screen_show();     // home
+    else              do_boot_back_action();   // back / Settings-from-clock
+}
+
+// Run the buffered (deferred) presses as ordinary actions, in order, then clear
+// the buffer. Used when a sequence can't become a knock or its gap expires.
+static void boot_flush_knock()
+{
+    for (int i = 0; i < s_knock_len; i++) boot_run_action(s_knock_seq[i]);
+    s_knock_len = 0;
+}
+
+// Each loop: if a partial knock has gone quiet past the gap, flush it so a
+// deferred "home" (or a buffered [L,S]) actually happens with no further press.
+static void boot_knock_poll(uint32_t now)
+{
+    if (s_knock_len > 0 && (now - s_knock_last_ms) > KNOCK_GAP_MS)
+        boot_flush_knock();
+}
+
+// Feed one completed, already-classified press into the knock detector and
+// perform the resulting immediate / deferred / knock action.
+static void boot_knock_feed(BootPress p, uint32_t now)
+{
+    // A stale partial sequence first times out into its normal actions.
+    if (s_knock_len > 0 && (now - s_knock_last_ms) > KNOCK_GAP_MS)
+        boot_flush_knock();
+
+    s_knock_last_ms = now;
+
+    if (s_knock_len == 0) {                     // fresh buffer
+        if (p == BP_SHORT) { boot_run_action(BP_SHORT); return; }  // knock never starts short
+        s_knock_seq[s_knock_len++] = BP_LONG;   // buffer the opening LONG (defer home)
+        return;
+    }
+
+    if (s_knock_len == 1) {                     // have [L]
+        if (p == BP_SHORT) { s_knock_seq[s_knock_len++] = BP_SHORT; return; }  // -> [L,S]
+        boot_run_action(BP_LONG);               // [L,L]: first L was just "home"...
+        s_knock_seq[0] = BP_LONG; s_knock_len = 1;  // ...restart the knock at this L
+        return;
+    }
+
+    // Buffer holds [L,S].
+    if (p == BP_LONG) {                         // [L,S,L] -> KNOCK
+        s_knock_len = 0;
+        pin_pad_screen_show();
+        return;
+    }
+    boot_flush_knock();                         // [L,S,S]: not a knock; run [L,S]...
+    boot_run_action(BP_SHORT);                  // ...then this trailing SHORT now
+}
+
 void loop()
 {
     instance.loop(); // required for power button and PMU event dispatch
@@ -2138,11 +2214,12 @@ void loop()
     // BOOT button (GPIO0, INPUT_PULLUP -> pressed = LOW). Polled duration state
     // machine: SHORT press = back / Settings-from-clock (do_boot_back_action, the
     // old behaviour); LONG press (>= BOOT_LONG_MS held) = jump HOME to the clock
-    // from anywhere. Built once as a duration machine so the future Offense knock
-    // (long-short-long -> PIN pad) layers onto these same edges - it will defer the
-    // lone-long "home" while a sequence is in progress. The FALLING ISR flag is no
-    // longer used for actions (we poll for press DURATION), but attachInterrupt is
-    // kept as a possible wake source; clear the flag so it can't linger.
+    // from anywhere. The Offense knock (long-short-long -> PIN pad) layers onto
+    // these same edges: a LONG is deferred by KNOCK_GAP_MS in case it is beat one,
+    // so a lone "home" now lands a beat late (see boot_knock_feed). The FALLING ISR
+    // flag is no longer used for actions (we poll for press DURATION), but
+    // attachInterrupt is kept as a possible wake source; clear the flag so it can't
+    // linger.
     back_btn_pressed = false;
     static const uint32_t BOOT_LONG_MS     = 600;   // >= this held = long press
     static const uint32_t BOOT_DEBOUNCE_MS = 40;    // shorter = contact bounce
@@ -2162,10 +2239,22 @@ void loop()
         if (held >= BOOT_DEBOUNCE_MS) {                       // else: bounce, ignore
             dim_reset_activity();
             if (clock_vibrate) instance.vibrator();
-            if (held >= BOOT_LONG_MS) clock_screen_show();    // LONG press  = home
-            else                      do_boot_back_action();  // SHORT press = back / Settings
+            BootPress p = (held >= BOOT_LONG_MS) ? BP_LONG : BP_SHORT;
+            // The knock (L-S-L) opens the Offense PIN pad. Disarm it once Offense
+            // is already unlocked, or while a modal dialog owns the screen; there
+            // the press just runs its ordinary action immediately.
+            bool knock_armed = (argus_mode_current() != ArgusMode::Offense)
+                            && (s_low_mem_dialog == nullptr);
+            if (knock_armed) {
+                boot_knock_feed(p, boot_ms);
+            } else {
+                if (s_knock_len > 0) boot_flush_knock();   // don't strand a partial
+                boot_run_action(p);
+            }
         }
     }
+    // Fire a deferred "home" (or a buffered [L,S]) once its knock window goes quiet.
+    boot_knock_poll(boot_ms);
 
     // Feed NMEA bytes to TinyGPSPlus while the GPS radio is on
     if (gps_screen_is_powered()) {

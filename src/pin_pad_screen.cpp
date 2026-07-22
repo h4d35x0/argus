@@ -151,7 +151,12 @@ void pin_pad_screen_create()
     lv_obj_set_style_border_width(keys, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(keys, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_gap(keys, 6, LV_PART_MAIN);
-    lv_obj_set_style_text_font(keys, &font_argus_label_28, LV_PART_ITEMS);
+    // Montserrat (not the Orbitron brand subset font_argus_label_28) for the keys:
+    // the brand font carries only digits/colon/space/AMP, so the LV_SYMBOL_BACKSPACE
+    // and LV_SYMBOL_OK action keys rendered as empty "tofu" squares. The built-in
+    // Montserrat font bundles those FontAwesome glyphs, so both action keys show as
+    // real icons while the digits stay clean and legible.
+    lv_obj_set_style_text_font(keys, &lv_font_montserrat_28, LV_PART_ITEMS);
     lv_obj_set_style_text_color(keys, ARGUS_TEXT, LV_PART_ITEMS);
     lv_obj_set_style_bg_color(keys, lv_color_make(0x16, 0x1E, 0x28), LV_PART_ITEMS);
     lv_obj_set_style_bg_opa(keys, LV_OPA_COVER, LV_PART_ITEMS);

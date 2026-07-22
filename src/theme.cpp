@@ -69,12 +69,16 @@ void argus_mode_indicator_init(void)
     lv_obj_set_style_bg_opa(s_mode_chip, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_bg_color(s_mode_chip, ARGUS_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_radius(s_mode_chip, 6, LV_PART_MAIN);
-    lv_obj_add_flag(s_mode_chip, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_SCROLLABLE);
-    // Inset from the extreme corner so the rounded-display bezel doesn't clip it
-    // (at 8,8 only a sliver showed). Position still needs on-wrist tuning.
-    lv_obj_align(s_mode_chip, LV_ALIGN_TOP_LEFT, 18, 40);
+    // Do NOT set LV_OBJ_FLAG_IGNORE_LAYOUT on the chip: with it set, lv_obj_align's
+    // offset was dropped and the chip pinned to (0,0), where the rounded-display
+    // corner clipped it to a sliver (which is why the 8,8 -> 18,40 move last session
+    // had no visible effect). Without the flag the align below lands correctly. The
+    // notify banner uses this same no-IGNORE_LAYOUT idiom on lv_layer_top and places
+    // reliably. Far-left, level with the top-right status icons (which never reach
+    // this side of the face).
+    lv_obj_align(s_mode_chip, LV_ALIGN_TOP_LEFT, 16, 44);
     lv_obj_add_flag(s_mode_chip, LV_OBJ_FLAG_HIDDEN);
 
     s_mode_chip_lbl = lv_label_create(s_mode_chip);
