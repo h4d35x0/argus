@@ -95,6 +95,7 @@
 // from setup()'s boot-radio block above it, so it needs an early prototype.
 void low_mem_show_dialog(const char *msg);
 
+
 static lv_obj_t *clock_screen;
 static lv_obj_t *time_label;
 static lv_span_t *s_span_hours;
@@ -2112,26 +2113,33 @@ static void do_boot_back_action()
     }
 }
 
-// ---- Offense unlock "knock": a Long-Short-Long BOOT-button sequence ----------
+// ---- Offense unlock "knock": a Long-Short-Long on the BOOT button -------------
 //
 // The offensive tools have no visible entry point. The only way in is a private
-// gesture: LONG, SHORT, LONG on the BOOT button, each beat landing within
+// gesture on the BOOT button (GPIO0): LONG, SHORT, LONG, each beat within
 // KNOCK_GAP_MS of the last. A match opens the PIN pad; a correct PIN then enters
-// Offense (pin_pad_screen -> enter_offense()).
+// Offense (-> enter_offense()).
 //
-// Because a knock starts with a LONG, the normal lone-LONG "home" action can no
-// longer fire the instant the button is released - it might be beat one. So a
-// LONG is DEFERRED by KNOCK_GAP_MS; if no SHORT follows, the deferred "home"
-// runs. A SHORT that is not continuing a knock still fires immediately (a knock
-// never starts with a short), so everyday back-navigation stays snappy. The
-// buffer only ever holds a knock prefix ([L] or [L,S]); anything that can't
-// extend toward [L,S,L] is flushed - its presses run as normal actions, in
-// order - and the buffer resets.
+// KEY LESSON (this failed 3x before): a silent multi-beat timing gesture is
+// unperformable - the user cannot tell whether a beat registered, so they cannot
+// find the rhythm. So every ACCEPTED beat now gives a short haptic buzz (feel the
+// L, S, L land), and a completed knock gives a double buzz. Timing is generous.
+//
+// Because a knock starts with a LONG, the lone-LONG "home" can't fire on release
+// (it might be beat one): a LONG is buffered and its "home" is deferred by the
+// gap (boot_knock_poll fires it if no SHORT follows). A SHORT that isn't
+// continuing a knock fires its normal "back" immediately.
 enum BootPress { BP_SHORT, BP_LONG };
-static const uint32_t KNOCK_GAP_MS = 700;   // max gap between knock beats (tunable)
+static const uint32_t KNOCK_GAP_MS = 1500;  // generous window to START the next beat
 static BootPress s_knock_seq[3];
 static int       s_knock_len             = 0;
-static uint32_t  s_knock_last_release_ms = 0;   // when the last buffered beat was released
+static uint32_t  s_knock_last_release_ms = 0;
+
+// Short haptic tick so the user can FEEL each accepted knock beat.
+static void knock_buzz(int n)
+{
+    for (int i = 0; i < n; i++) { instance.vibrator(); delay(60); }
+}
 
 static void boot_run_action(BootPress p)
 {
@@ -2139,33 +2147,25 @@ static void boot_run_action(BootPress p)
     else              do_boot_back_action();   // back / Settings-from-clock
 }
 
-// Run the buffered (deferred) presses as ordinary actions, in order, then clear
-// the buffer. Used when a sequence can't become a knock or its gap expires.
 static void boot_flush_knock()
 {
     for (int i = 0; i < s_knock_len; i++) boot_run_action(s_knock_seq[i]);
     s_knock_len = 0;
 }
 
-// Each loop: if a partial knock has gone quiet past the gap, flush it so a
-// deferred "home" (or a buffered [L,S]) actually happens with no further press.
-// Measured from the last beat's RELEASE, so a lone long fires "home" ~gap later.
+// Fire a deferred beat once its gap goes quiet (measured from the last RELEASE).
 static void boot_knock_poll(uint32_t now)
 {
     if (s_knock_len > 0 && (now - s_knock_last_release_ms) > KNOCK_GAP_MS)
         boot_flush_knock();
 }
 
-// Feed one completed, already-classified press into the knock detector and
-// perform the resulting immediate / deferred / knock action. The inter-beat gap
-// is measured from the PREVIOUS beat's RELEASE to THIS beat's PRESS-DOWN, NOT
-// release-to-release: a long beat holds ~600ms, so a release-to-release gap made
-// [L,S,L] impossible (the final long's release always landed >gap after the
-// short, flushing [L,S] mid-hold). Press-down timing gives a full gap window to
-// simply START each next beat.
+// Feed one completed press (already classified). The inter-beat gap is measured
+// from the previous beat's RELEASE to THIS beat's PRESS-DOWN (a long beat holds
+// ~600ms, so release-to-release made L-S-L impossible). Every accepted knock beat
+// buzzes so the gesture is actually performable.
 static void boot_knock_feed(BootPress p, uint32_t press_down_ms, uint32_t release_ms)
 {
-    // A stale partial sequence first times out into its normal actions.
     if (s_knock_len > 0 && (press_down_ms - s_knock_last_release_ms) > KNOCK_GAP_MS)
         boot_flush_knock();
 
@@ -2174,19 +2174,22 @@ static void boot_knock_feed(BootPress p, uint32_t press_down_ms, uint32_t releas
     if (s_knock_len == 0) {                     // fresh buffer
         if (p == BP_SHORT) { boot_run_action(BP_SHORT); return; }  // knock never starts short
         s_knock_seq[s_knock_len++] = BP_LONG;   // buffer the opening LONG (defer home)
+        knock_buzz(1);                          // beat 1 (L) registered
         return;
     }
 
     if (s_knock_len == 1) {                     // have [L]
-        if (p == BP_SHORT) { s_knock_seq[s_knock_len++] = BP_SHORT; return; }  // -> [L,S]
+        if (p == BP_SHORT) { s_knock_seq[s_knock_len++] = BP_SHORT; knock_buzz(1); return; }  // beat 2 (S)
         boot_run_action(BP_LONG);               // [L,L]: first L was just "home"...
         s_knock_seq[0] = BP_LONG; s_knock_len = 1;  // ...restart the knock at this L
+        knock_buzz(1);
         return;
     }
 
     // Buffer holds [L,S].
     if (p == BP_LONG) {                         // [L,S,L] -> KNOCK
         s_knock_len = 0;
+        knock_buzz(2);                          // completed: double buzz
         pin_pad_screen_show();
         return;
     }
@@ -2220,14 +2223,12 @@ void loop()
     screenshot_poll();
 
     // BOOT button (GPIO0, INPUT_PULLUP -> pressed = LOW). Polled duration state
-    // machine: SHORT press = back / Settings-from-clock (do_boot_back_action, the
-    // old behaviour); LONG press (>= BOOT_LONG_MS held) = jump HOME to the clock
-    // from anywhere. The Offense knock (long-short-long -> PIN pad) layers onto
-    // these same edges: a LONG is deferred by KNOCK_GAP_MS in case it is beat one,
-    // so a lone "home" now lands a beat late (see boot_knock_feed). The FALLING ISR
-    // flag is no longer used for actions (we poll for press DURATION), but
-    // attachInterrupt is kept as a possible wake source; clear the flag so it can't
-    // linger.
+    // machine: SHORT press = back / Settings-from-clock (do_boot_back_action);
+    // LONG press (>= BOOT_LONG_MS held) = jump HOME to the clock from anywhere.
+    // The Offense knock (L-S-L) layers onto these edges via boot_knock_feed and
+    // buzzes each accepted beat so it is actually performable. The FALLING ISR flag
+    // is not used for actions (we poll for press DURATION), but attachInterrupt is
+    // kept as a possible wake source; clear the flag so it can't linger.
     back_btn_pressed = false;
     static const uint32_t BOOT_LONG_MS     = 600;   // >= this held = long press
     static const uint32_t BOOT_DEBOUNCE_MS = 40;    // shorter = contact bounce
@@ -2246,23 +2247,22 @@ void loop()
         uint32_t held   = boot_ms - s_boot_down_ms;
         if (held >= BOOT_DEBOUNCE_MS) {                       // else: bounce, ignore
             dim_reset_activity();
-            if (clock_vibrate) instance.vibrator();
             BootPress p = (held >= BOOT_LONG_MS) ? BP_LONG : BP_SHORT;
-            // The knock (L-S-L) opens the Offense PIN pad. Disarm it once Offense
-            // is already unlocked, or while a modal dialog owns the screen; there
-            // the press just runs its ordinary action immediately.
-            bool knock_armed = (argus_mode_current() != ArgusMode::Offense)
-                            && (s_low_mem_dialog == nullptr);
-            if (knock_armed) {
-                boot_knock_feed(p, s_boot_down_ms, boot_ms);   // press-down + release times
+            // The Offense knock (L-S-L) opens the PIN pad. Disarm it in Offense
+            // (already unlocked) or while a modal owns the screen; there a press
+            // just runs its ordinary back/home immediately.
+            bool armed = (argus_mode_current() != ArgusMode::Offense)
+                      && (s_low_mem_dialog == nullptr);
+            if (armed) {
+                boot_knock_feed(p, s_boot_down_ms, boot_ms);   // buzzes each accepted beat
             } else {
-                if (s_knock_len > 0) boot_flush_knock();   // don't strand a partial
+                if (s_knock_len > 0) boot_flush_knock();
+                if (clock_vibrate) instance.vibrator();
                 boot_run_action(p);
             }
         }
     }
-    // Fire a deferred "home" (or a buffered [L,S]) once its knock window goes quiet.
-    boot_knock_poll(boot_ms);
+    boot_knock_poll(boot_ms);   // fire a deferred beat once its gap goes quiet
 
     // Feed NMEA bytes to TinyGPSPlus while the GPS radio is on
     if (gps_screen_is_powered()) {
