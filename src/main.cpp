@@ -2130,8 +2130,8 @@ static void do_boot_back_action()
 enum BootPress { BP_SHORT, BP_LONG };
 static const uint32_t KNOCK_GAP_MS = 700;   // max gap between knock beats (tunable)
 static BootPress s_knock_seq[3];
-static int       s_knock_len     = 0;
-static uint32_t  s_knock_last_ms = 0;
+static int       s_knock_len             = 0;
+static uint32_t  s_knock_last_release_ms = 0;   // when the last buffered beat was released
 
 static void boot_run_action(BootPress p)
 {
@@ -2149,21 +2149,27 @@ static void boot_flush_knock()
 
 // Each loop: if a partial knock has gone quiet past the gap, flush it so a
 // deferred "home" (or a buffered [L,S]) actually happens with no further press.
+// Measured from the last beat's RELEASE, so a lone long fires "home" ~gap later.
 static void boot_knock_poll(uint32_t now)
 {
-    if (s_knock_len > 0 && (now - s_knock_last_ms) > KNOCK_GAP_MS)
+    if (s_knock_len > 0 && (now - s_knock_last_release_ms) > KNOCK_GAP_MS)
         boot_flush_knock();
 }
 
 // Feed one completed, already-classified press into the knock detector and
-// perform the resulting immediate / deferred / knock action.
-static void boot_knock_feed(BootPress p, uint32_t now)
+// perform the resulting immediate / deferred / knock action. The inter-beat gap
+// is measured from the PREVIOUS beat's RELEASE to THIS beat's PRESS-DOWN, NOT
+// release-to-release: a long beat holds ~600ms, so a release-to-release gap made
+// [L,S,L] impossible (the final long's release always landed >gap after the
+// short, flushing [L,S] mid-hold). Press-down timing gives a full gap window to
+// simply START each next beat.
+static void boot_knock_feed(BootPress p, uint32_t press_down_ms, uint32_t release_ms)
 {
     // A stale partial sequence first times out into its normal actions.
-    if (s_knock_len > 0 && (now - s_knock_last_ms) > KNOCK_GAP_MS)
+    if (s_knock_len > 0 && (press_down_ms - s_knock_last_release_ms) > KNOCK_GAP_MS)
         boot_flush_knock();
 
-    s_knock_last_ms = now;
+    s_knock_last_release_ms = release_ms;
 
     if (s_knock_len == 0) {                     // fresh buffer
         if (p == BP_SHORT) { boot_run_action(BP_SHORT); return; }  // knock never starts short
@@ -2248,7 +2254,7 @@ void loop()
             bool knock_armed = (argus_mode_current() != ArgusMode::Offense)
                             && (s_low_mem_dialog == nullptr);
             if (knock_armed) {
-                boot_knock_feed(p, boot_ms);
+                boot_knock_feed(p, s_boot_down_ms, boot_ms);   // press-down + release times
             } else {
                 if (s_knock_len > 0) boot_flush_knock();   // don't strand a partial
                 boot_run_action(p);

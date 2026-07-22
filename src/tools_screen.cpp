@@ -1708,7 +1708,12 @@ void tools_apply_mode()
         ArgusMode tm = tile_mode((const char *)lv_obj_get_user_data(tile));
         bool visible;
         switch (cur) {
-        case ArgusMode::Offense: visible = true;                       break;
+        // Strict separation: Offense shows ONLY offensive tools (no defensive
+        // detectors bleeding in). Defense shows the detectors PLUS the neutral
+        // day-to-day utilities (notify/aprs/usbsd, classified Daily) so they stay
+        // reachable - Daily gates the whole grid, so those have no other home yet.
+        // Where the neutral utilities ultimately live is a redesign decision.
+        case ArgusMode::Offense: visible = (tm == ArgusMode::Offense); break;
         case ArgusMode::Defense: visible = (tm != ArgusMode::Offense); break;
         default:                 visible = false;                      break;  // Daily: hide all (grid is gated anyway)
         }

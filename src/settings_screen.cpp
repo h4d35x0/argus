@@ -13,6 +13,7 @@
 // Defined in main.cpp
 void main_loop_request_lvgl_priority(int cycles);
 void low_mem_show_dialog(const char *msg);   // modal dialog defined in main.cpp
+void clock_screen_show();                    // go home to the watch face
 void clock_screen_set_analog_face(bool analog);
 void clock_screen_set_12h(bool use_12h);
 void clock_screen_set_matrix(bool enabled);
@@ -34,6 +35,8 @@ void clock_screen_get_local_time(struct tm *out);
 #define MANUAL_YEAR_COUNT 41   // 2020 … 2060
 
 static lv_obj_t *settings_screen;
+static lv_obj_t *s_ofs_unlock_btn = nullptr;   // TEMP "Unlock Offense (test)" - shown outside Offense
+static lv_obj_t *s_ofs_exit_btn   = nullptr;   // "Exit Offense" - shown only in Offense
 static lv_obj_t *brightness_slider;
 static lv_obj_t *brightness_val_label;
 static lv_obj_t *sysinfo_label = nullptr;   // System Info readout (bottom of screen)
@@ -1279,22 +1282,40 @@ void settings_screen_create()
     register_shiftable(mode_hint, 2050);
 
     // TEMPORARY fallback entry to the Offense PIN pad. The REAL entry is the hidden
-    // BOOT-button knock (Phase B, long-short-long). Kept here until the knock is
-    // verified working on-wrist - do NOT remove it before then, or a watch with a
-    // non-firing knock has no way into Offense short of an erase+reflash.
-    lv_obj_t *ofs_btn = lv_button_create(settings_screen);
-    lv_obj_set_size(ofs_btn, 380, 44);
-    lv_obj_set_style_bg_color(ofs_btn, lv_color_make(0x2A, 0x1E, 0x10), LV_PART_MAIN);
-    lv_obj_set_style_border_color(ofs_btn, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
-    lv_obj_set_style_border_width(ofs_btn, 1, LV_PART_MAIN);
-    lv_obj_align(ofs_btn, LV_ALIGN_TOP_MID, 0, 2110);
-    register_shiftable(ofs_btn, 2110);
-    lv_obj_t *ofs_lbl = lv_label_create(ofs_btn);
+    // BOOT-button knock (Phase B, long-short-long). Kept until the knock is verified
+    // working on-wrist - do NOT remove it before then, or a watch with a non-firing
+    // knock has no way into Offense short of an erase+reflash. Shown only OUTSIDE
+    // Offense (toggled in settings_screen_show()).
+    s_ofs_unlock_btn = lv_button_create(settings_screen);
+    lv_obj_set_size(s_ofs_unlock_btn, 380, 44);
+    lv_obj_set_style_bg_color(s_ofs_unlock_btn, lv_color_make(0x2A, 0x1E, 0x10), LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_ofs_unlock_btn, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ofs_unlock_btn, 1, LV_PART_MAIN);
+    lv_obj_align(s_ofs_unlock_btn, LV_ALIGN_TOP_MID, 0, 2110);
+    register_shiftable(s_ofs_unlock_btn, 2110);
+    lv_obj_t *ofs_lbl = lv_label_create(s_ofs_unlock_btn);
     lv_obj_set_style_text_font(ofs_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(ofs_lbl, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text(ofs_lbl, "Unlock Offense (test)");
     lv_obj_center(ofs_lbl);
-    lv_obj_add_event_cb(ofs_btn, [](lv_event_t *) { pin_pad_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(s_ofs_unlock_btn, [](lv_event_t *) { pin_pad_screen_show(); }, LV_EVENT_CLICKED, NULL);
+
+    // Exit Offense: the missing counterpart to entering. lock_offense() drops back
+    // to the previous non-offense mode (Daily); we then go home so the innocent
+    // face shows immediately. Shown ONLY while in Offense (toggled in show()).
+    s_ofs_exit_btn = lv_button_create(settings_screen);
+    lv_obj_set_size(s_ofs_exit_btn, 380, 44);
+    lv_obj_set_style_bg_color(s_ofs_exit_btn, lv_color_make(0x2A, 0x1E, 0x10), LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_ofs_exit_btn, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ofs_exit_btn, 1, LV_PART_MAIN);
+    lv_obj_align(s_ofs_exit_btn, LV_ALIGN_TOP_MID, 0, 2110);
+    register_shiftable(s_ofs_exit_btn, 2110);
+    lv_obj_t *exit_lbl = lv_label_create(s_ofs_exit_btn);
+    lv_obj_set_style_text_font(exit_lbl, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(exit_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_label_set_text(exit_lbl, "Exit Offense");
+    lv_obj_center(exit_lbl);
+    lv_obj_add_event_cb(s_ofs_exit_btn, [](lv_event_t *) { lock_offense(); clock_screen_show(); }, LV_EVENT_CLICKED, NULL);
 
     // Reflect the current SD state in the row's interactability + checked
     // state. Boot order matters here — instance.isCardReady() may flip
@@ -1312,6 +1333,14 @@ void settings_screen_show()
 {
     main_loop_request_lvgl_priority(12);
     settings_update_sysinfo();   // snapshot heap/PSRAM/battery/uptime
+
+    // Offense entry vs exit: show exactly one. In Offense you can only leave
+    // (Exit Offense); outside it you can enter (the temporary test unlock).
+    if (s_ofs_unlock_btn && s_ofs_exit_btn) {
+        bool in_offense = (argus_mode_current() == ArgusMode::Offense);
+        lv_obj_add_flag(in_offense ? s_ofs_unlock_btn : s_ofs_exit_btn, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(in_offense ? s_ofs_exit_btn : s_ofs_unlock_btn, LV_OBJ_FLAG_HIDDEN);
+    }
     // Refresh percentage label to match current slider position
     int pct = (int)s_brightness * 100 / (int)DEVICE_MAX_BRIGHTNESS_LEVEL;
     lv_label_set_text_fmt(brightness_val_label, "%d%%", pct);

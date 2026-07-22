@@ -71,14 +71,14 @@ void argus_mode_indicator_init(void)
     lv_obj_set_style_radius(s_mode_chip, 6, LV_PART_MAIN);
     lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_SCROLLABLE);
-    // Position with an ABSOLUTE offset (not lv_obj_align) so there is no align-
-    // resolution ambiguity on the top layer. The display's top corners are
-    // physically rounded and mask any pixels drawn inside the curve: the status
-    // icons clear it by sitting ~70 px inset on the right (TOP_RIGHT, -70, 20), so a
-    // left-corner chip at only 16 px inset near the top was still masked. Drop it
-    // BELOW the top curve (y=72, matching the notify banner's proven clearance) with
-    // a small left inset - fully clear of the curve and of the top-right status row.
-    lv_obj_set_pos(s_mode_chip, 24, 72);
+    // Sit the badge UP IN THE STATUS HEADER ROW (same y as the WiFi/BT/SD/GPS
+    // icons at y~20), on the LEFT half of that row - the status icons live on the
+    // right, this side is empty. Referenced from TOP_MID (screen centre, x~205 on
+    // the 410-wide panel) so it lands well clear of BOTH rounded top corners; the
+    // leftward offset keeps it left of the right-side status chain. NOTE: this is
+    // an lv_layer_top overlay so it shows on every screen's header band - the
+    // redesign will make it a proper clock-only status-row element.
+    lv_obj_align(s_mode_chip, LV_ALIGN_TOP_MID, -120, 16);
     lv_obj_add_flag(s_mode_chip, LV_OBJ_FLAG_HIDDEN);
 
     s_mode_chip_lbl = lv_label_create(s_mode_chip);
