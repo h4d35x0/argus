@@ -3,6 +3,7 @@
 #include <LilyGoLib.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <esp_bt.h>
 #include <SD.h>
 #include "usb_sd.h"
 
@@ -91,14 +92,14 @@ static void make_data_row(lv_obj_t *parent, const char *field, lv_obj_t **val_ou
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *lbl = lv_label_create(row);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(lbl, field);
     lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     lv_obj_t *val = lv_label_create(row);
     lv_obj_set_style_text_color(val, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(val, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(val, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(val, "--");
     lv_obj_align(val, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -189,6 +190,24 @@ static void on_toggle(lv_event_t *)
 {
     wifi_powered = lv_obj_has_state(toggle_sw, LV_STATE_CHECKED);
     if (wifi_powered) {
+        // COEXISTENCE GUARD (must run BEFORE WiFi.mode()): on this board
+        // WiFi.mode(WIFI_STA) HANGS inside the call — never returns, hard-freeze
+        // — when the BLE controller is already up. The low-mem fallback below
+        // only helps when WiFi.mode() RETURNS false; a hang never reaches it. So
+        // check the BLE controller first and refuse cleanly.
+        if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+            wifi_powered = false;
+            lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
+            low_mem_show_dialog(
+                "#ff5555 WiFi COULD NOT START#\n\n"
+                "Bluetooth is using the radio.\n\n"
+                "Turn Bluetooth off (and any\n"
+                "BLE detectors), then turn\n"
+                "WiFi on.");
+            update_status();
+            wifi_save_power(false);
+            return;
+        }
         // STA is the default mode — scanning, evil twin, etc. transition
         // away from it as needed. WiFi.mode() is a no-op if already in
         // that mode, so this is safe to call repeatedly.
@@ -228,7 +247,7 @@ void wifi_radio_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(wifi_screen_root);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "WiFi");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
@@ -244,8 +263,8 @@ void wifi_radio_screen_create()
 
     // Status label (right of toggle)
     status_label = lv_label_create(wifi_screen_root);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 60, 87);
     update_status();
 
@@ -296,23 +315,17 @@ bool wifi_radio_screen_is_powered()
     return wifi_powered;
 }
 
-// Boot-time restore: if /Settings/wifi.txt says the radio was left on, power it
-// back up exactly the way on_toggle does and reflect it on the switch. Must run
-// after the SD card is mounted (instance.begin) and after wifi_radio_screen_create().
+// Boot-time power-on: bring WiFi up the same way on_toggle does and reflect it on
+// the switch. Called from setup() ONLY when the user opted WiFi into "Enable at
+// boot" (boot_prefs), so the enable decision lives in the caller and there is no
+// per-radio file check here. Must run after the SD card is mounted
+// (instance.begin) and after wifi_radio_screen_create().
 void wifi_radio_screen_restore_power()
 {
-    if (!instance.isCardReady() || usb_sd_is_running()) return;
-    if (!SD.exists(WIFI_PATH)) return;
-
-    File f = SD.open(WIFI_PATH, FILE_READ);
-    if (!f) return;
-    char buf[8] = {0};
-    int n = f.readBytesUntil('\n', (uint8_t *)buf, sizeof(buf) - 1);
-    f.close();
-    if (n <= 0) return;
-    buf[n] = '\0';
-
-    if (atoi(buf) != 1) return;   // was off (or garbage); nothing to restore
+    // COEXISTENCE GUARD: never bring WiFi up while the BLE controller is enabled
+    // (WiFi.mode() would hang). At boot BLE is normally down so this is a no-op,
+    // but keep it defensive in case restore runs after something started BLE.
+    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) return;
 
     // Power WiFi on the same way on_toggle does. STA is the default mode.
     WiFi.mode(WIFI_STA);

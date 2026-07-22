@@ -191,6 +191,11 @@ bool flock_check(const uint8_t *mac6, int8_t rssi, const char *name, char source
 }
 
 static bool s_flock_running = false;
+// Which radios actually came up for the current run. Flock asks for both, but
+// this board can only run one at a time, so at most one of these is usually
+// true. Reset to false in flock_stop().
+static bool s_wifi_active = false;
+static bool s_ble_active  = false;
 
 static void flock_beacon_cb(const WifiBeacon *b)
 {
@@ -229,6 +234,8 @@ bool flock_start()
     bool wifi_ok = wifi_beacon_add(flock_beacon_cb);
     bool ble_ok  = ble_scan_add(flock_ble_cb);
     if (!wifi_ok && !ble_ok) return false;
+    s_wifi_active = wifi_ok;
+    s_ble_active  = ble_ok;
     s_flock_running = true;
     return true;
 }
@@ -237,11 +244,16 @@ void flock_stop()
 {
     if (!s_flock_running) return;
     s_flock_running = false;
+    s_wifi_active = false;
+    s_ble_active  = false;
     wifi_beacon_remove(flock_beacon_cb);
     ble_scan_remove(flock_ble_cb);
 }
 
 bool flock_is_running() { return s_flock_running; }
+
+bool flock_wifi_active() { return s_wifi_active; }
+bool flock_ble_active()  { return s_ble_active; }
 
 int flock_get_count() { return s_count; }
 

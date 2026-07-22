@@ -48,14 +48,14 @@ static void update_status()
             lv_obj_set_style_text_color(status_label, lv_color_make(0xFF, 0xAA, 0x00), LV_PART_MAIN);
         } else {
             lv_label_set_text(status_label, "Stopped");
-            lv_obj_set_style_text_color(status_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+            lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
         }
     } else if (!mouse_hid_is_connected()) {
         lv_label_set_text(status_label, "Discoverable - pair \"T-Watch Mouse\"");
         lv_obj_set_style_text_color(status_label, lv_color_make(0xFF, 0xCC, 0x00), LV_PART_MAIN);
     } else {
         lv_label_set_text(status_label, "Connected - drag to move, tap to click");
-        lv_obj_set_style_text_color(status_label, ARGUS_ACCENT, LV_PART_MAIN);
+        lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
     }
 }
 
@@ -151,7 +151,7 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *text,
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
     lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(lbl);
     return btn;
 }
@@ -167,15 +167,15 @@ void mouse_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(mouse_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "MOUSE");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
 
     // Status line
     status_label = lv_label_create(mouse_screen);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(status_label, "Stopped");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 56);
 
@@ -202,8 +202,8 @@ void mouse_screen_create()
     lv_obj_add_event_cb(trackpad, on_trackpad, LV_EVENT_RELEASED, NULL);
 
     hint_label = lv_label_create(trackpad);
-    lv_obj_set_style_text_color(hint_label, lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hint_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hint_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(hint_label, "(not connected)");
     lv_obj_center(hint_label);
 

@@ -135,11 +135,11 @@ static void update_status()
         snprintf(buf, sizeof(buf), "Done   %d ports   %d open",
             portscan_total(), portscan_result_count());
         lv_obj_set_style_text_color(status_label,
-            ARGUS_ACCENT, LV_PART_MAIN);
+            ARGUS_TEXT, LV_PART_MAIN);
     } else {
         snprintf(buf, sizeof(buf), "Tap START");
         lv_obj_set_style_text_color(status_label,
-            lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+            ARGUS_TEXT_DIM, LV_PART_MAIN);
     }
     lv_label_set_text(status_label, buf);
 }
@@ -176,15 +176,15 @@ static void result_row_add(int idx)
     snprintf(hdr, sizeof(hdr), "%u/%s  %s",
              r->port, r->is_udp ? "udp" : "tcp", state_str);
     lv_obj_t *h = lv_label_create(row);
-    lv_obj_set_style_text_font(h, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(h, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(h, state_col, LV_PART_MAIN);
     lv_label_set_text(h, hdr);
 
     if (r->banner[0]) {
         lv_obj_t *b = lv_label_create(row);
         lv_obj_set_width(b, lv_pct(100));
-        lv_obj_set_style_text_font(b, &lv_font_montserrat_14, LV_PART_MAIN);
-        lv_obj_set_style_text_color(b, lv_color_make(0xCC, 0xCC, 0xCC), LV_PART_MAIN);
+        lv_obj_set_style_text_font(b, &font_argus_label_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(b, ARGUS_TEXT, LV_PART_MAIN);
         lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
         lv_label_set_text(b, r->banner);
     }
@@ -338,7 +338,7 @@ static lv_obj_t *make_btn(lv_obj_t *parent, const char *text, int idx,
     lv_obj_t *l = lv_label_create(btn);
     lv_label_set_text(l, text);
     lv_obj_set_style_text_color(l, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(l, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_center(l);
 
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, (void *)(intptr_t)idx);
@@ -357,7 +357,7 @@ void portscan_screen_create()
 
     title_label = lv_label_create(portscan_screen);
     lv_obj_set_style_text_color(title_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(title_label, "");
     lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 10);
 
@@ -390,8 +390,8 @@ void portscan_screen_create()
     lv_obj_add_flag(range_row, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *lo_lbl = lv_label_create(range_row);
-    lv_obj_set_style_text_color(lo_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lo_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lo_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lo_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(lo_lbl, "Lo");
     lv_obj_align(lo_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -401,15 +401,15 @@ void portscan_screen_create()
     lv_textarea_set_accepted_chars(range_lo_ta, "0123456789");
     lv_textarea_set_text(range_lo_ta, "1");
     lv_obj_set_size(range_lo_ta, 100, 36);
-    lv_obj_set_style_text_font(range_lo_ta, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(range_lo_ta, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(range_lo_ta, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(range_lo_ta, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(range_lo_ta, LV_ALIGN_LEFT_MID, 30, 0);
     lv_obj_add_event_cb(range_lo_ta, on_ta_event, LV_EVENT_ALL, NULL);
 
     lv_obj_t *hi_lbl = lv_label_create(range_row);
-    lv_obj_set_style_text_color(hi_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hi_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hi_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hi_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(hi_lbl, "Hi");
     lv_obj_align(hi_lbl, LV_ALIGN_LEFT_MID, 144, 0);
 
@@ -419,7 +419,7 @@ void portscan_screen_create()
     lv_textarea_set_accepted_chars(range_hi_ta, "0123456789");
     lv_textarea_set_text(range_hi_ta, "1024");
     lv_obj_set_size(range_hi_ta, 100, 36);
-    lv_obj_set_style_text_font(range_hi_ta, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(range_hi_ta, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(range_hi_ta, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(range_hi_ta, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(range_hi_ta, LV_ALIGN_LEFT_MID, 176, 0);
@@ -441,14 +441,14 @@ void portscan_screen_create()
 
     start_btn_label = lv_label_create(start_btn);
     lv_obj_set_style_text_color(start_btn_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(start_btn_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(start_btn_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(start_btn_label, "START");
     lv_obj_center(start_btn_label);
 
     // Status line + scrollable result list fill the lower half.
     status_label = lv_label_create(portscan_screen);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(status_label, "Tap START");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 248);
 

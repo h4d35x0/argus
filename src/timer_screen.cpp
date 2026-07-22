@@ -361,7 +361,7 @@ static lv_obj_t *make_preset_chip(lv_obj_t *parent, const char *label,
     lv_obj_t *lbl = lv_label_create(chip);
     lv_label_set_text(lbl, label);
     lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_28, LV_PART_MAIN);
     lv_obj_center(lbl);
 
     lv_obj_add_event_cb(chip, on_preset_btn, LV_EVENT_CLICKED,
@@ -373,7 +373,7 @@ static lv_obj_t *make_preset_chip(lv_obj_t *parent, const char *label,
 // the two timepiece screens feel like siblings.
 static void style_roller(lv_obj_t *r)
 {
-    lv_obj_set_style_text_font(r, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_font(r, &font_argus_label_28, LV_PART_MAIN);
     lv_obj_set_style_bg_color(r, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(r, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_border_color(r, lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
@@ -415,7 +415,7 @@ static void build_idle_panel()
     for (int i = 0; i < 3; i++) {
         lv_obj_t *u = lv_label_create(idle_panel);
         lv_obj_set_style_text_color(u, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(u, &lv_font_montserrat_28, LV_PART_MAIN);
+        lv_obj_set_style_text_font(u, &font_argus_label_28, LV_PART_MAIN);
         lv_label_set_text(u, units[i]);
         lv_obj_align(u, LV_ALIGN_TOP_MID, xs[i], 6);
     }
@@ -510,14 +510,14 @@ static void build_run_panel()
 
     countdown_label = lv_label_create(run_panel);
     lv_obj_set_style_text_color(countdown_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(countdown_label, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_style_text_font(countdown_label, &font_argus_mono_48, LV_PART_MAIN);
     lv_label_set_text(countdown_label, "0:00");
     lv_obj_align(countdown_label, LV_ALIGN_TOP_MID, 0, 110);
 
     total_hint_label = lv_label_create(run_panel);
     lv_obj_set_style_text_color(total_hint_label,
-        lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
-    lv_obj_set_style_text_font(total_hint_label, &lv_font_montserrat_16, LV_PART_MAIN);
+        ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(total_hint_label, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(total_hint_label, "");
     lv_obj_align(total_hint_label, LV_ALIGN_TOP_MID, 0, 170);
 }
@@ -541,7 +541,7 @@ static void build_expired_panel()
     lv_obj_add_flag(expired_panel, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *title = lv_label_create(expired_panel);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TIME'S UP");
     lv_obj_align(title, LV_ALIGN_CENTER, 0, -40);
@@ -566,7 +566,7 @@ void timer_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(timer_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TIMER");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);

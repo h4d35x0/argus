@@ -98,7 +98,7 @@ static void refresh_cell(int idx)
         lv_label_set_text(cell_bat[idx],   "");
         lv_label_set_text(cell_age[idx],   "");
         lv_obj_set_style_bg_color(cell[idx], lv_color_make(0x1A, 0x1A, 0x1A), LV_PART_MAIN);
-        lv_obj_set_style_text_color(cell_press[idx], lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
+        lv_obj_set_style_text_color(cell_press[idx], ARGUS_TEXT_DIM, LV_PART_MAIN);
         return;
     }
 
@@ -185,7 +185,7 @@ static void on_update(lv_timer_t *)
             snprintf(buf, sizeof(buf), "Scanning  %drx/%dcrc", rx, crc);
         }
         lv_label_set_text(status_label, buf);
-        lv_obj_set_style_text_color(status_label, ARGUS_ACCENT, LV_PART_MAIN);
+        lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
     } else if (lora_screen_is_powered()) {
         lv_label_set_text(status_label, "Radio in use by LoRa");
         lv_obj_set_style_text_color(status_label, lv_color_make(0xFF, 0xAA, 0x00), LV_PART_MAIN);
@@ -196,7 +196,7 @@ static void on_update(lv_timer_t *)
         lv_obj_set_style_text_color(status_label, lv_color_make(0xFF, 0x44, 0x44), LV_PART_MAIN);
     } else {
         lv_label_set_text(status_label, "Scanner off");
-        lv_obj_set_style_text_color(status_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+        lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     }
 
     update_start_button();
@@ -257,7 +257,7 @@ static lv_obj_t *make_btn(lv_obj_t *parent, const char *text, lv_coord_t x, lv_c
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
     lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(lbl);
 
     return btn;
@@ -282,35 +282,35 @@ static void make_cell(lv_obj_t *parent, int idx, lv_coord_t x, lv_coord_t y)
 
     // Wheel position label (FL / FR / RL / RR)
     lv_obj_t *pos_lbl = lv_label_create(c);
-    lv_obj_set_style_text_color(pos_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(pos_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(pos_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(pos_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(pos_lbl, WHEEL_LABEL[idx]);
     lv_obj_align(pos_lbl, LV_ALIGN_TOP_MID, 0, 2);
 
     // Sensor ID (small, below position label)
     cell_id[idx] = lv_label_create(c);
-    lv_obj_set_style_text_color(cell_id[idx], lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
+    lv_obj_set_style_text_color(cell_id[idx], ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_obj_set_style_text_font(cell_id[idx], &lv_font_montserrat_14, LV_PART_MAIN);
     lv_label_set_text(cell_id[idx], "");
     lv_obj_align(cell_id[idx], LV_ALIGN_TOP_MID, 0, 20);
 
     // Pressure value (large — dropped one size to fit the shorter tile).
     cell_press[idx] = lv_label_create(c);
-    lv_obj_set_style_text_color(cell_press[idx], lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
+    lv_obj_set_style_text_color(cell_press[idx], ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_obj_set_style_text_font(cell_press[idx], &lv_font_montserrat_36, LV_PART_MAIN);
     lv_label_set_text(cell_press[idx], "--");
     lv_obj_align(cell_press[idx], LV_ALIGN_TOP_MID, 0, 36);
 
     // PSI unit label (below pressure)
     cell_unit[idx] = lv_label_create(c);
-    lv_obj_set_style_text_color(cell_unit[idx], lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+    lv_obj_set_style_text_color(cell_unit[idx], ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_obj_set_style_text_font(cell_unit[idx], &lv_font_montserrat_14, LV_PART_MAIN);
     lv_label_set_text(cell_unit[idx], "PSI");
     lv_obj_align(cell_unit[idx], LV_ALIGN_TOP_MID, 0, 74);
 
     // Temperature
     cell_temp[idx] = lv_label_create(c);
-    lv_obj_set_style_text_color(cell_temp[idx], lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
+    lv_obj_set_style_text_color(cell_temp[idx], ARGUS_TEXT, LV_PART_MAIN);
     lv_obj_set_style_text_font(cell_temp[idx], &lv_font_montserrat_16, LV_PART_MAIN);
     lv_label_set_text(cell_temp[idx], "--");
     lv_obj_align(cell_temp[idx], LV_ALIGN_TOP_MID, -22, 92);
@@ -323,7 +323,7 @@ static void make_cell(lv_obj_t *parent, int idx, lv_coord_t x, lv_coord_t y)
 
     // Age indicator (bottom-right corner)
     cell_age[idx] = lv_label_create(c);
-    lv_obj_set_style_text_color(cell_age[idx], lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
+    lv_obj_set_style_text_color(cell_age[idx], ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_obj_set_style_text_font(cell_age[idx], &lv_font_montserrat_14, LV_PART_MAIN);
     lv_label_set_text(cell_age[idx], "");
     lv_obj_align(cell_age[idx], LV_ALIGN_BOTTOM_RIGHT, -4, -2);
@@ -340,7 +340,7 @@ void tpms_screen_create()
     // Title — sized to match the SETTINGS screen header so the two read
     // as siblings at the same hierarchy.
     lv_obj_t *title = lv_label_create(tpms_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TPMS");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
@@ -359,8 +359,8 @@ void tpms_screen_create()
 
     // Status line — sits just below the single button row (ends y=102).
     status_label = lv_label_create(tpms_screen);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(status_label, "Scanner off");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 110);
 

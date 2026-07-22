@@ -15,12 +15,39 @@
 #include "usb_sd_screen.h"
 #include "aprs_screen.h"
 #include "wifi_screen.h"
+#include "notifications_screen.h"
 #include "analyze_screen.h"
+#include "ble_scan_manager.h"
 #include <LilyGoLib.h>
+#include <SD.h>
 
 // Defined in main.cpp
 void clock_screen_show();
 void main_loop_request_lvgl_priority(int cycles);
+void low_mem_show_dialog(const char *msg);
+
+// A detector refused to start because the other radio owns the internal SRAM —
+// on this board WiFi and the BLE controller cannot run at the same time. Tell
+// the user which radio to free instead of leaving a tile stuck gray.
+//   is_ble_feature = true  -> needs Bluetooth, blocked by WiFi  ("turn WiFi off")
+//   is_ble_feature = false -> needs WiFi, blocked by Bluetooth  ("turn BT off")
+static void show_radio_conflict_dialog(bool is_ble_feature)
+{
+    if (is_ble_feature)
+        low_mem_show_dialog(
+            "#ff5555 CAN'T START#\n\n"
+            "This uses Bluetooth, which\n"
+            "can't run while WiFi is on.\n\n"
+            "Turn WiFi off, then\n"
+            "try again.");
+    else
+        low_mem_show_dialog(
+            "#ff5555 CAN'T START#\n\n"
+            "This uses WiFi, which can't\n"
+            "run while Bluetooth is on.\n\n"
+            "Turn Bluetooth off (and BLE\n"
+            "detectors), then try again.");
+}
 
 static lv_obj_t *tools_screen;
 static lv_obj_t *tools_title;   // repainted on show() so it flips to HADES red under threat
@@ -30,6 +57,19 @@ static lv_obj_t *t_skimmer;   // referenced by on_skimmer_clicked for colour swa
 static lv_obj_t *t_eviltwin;  // referenced by on_eviltwin_clicked for colour swap
 static lv_obj_t *t_flock;     // referenced by on_flock_clicked for colour swap
 static lv_obj_t *t_handshake; // referenced by on_handshake_clicked for colour swap
+static lv_obj_t *tools_grid;  // the flex container holding the tiles
+
+// --- Rearrangeable Tools grid ------------------------------------------------
+// Every tile carries a STABLE string key in its user_data (independent of the
+// display label) so a saved order survives label / firmware changes. A long
+// press lifts a tile into "drag" mode; sliding the finger over another tile
+// re-flows the grid live via lv_obj_move_to_index; releasing saves the new
+// order to the SD card, one key per line.
+#define TOOLS_ORDER_PATH "/Settings/tools_order.txt"
+
+static lv_obj_t *s_drag_tile      = nullptr;  // tile currently being dragged
+static bool      s_drag_active    = false;    // a long-press drag is in progress
+static bool      s_suppress_click = false;    // swallow the CLICKED that follows a drag
 
 static void on_gesture(lv_event_t *e)
 {
@@ -37,6 +77,16 @@ static void on_gesture(lv_event_t *e)
     lv_dir_t dir = lv_indev_get_gesture_dir(indev);
     if (dir == LV_DIR_TOP)
         clock_screen_show();
+}
+
+// Keep LVGL prioritized while the grid is actively scrolling so the momentum
+// animation stays smooth. Each scroll step tops up the priority window (the main
+// loop then skips background ticks / pauses matrix until scrolling settles).
+// Without this, the 12-cycle window from tools_screen_show() runs out mid-flick
+// and per-iteration background work stutters the scroll ("lags behind").
+static void on_grid_scroll(lv_event_t *)
+{
+    main_loop_request_lvgl_priority(8);
 }
 
 static void set_airtag_tile_running(bool running)
@@ -54,7 +104,8 @@ static void on_airtag_clicked(lv_event_t *e)
         set_airtag_tile_running(false);
     } else {
         bool ok = airtag_start();
-        set_airtag_tile_running(ok);   // stays gray if BT init failed
+        if (!ok) show_radio_conflict_dialog(true);  // BLE feature blocked by WiFi
+        set_airtag_tile_running(ok);   // stays gray if it couldn't start
     }
 }
 
@@ -73,7 +124,8 @@ static void on_flipper_clicked(lv_event_t *e)
         set_flipper_tile_running(false);
     } else {
         bool ok = flipper_start();
-        set_flipper_tile_running(ok);   // stays gray if BT init failed
+        if (!ok) show_radio_conflict_dialog(true);  // BLE feature blocked by WiFi
+        set_flipper_tile_running(ok);   // stays gray if it couldn't start
     }
 }
 
@@ -92,7 +144,8 @@ static void on_skimmer_clicked(lv_event_t *e)
         set_skimmer_tile_running(false);
     } else {
         bool ok = skimmer_start();
-        set_skimmer_tile_running(ok);   // stays gray if BT init failed
+        if (!ok) show_radio_conflict_dialog(true);  // BLE feature blocked by WiFi
+        set_skimmer_tile_running(ok);   // stays gray if it couldn't start
     }
 }
 
@@ -111,6 +164,7 @@ static void on_eviltwin_clicked(lv_event_t *e)
         set_eviltwin_tile_running(false);
     } else {
         bool ok = evil_twin_start();
+        if (!ok) show_radio_conflict_dialog(false);  // WiFi feature blocked by BT
         set_eviltwin_tile_running(ok);
     }
 }
@@ -129,7 +183,38 @@ static void on_flock_clicked(lv_event_t *e)
         flock_stop();
         set_flock_tile_running(false);
     } else {
+        // Flock wants BOTH WiFi and BLE, but this board can only run one radio
+        // at a time, so flock_start() comes up on whichever radio is free and
+        // returns true. It only returns false if NEITHER could start (both
+        // consumer tables full / odd state) — surface that rather than a dead
+        // tile. (Degraded single-radio coverage is a known limitation; see the
+        // Flock coexistence note.)
         bool ok = flock_start();
+        if (!ok) {
+            low_mem_show_dialog(
+                "#ff5555 FLOCK CAN'T START#\n\n"
+                "No radio is free right now.\n\n"
+                "Turn off other detectors,\n"
+                "then try again.");
+        } else if (flock_wifi_active() && !flock_ble_active()) {
+            // Came up WiFi-only. Green tile would imply full coverage, so tell
+            // the user BLE surveillance detection is dark. Informational, not
+            // an error -- the WiFi half is running fine.
+            low_mem_show_dialog(
+                "#33bbff FLOCK: WiFi ONLY#\n\n"
+                "Running on WiFi. BLE\n"
+                "surveillance detection needs\n"
+                "Bluetooth, which can't run\n"
+                "while WiFi is on.");
+        } else if (flock_ble_active() && !flock_wifi_active()) {
+            // Mirror of the above: BLE came up, WiFi half is dark.
+            low_mem_show_dialog(
+                "#33bbff FLOCK: BLE ONLY#\n\n"
+                "Running on Bluetooth. WiFi\n"
+                "surveillance detection needs\n"
+                "WiFi, which can't run while\n"
+                "Bluetooth is on.");
+        }
         set_flock_tile_running(ok);
     }
 }
@@ -142,22 +227,48 @@ static lv_obj_t *make_tile(lv_obj_t *parent, const char *label_text)
 {
     lv_obj_t *tile = lv_obj_create(parent);
     lv_obj_set_size(tile, 180, 180);
-    lv_obj_set_style_bg_color(tile, lv_color_make(0x11, 0x11, 0x11), LV_PART_MAIN);
+    // ARGUS tile face: dark vertical gradient + steel-blue rounded rim, so the
+    // premium look lives here (one place, every tile) and the HD glyph sprites stay
+    // transparent (glyph + neon glow only). Matches tools/gen_icon_sprites.py.
+    lv_obj_set_style_bg_color(tile, lv_color_make(0x16, 0x1E, 0x28), LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_color(tile, lv_color_make(0x0D, 0x13, 0x1B), LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(tile, LV_GRAD_DIR_VER, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(tile, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-    lv_obj_set_style_border_width(tile, 1, LV_PART_MAIN);
-    lv_obj_set_style_radius(tile, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_color(tile, ARGUS_ACCENT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(tile, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(tile, 20, LV_PART_MAIN);
     lv_obj_set_style_pad_all(tile, 0, LV_PART_MAIN);
     lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *lbl = lv_label_create(tile);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0xCC, 0xCC, 0xCC), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);   // Orbitron (brand label)
     lv_label_set_text(lbl, label_text);
     lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -12);
 
     return tile;
+}
+
+// Put the HD sprite /Icons/<name>.png on a tile if it exists on the SD card,
+// otherwise fall back to the procedural draw_*_icon(). The sprites are the
+// ARGUS HD icon set (tools/gen_icon_sprites.py -> transparent glyph + glow);
+// the fallback keeps every tile working when the card lacks the /Icons folder, so
+// dropping the art on the card is a pure visual upgrade with no firmware risk.
+// Same pattern as the HexHound pet sprite (pup_icon.png).
+static void tile_icon(lv_obj_t *tile, const char *name, void (*fallback)(lv_obj_t *))
+{
+    char sdpath[40];
+    snprintf(sdpath, sizeof(sdpath), "/Icons/%s.png", name);
+    if (SD.exists(sdpath)) {
+        char lvpath[44];
+        snprintf(lvpath, sizeof(lvpath), "A:/Icons/%s.png", name);
+        lv_obj_t *img = lv_image_create(tile);
+        lv_image_set_src(img, lvpath);
+        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 8);   // glyph area above the label
+    } else {
+        fallback(tile);
+    }
 }
 
 // Upper-left: WiFi — signal glyph in cyan, for the site-survey / ping-sweep tool
@@ -168,6 +279,16 @@ static void draw_wifi_icon(lv_obj_t *tile)
     lv_obj_set_style_text_font(wifi, &lv_font_montserrat_48, LV_PART_MAIN);
     lv_label_set_text(wifi, LV_SYMBOL_WIFI);
     lv_obj_align(wifi, LV_ALIGN_TOP_MID, 0, 44);
+}
+
+// Notify tile: a bell glyph in amber, for the phone-notification mirror screen.
+static void draw_notify_icon(lv_obj_t *tile)
+{
+    lv_obj_t *bell = lv_label_create(tile);
+    lv_obj_set_style_text_color(bell, lv_color_make(0xF0, 0xB4, 0x30), LV_PART_MAIN);
+    lv_obj_set_style_text_font(bell, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_label_set_text(bell, LV_SYMBOL_BELL);
+    lv_obj_align(bell, LV_ALIGN_TOP_MID, 0, 44);
 }
 
 // Analyze — spectrum-analyzer logo: a row of vertical bars at varying heights
@@ -339,7 +460,7 @@ static void draw_skimmer_icon(lv_obj_t *tile)
     lv_obj_align(badge, LV_ALIGN_TOP_RIGHT, -8, 26);
 
     lv_obj_t *bang = lv_label_create(badge);
-    lv_obj_set_style_text_font(bang, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(bang, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(bang, lv_color_white(), LV_PART_MAIN);
     lv_label_set_text(bang, "!");
     lv_obj_center(bang);
@@ -591,7 +712,7 @@ static void draw_pager_icon(lv_obj_t *tile)
     lv_obj_t *lcd = lv_obj_create(tile);
     lv_obj_set_size(lcd, 96, 30);
     lv_obj_set_style_radius(lcd, 2, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(lcd, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(lcd, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);  // 13-37 green LCD (user: use theirs)
     lv_obj_set_style_bg_opa(lcd, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_color(lcd, lv_color_make(0x00, 0x77, 0x33), LV_PART_MAIN);
     lv_obj_set_style_border_width(lcd, 1, LV_PART_MAIN);
@@ -896,6 +1017,7 @@ static void on_handshake_clicked(lv_event_t *)
         set_handshake_tile_running(false);
     } else {
         bool ok = handshake_start();
+        if (!ok) show_radio_conflict_dialog(false);  // WiFi feature blocked by BT
         set_handshake_tile_running(ok);
     }
 }
@@ -944,82 +1066,15 @@ static void draw_radar_icon(lv_obj_t *tile)
 // snout) in ARGUS steel-blue, matching the pet screen's creature.
 static void draw_pet_icon(lv_obj_t *tile)
 {
-    lv_color_t hide = ARGUS_ACCENT;                       // steel-blue head
-    lv_color_t dark = lv_color_make(0x0A, 0x10, 0x16);    // pupils / nose
-    lv_color_t eye  = lv_color_make(0xF0, 0xF4, 0xF8);    // bright scanners
-
-    // Ears — two squares rotated 45deg poking up behind the skull.
-    for (int i = 0; i < 2; i++) {
-        lv_obj_t *ear = lv_obj_create(tile);
-        lv_obj_set_size(ear, 32, 32);
-        lv_obj_set_style_radius(ear, 3, LV_PART_MAIN);
-        lv_obj_set_style_bg_color(ear, hide, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(ear, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(ear, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(ear, 0, LV_PART_MAIN);
-        lv_obj_set_style_transform_pivot_x(ear, 16, LV_PART_MAIN);
-        lv_obj_set_style_transform_pivot_y(ear, 16, LV_PART_MAIN);
-        lv_obj_set_style_transform_rotation(ear, 450, LV_PART_MAIN);
-        lv_obj_clear_flag(ear, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(ear, LV_ALIGN_TOP_MID, i == 0 ? -34 : 34, 22);
-    }
-
-    // Skull — angular head plate.
-    lv_obj_t *skull = lv_obj_create(tile);
-    lv_obj_set_size(skull, 96, 82);
-    lv_obj_set_style_radius(skull, 16, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(skull, hide, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(skull, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(skull, ARGUS_ACCENT_ACTIVE, LV_PART_MAIN);
-    lv_obj_set_style_border_width(skull, 2, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(skull, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(skull, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(skull, LV_ALIGN_TOP_MID, 0, 34);
-
-    // Snout jutting down from the skull.
-    lv_obj_t *snout = lv_obj_create(tile);
-    lv_obj_set_size(snout, 44, 34);
-    lv_obj_set_style_radius(snout, 10, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(snout, hide, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(snout, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(snout, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(snout, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(snout, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(snout, LV_ALIGN_TOP_MID, 0, 104);
-
-    // Eyes — two bright scanners with dark pupils.
-    for (int i = 0; i < 2; i++) {
-        lv_obj_t *e = lv_obj_create(tile);
-        lv_obj_set_size(e, 24, 18);
-        lv_obj_set_style_radius(e, 7, LV_PART_MAIN);
-        lv_obj_set_style_bg_color(e, eye, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(e, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(e, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(e, 0, LV_PART_MAIN);
-        lv_obj_clear_flag(e, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(e, LV_ALIGN_TOP_MID, i == 0 ? -22 : 22, 58);
-
-        lv_obj_t *pupil = lv_obj_create(e);
-        lv_obj_set_size(pupil, 10, 12);
-        lv_obj_set_style_radius(pupil, 5, LV_PART_MAIN);
-        lv_obj_set_style_bg_color(pupil, dark, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(pupil, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(pupil, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(pupil, 0, LV_PART_MAIN);
-        lv_obj_clear_flag(pupil, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_center(pupil);
-    }
-
-    // Nose — dark tip on the snout.
-    lv_obj_t *nose = lv_obj_create(tile);
-    lv_obj_set_size(nose, 16, 10);
-    lv_obj_set_style_radius(nose, 5, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(nose, dark, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(nose, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(nose, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(nose, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(nose, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(nose, LV_ALIGN_TOP_MID, 0, 110);
+    // Packet Pup sprite (SD /HexHound/pup_icon.png), matching the HexHound pet's
+    // remastered art. Decodes lazily on the first Tools-screen view, when the SD
+    // card is mounted; a missing card just leaves the icon blank (the "HexHound"
+    // label still shows). The EVENT_BUBBLE flag added to every tile child in
+    // tools_screen_create() makes a tap on the image reach the tile handler.
+    lv_obj_t *img = lv_image_create(tile);
+    lv_image_set_src(img, "A:/HexHound/pup_icon.png");
+    lv_obj_clear_flag(img, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 10);
 }
 
 // Handshake capture — signal rings with a captured packet dropping out (orange).
@@ -1049,6 +1104,137 @@ static void draw_handshake_icon(lv_obj_t *tile)
     lv_obj_align(pkt, LV_ALIGN_TOP_MID, 0, 124);
 }
 
+// Write the current tile order (top-to-bottom, left-to-right) to SD, one stable
+// key per line. Same SD guard pattern the settings / detector code uses.
+static void tools_order_save()
+{
+    if (!instance.isCardReady()) return;
+    if (!SD.exists("/Settings")) SD.mkdir("/Settings");
+    File f = SD.open(TOOLS_ORDER_PATH, FILE_WRITE);   // FILE_WRITE = "w" (truncate)
+    if (!f) return;
+    if (tools_grid) {
+        uint32_t n = lv_obj_get_child_count(tools_grid);
+        for (uint32_t i = 0; i < n; i++) {
+            lv_obj_t *tile = lv_obj_get_child(tools_grid, i);
+            const char *key = (const char *)lv_obj_get_user_data(tile);
+            if (key) f.printf("%s\n", key);
+        }
+    }
+    f.close();
+}
+
+// Reorder the freshly-created tiles to match a saved order (if any). Walk the
+// saved keys in order, pulling each matching tile to the front in turn. Tiles
+// whose key is absent from the file (e.g. added in a later firmware) keep their
+// relative position after the restored ones, so the grid never loses a tile.
+static void tools_order_load(lv_obj_t *grid)
+{
+    if (!instance.isCardReady()) return;
+    if (!SD.exists(TOOLS_ORDER_PATH)) return;
+    File f = SD.open(TOOLS_ORDER_PATH, FILE_READ);
+    if (!f) return;
+    uint32_t target = 0;
+    while (f.available()) {
+        String line = f.readStringUntil('\n');
+        line.trim();
+        if (line.length() == 0) continue;
+        uint32_t n = lv_obj_get_child_count(grid);
+        for (uint32_t i = 0; i < n; i++) {
+            lv_obj_t *tile = lv_obj_get_child(grid, i);
+            const char *key = (const char *)lv_obj_get_user_data(tile);
+            if (key && line.equals(key)) {
+                lv_obj_move_to_index(tile, (int32_t)target);
+                target++;
+                break;
+            }
+        }
+    }
+    f.close();
+}
+
+// A tile that was just dragged also emits LV_EVENT_CLICKED on release (LVGL
+// fires CLICKED even after a long press). This guard is registered BEFORE each
+// tile's real action callback, so on release it runs first and stops the event
+// when a drag armed the suppressor -- a drag never triggers the tile feature. A
+// plain short tap leaves s_suppress_click false, so the action fires normally.
+static void tile_click_guard(lv_event_t *e)
+{
+    if (s_suppress_click) {
+        s_suppress_click = false;
+        lv_event_stop_processing(e);
+    }
+}
+
+// Fresh press: clear any stale suppressor left by a drag that released between
+// slots (no CLICKED followed to consume it), so a later real tap is never eaten.
+static void tile_pressed(lv_event_t *)
+{
+    s_suppress_click = false;
+}
+
+// Long press lifts the tile into drag mode: highlight its border and freeze
+// grid scrolling so vertical finger motion reorders instead of scrolling. We do
+// NOT move it to the foreground -- that would change its flex child index and
+// jump it to the end of the grid.
+static void tile_long_pressed(lv_event_t *e)
+{
+    lv_obj_t *tile = (lv_obj_t *)lv_event_get_current_target(e);
+    s_drag_tile   = tile;
+    s_drag_active = true;
+    lv_obj_set_style_border_color(tile, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_border_width(tile, 3, LV_PART_MAIN);
+    if (tools_grid) lv_obj_clear_flag(tools_grid, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+// While dragging, whichever tile the finger is over becomes the drop target:
+// move the dragged tile to that slot so the flex grid re-flows live.
+static void tile_pressing(lv_event_t *e)
+{
+    if (!s_drag_active || !s_drag_tile || !tools_grid) return;
+    lv_indev_t *indev = lv_event_get_indev(e);
+    if (!indev) return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    uint32_t n = lv_obj_get_child_count(tools_grid);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_obj_t *cand = lv_obj_get_child(tools_grid, i);
+        if (cand == s_drag_tile) continue;
+        lv_area_t a;
+        lv_obj_get_coords(cand, &a);
+        if (p.x >= a.x1 && p.x <= a.x2 && p.y >= a.y1 && p.y <= a.y2) {
+            lv_obj_move_to_index(s_drag_tile, (int32_t)lv_obj_get_index(cand));
+            break;
+        }
+    }
+}
+
+// Shared drag teardown: restore the resting border (make_tile defaults),
+// re-enable grid scrolling, and persist the new order. arm_suppress is true on
+// a normal release (a CLICKED is coming and must be swallowed) and false on a
+// lost press (no CLICKED will follow, so leaving the suppressor armed would eat
+// the next genuine tap).
+static void tile_drag_finish(lv_obj_t *tile, bool arm_suppress)
+{
+    if (!s_drag_active) return;
+    s_drag_active = false;
+    lv_obj_set_style_border_color(tile, ARGUS_ACCENT_DIM, LV_PART_MAIN);   // make_tile resting rim
+    lv_obj_set_style_border_width(tile, 2, LV_PART_MAIN);
+    if (tools_grid) lv_obj_add_flag(tools_grid, LV_OBJ_FLAG_SCROLLABLE);
+    s_drag_tile = nullptr;
+    if (arm_suppress) s_suppress_click = true;
+    tools_order_save();
+}
+
+static void tile_released(lv_event_t *e)
+{
+    tile_drag_finish((lv_obj_t *)lv_event_get_current_target(e), true);
+}
+
+static void tile_press_lost(lv_event_t *e)
+{
+    tile_drag_finish((lv_obj_t *)lv_event_get_current_target(e), false);
+}
+
 void tools_screen_create()
 {
     tools_screen = lv_obj_create(NULL);
@@ -1058,7 +1244,7 @@ void tools_screen_create()
     // Title
     tools_title = lv_label_create(tools_screen);
     lv_obj_set_style_text_color(tools_title, argus_accent(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(tools_title, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tools_title, &font_argus_label_28, LV_PART_MAIN);
     lv_label_set_text(tools_title, "TOOLS");
     lv_obj_align(tools_title, LV_ALIGN_TOP_MID, 0, 8);
 
@@ -1081,51 +1267,92 @@ void tools_screen_create()
         LV_FLEX_ALIGN_SPACE_EVENLY,
         LV_FLEX_ALIGN_START,
         LV_FLEX_ALIGN_START);
+    tools_grid = grid;   // remembered for save() and the drag handlers
 
-    // Insertion order maps to row-major (grid wraps every 2 tiles):
-    //   [WiFi]      [Analyze]
-    //   [Mouse]     [USB SD]
-    //   [Pager]     [TPMS]
-    //   [LoRa APRS] [Tesla CP]
-    //   [AirTag]    [Flipper]
-    //   [Skimmers]  [Evil Twin]
-    //   [Flock]
-    // The timepiece tiles (Alarm / Stopwatch / Timer / Calendar) used to live
-    // at the bottom of this grid; they moved to the TIME screen (swipe up
-    // from the clock face).
+    // DEFAULT tile order (insertion order maps to row-major, grid wraps every 2):
+    // grouped by purpose, most safety-relevant first. Users can long-press-drag
+    // to reorder; that is persisted to tools_order.txt and overrides this default
+    // (via tools_order_load below). This block is only the first-run layout.
+    //   Defense / anti-surveillance:  Radar, AirTag, Flock, Skimmers, Flipper
+    //   WiFi recon:                   WiFi, Analyze, Evil Twin, Pwn
+    //   Daily / comms:                Notify, Pager, LoRa APRS, HexHound
+    //   Peripheral tools:             Mouse, USB SD, TPMS, Tesla CP
+    // The timepiece tiles (Alarm / Stopwatch / Timer / Calendar) live on the TIME
+    // screen (swipe up from the clock face), not here.
+    lv_obj_t *t_radar   = make_tile(grid, "Radar");
+    t_airtag            = make_tile(grid, "AirTag");
+    t_flock             = make_tile(grid, "Flock");
+    t_skimmer           = make_tile(grid, "Skimmers");
+    t_flipper           = make_tile(grid, "Flipper");
     lv_obj_t *t_wifi    = make_tile(grid, "WiFi");
     lv_obj_t *t_analyze = make_tile(grid, "Analyze");
+    t_eviltwin          = make_tile(grid, "Evil Twin");
+    t_handshake         = make_tile(grid, "Pwn");
+    lv_obj_t *t_notify  = make_tile(grid, "Notify");
+    lv_obj_t *t_pager   = make_tile(grid, "Pager");
+    lv_obj_t *t_aprs    = make_tile(grid, "LoRa APRS");
+    lv_obj_t *t_pet     = make_tile(grid, "HexHound");
     lv_obj_t *t_mouse   = make_tile(grid, "Mouse");
     lv_obj_t *t_usbsd   = make_tile(grid, "USB SD");
-    lv_obj_t *t_pager   = make_tile(grid, "Pager");
     lv_obj_t *t_tpms    = make_tile(grid, "TPMS");
-    lv_obj_t *t_aprs    = make_tile(grid, "LoRa APRS");
     lv_obj_t *t_tesla   = make_tile(grid, "Tesla CP");
-    t_airtag            = make_tile(grid, "AirTag");
-    t_flipper           = make_tile(grid, "Flipper");
-    t_skimmer           = make_tile(grid, "Skimmers");
-    t_eviltwin          = make_tile(grid, "Evil Twin");
-    t_flock             = make_tile(grid, "Flock");
-    lv_obj_t *t_radar   = make_tile(grid, "Radar");
-    lv_obj_t *t_pet     = make_tile(grid, "HexHound");
-    t_handshake         = make_tile(grid, "Pwn");
 
-    draw_wifi_icon(t_wifi);
-    draw_analyzer_icon(t_analyze);
-    draw_mouse_icon(t_mouse);
-    draw_microsd_icon(t_usbsd);
-    draw_pager_icon(t_pager);
-    draw_tpms_icon(t_tpms);
-    draw_aprs_icon(t_aprs);
-    draw_tesla_cp_icon(t_tesla);
-    draw_airtag_icon(t_airtag);
-    draw_flipper_icon(t_flipper);
-    draw_skimmer_icon(t_skimmer);
-    draw_eviltwin_icon(t_eviltwin);
-    draw_flock_icon(t_flock);
-    draw_radar_icon(t_radar);
-    draw_pet_icon(t_pet);
-    draw_handshake_icon(t_handshake);
+    // ARGUS HD sprites from SD /Icons/<name>.png, procedural draw_*_icon as
+    // fallback. Pager uses the procedural icon on purpose (the 13-37 gadget); Flipper
+    // and HexHound keep their existing image icons.
+    tile_icon(t_wifi,     "wifi",     draw_wifi_icon);
+    tile_icon(t_analyze,  "analyzer", draw_analyzer_icon);
+    tile_icon(t_mouse,    "mouse",    draw_mouse_icon);
+    tile_icon(t_usbsd,    "microsd",  draw_microsd_icon);
+    draw_pager_icon(t_pager);                                   // 13-37 procedural pager
+    tile_icon(t_tpms,     "tpms",     draw_tpms_icon);
+    tile_icon(t_aprs,     "aprs",     draw_aprs_icon);
+    tile_icon(t_tesla,    "tesla",    draw_tesla_cp_icon);
+    tile_icon(t_airtag,   "airtag",   draw_airtag_icon);
+    draw_flipper_icon(t_flipper);                               // keep 13-37 Flipper logo
+    tile_icon(t_skimmer,  "skimmer",  draw_skimmer_icon);
+    tile_icon(t_eviltwin, "eviltwin", draw_eviltwin_icon);
+    tile_icon(t_flock,    "flock",    draw_flock_icon);
+    tile_icon(t_radar,    "radar",    draw_radar_icon);
+    draw_pet_icon(t_pet);                                       // keep HexHound HD sprite
+    tile_icon(t_handshake, "pwn",     draw_handshake_icon);
+    tile_icon(t_notify,   "notify",   draw_notify_icon);
+
+    // --- Rearrangeable-grid wiring ---------------------------------------
+    // Give every tile a STABLE key (independent of its label) and attach the
+    // long-press drag handlers. The CLICKED "guard" is registered HERE, before
+    // each tile's real action callback below, so on release it runs first and
+    // can swallow the click that a drag would otherwise trigger. Keys are the
+    // stable identifiers written to /Settings/tools_order.txt.
+    struct TileKey { lv_obj_t *tile; const char *key; };
+    const TileKey tile_keys[] = {
+        { t_wifi,     "wifi"      },
+        { t_analyze,  "analyze"   },
+        { t_mouse,    "mouse"     },
+        { t_usbsd,    "usbsd"     },
+        { t_pager,    "pager"     },
+        { t_tpms,     "tpms"      },
+        { t_aprs,     "aprs"      },
+        { t_tesla,    "tesla"     },
+        { t_airtag,   "airtag"    },
+        { t_flipper,  "flipper"   },
+        { t_skimmer,  "skimmer"   },
+        { t_eviltwin, "eviltwin"  },
+        { t_flock,    "flock"     },
+        { t_radar,    "radar"     },
+        { t_pet,      "pet"       },
+        { t_handshake,"handshake" },
+        { t_notify,   "notify"    },
+    };
+    for (auto &tk : tile_keys) {
+        lv_obj_set_user_data(tk.tile, (void *)tk.key);
+        lv_obj_add_event_cb(tk.tile, tile_pressed,      LV_EVENT_PRESSED,      NULL);
+        lv_obj_add_event_cb(tk.tile, tile_click_guard,  LV_EVENT_CLICKED,      NULL);
+        lv_obj_add_event_cb(tk.tile, tile_long_pressed, LV_EVENT_LONG_PRESSED, NULL);
+        lv_obj_add_event_cb(tk.tile, tile_pressing,     LV_EVENT_PRESSING,     NULL);
+        lv_obj_add_event_cb(tk.tile, tile_released,     LV_EVENT_RELEASED,     NULL);
+        lv_obj_add_event_cb(tk.tile, tile_press_lost,   LV_EVENT_PRESS_LOST,   NULL);
+    }
 
     // Tesla CP tile opens the 315 MHz charge-port-open transmit screen.
     lv_obj_add_event_cb(t_tesla, [](lv_event_t *) { tesla_cp_screen_show(); }, LV_EVENT_CLICKED, NULL);
@@ -1180,6 +1407,9 @@ void tools_screen_create()
     // Analyze tile opens the WiFi channel utilisation visualisation.
     lv_obj_add_event_cb(t_analyze, [](lv_event_t *) { analyze_screen_show(); }, LV_EVENT_CLICKED, NULL);
 
+    // Notify tile opens the phone-notification mirror (ANCS today; Gadgetbridge later).
+    lv_obj_add_event_cb(t_notify, [](lv_event_t *) { notifications_screen_show(); }, LV_EVENT_CLICKED, NULL);
+
     // lv_obj_create() creates objects with LV_OBJ_FLAG_CLICKABLE set by
     // default, so the icon shapes inside each tile would otherwise swallow
     // CLICKED events instead of letting them reach the tile. Walk every tile
@@ -1195,7 +1425,16 @@ void tools_screen_create()
         }
     }
 
+    // Restore the user's saved tile order now that every tile has its key.
+#ifndef SCREENSHOT_AUTO
+    tools_order_load(grid);
+#else
+    // The screenshot-capture build ignores any saved order so the grid always
+    // renders the true default layout for the README, regardless of SD state.
+#endif
+
     lv_obj_add_event_cb(tools_screen, on_gesture, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(grid, on_grid_scroll, LV_EVENT_SCROLL, NULL);   // smooth-scroll priority
 }
 
 void tools_screen_show()

@@ -17,6 +17,11 @@ void clock_screen_get_local_time(struct tm *out);
 #include "evil_twin.h"
 #include "counter_tail.h"
 
+// Generic modal dialog (message + OK button), defined in main.cpp. Named for the
+// low-mem warning it was first written for, but it takes an arbitrary message, so
+// the wardriver reuses it to explain WHY Start is unavailable (missing GPS/SD/radio).
+void low_mem_show_dialog(const char *msg);
+
 void clock_screen_show();
 
 // ─── Configuration ─────────────────────────────────────────────
@@ -24,7 +29,13 @@ void clock_screen_show();
 // reached, wardriver_bg_tick() rolls to a new CSV file and clears the table
 // so capture continues without dropping packets.
 #define WD_MAX_APS    10000
-#define WD_BUCKETS    32768 // power-of-2, load factor ≤ 0.5 at WD_MAX_APS
+// 13-37 used 32768 buckets (~4.5 MB PSRAM for ap_table). ARGUS added a 2 MB LVGL
+// image cache that 13-37 does not have, so that 4.5 MB alloc now fails on this
+// build (heap_caps_calloc returns NULL -> start_wardriving() returned false and
+// the Start button silently flashed STOP then reverted). 16384 buckets is ~2.36 MB
+// and fits ARGUS's remaining PSRAM; load factor at WD_MAX_APS is 0.61, fine for the
+// linear-probing table. This is the root-cause fix for "Wardriver won't start".
+#define WD_BUCKETS    16384 // power-of-2, load factor ~0.61 at WD_MAX_APS
 #define WD_QUEUE_LEN  256
 #define WD_FLUSH_MS   30000 // rewrite CSV every 30 s
 
@@ -351,11 +362,19 @@ static void roll_session() {
 }
 
 // ─── Start / stop ──────────────────────────────────────────────
+// Reason the last start_wardriving() failed, shown to the user by on_start_stop
+// instead of a silent flash-then-revert. NULL when the last start succeeded.
+static const char *s_wd_start_err = nullptr;
+
 static bool start_wardriving() {
+    s_wd_start_err = nullptr;
     if (!ap_table) {
         ap_table = (ApRecord *)heap_caps_calloc(
             WD_BUCKETS, sizeof(ApRecord), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (!ap_table) return false;
+        if (!ap_table) {
+            s_wd_start_err = "Out of memory.\nClose other tools, then retry.";
+            return false;
+        }
     }
     wifi_count = 0;
     bt_count   = 0;
@@ -378,6 +397,7 @@ static bool start_wardriving() {
         if (!wifi_beacon_add(wd_beacon_cb)) {
             // WiFi init failed — clean up and bail
             if (wd_bt_en && bt_ready) { ble_scan_remove(ble_gap_cb); bt_ready = false; }
+            s_wd_start_err = "WiFi could not start.\nIf Bluetooth is on, turn it\noff first (radios share memory).";
             return false;
         }
     }
@@ -425,6 +445,27 @@ static void on_bt_toggle(lv_event_t *) {
 // ─── Button ────────────────────────────────────────────────────
 static void on_start_stop(lv_event_t *) {
     if (!is_running) {
+        // Readiness gate lives here (not on the widget) so a tap while not-ready
+        // tells the user exactly what's missing instead of a silent dead press.
+        // Wardriving geolocates every capture, so a GPS lock and an SD card to log
+        // to are both required, plus at least one radio to scan.
+        bool gps_ok   = gps_screen_has_lock();
+        bool sd_ok    = instance.isCardReady();
+        bool radio_ok = wd_wifi_en || wd_bt_en;
+        if (!(gps_ok && sd_ok && radio_ok)) {
+            char msg[160];
+            snprintf(msg, sizeof(msg),
+                     "WARDRIVE NEEDS:\n"
+                     "%s GPS lock\n"
+                     "%s SD card\n"
+                     "%s WiFi or BT on",
+                     gps_ok   ? "#00CC44 " LV_SYMBOL_OK "#" : "#FF3333 " LV_SYMBOL_CLOSE "#",
+                     sd_ok    ? "#00CC44 " LV_SYMBOL_OK "#" : "#FF3333 " LV_SYMBOL_CLOSE "#",
+                     radio_ok ? "#00CC44 " LV_SYMBOL_OK "#" : "#FF3333 " LV_SYMBOL_CLOSE "#");
+            low_mem_show_dialog(msg);
+            return;
+        }
+
         // wifi_beacon_add() inside start_wardriving()
         // can block the main loop for ~1 s. Flip the UI to STOP *before*
         // we go into that blocking call (and force a flush) so the user
@@ -436,14 +477,21 @@ static void on_start_stop(lv_event_t *) {
         lv_refr_now(NULL);
 
         if (!start_wardriving()) {
-            // Memory alloc failed - undo the optimistic UI flip.
+            // Start failed (PSRAM alloc or WiFi bring-up) - undo the optimistic UI
+            // flip AND tell the user why, instead of a silent flash-back to START.
             lv_obj_set_style_bg_color(start_btn, lv_color_make(0x00, 0xCC, 0x44), LV_PART_MAIN);
             lv_label_set_text(start_btn_label, "START");
             lv_obj_clear_state(wifi_toggle_sw, LV_STATE_DISABLED);
             lv_obj_clear_state(bt_toggle_sw,   LV_STATE_DISABLED);
+            low_mem_show_dialog(s_wd_start_err ? s_wd_start_err
+                                               : "Wardrive could not start.");
         }
     } else {
-        stop_wardriving();
+        // Flip the UI back to START *first* (before the teardown), exactly like the
+        // start path flips to STOP first. stop_wardriving() does a final SD flush and
+        // WiFi.mode(WIFI_OFF), which can block the main loop briefly; doing it before
+        // the label update made the STOP tap look ignored ("doesn't stop when
+        // pressed"). Now the button responds instantly, then teardown runs.
         lv_obj_clear_state(wifi_toggle_sw, LV_STATE_DISABLED);
         lv_obj_clear_state(bt_toggle_sw,   LV_STATE_DISABLED);
         bool gps_ok = gps_screen_has_lock();
@@ -452,9 +500,9 @@ static void on_start_stop(lv_event_t *) {
         lv_obj_set_style_bg_color(start_btn,
             ready ? lv_color_make(0x00, 0xCC, 0x44)
                   : lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-        if (ready) lv_obj_add_flag(start_btn, LV_OBJ_FLAG_CLICKABLE);
-        else       lv_obj_clear_flag(start_btn, LV_OBJ_FLAG_CLICKABLE);
         lv_label_set_text(start_btn_label, "START");
+        lv_refr_now(NULL);        // paint START before the (possibly blocking) teardown
+        stop_wardriving();
     }
 }
 
@@ -479,8 +527,8 @@ static void make_status_row(lv_obj_t *screen, const char *field,
     lv_obj_align(row, LV_ALIGN_TOP_MID, 0, y);
 
     lv_obj_t *lbl = lv_label_create(row);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(lbl, field);
     lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -505,8 +553,8 @@ static void make_toggle_row(lv_obj_t *screen, const char *field,
     lv_obj_align(row, LV_ALIGN_TOP_MID, 0, y);
 
     lv_obj_t *lbl = lv_label_create(row);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(lbl, field);
     lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -534,7 +582,7 @@ void wardriver_screen_create()
     lv_obj_add_event_cb(wardriver_screen, on_gesture, LV_EVENT_GESTURE, NULL);
 
     lv_obj_t *title = lv_label_create(wardriver_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "WARDRIVER");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 25);
@@ -549,8 +597,8 @@ void wardriver_screen_create()
     lv_obj_add_event_cb(bt_toggle_sw,   on_bt_toggle,   LV_EVENT_VALUE_CHANGED, NULL);
 
     device_count_label = lv_label_create(wardriver_screen);
-    lv_obj_set_style_text_color(device_count_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(device_count_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(device_count_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(device_count_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(device_count_label, "WiFi: 0  BT: 0");
     lv_obj_align(device_count_label, LV_ALIGN_TOP_MID, 0, 340);
 
@@ -560,12 +608,15 @@ void wardriver_screen_create()
     lv_obj_set_style_bg_color(start_btn, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
     lv_obj_set_style_radius(start_btn, 12, LV_PART_MAIN);
     lv_obj_set_style_border_width(start_btn, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(start_btn, LV_OBJ_FLAG_CLICKABLE);
+    // Button is ALWAYS clickable: the readiness gate lives in the action
+    // (on_start_stop), not the widget, so a tap while not-ready explains what's
+    // missing instead of silently doing nothing. The grey/green fill is a visual
+    // affordance only.
     lv_obj_add_event_cb(start_btn, on_start_stop, LV_EVENT_CLICKED, NULL);
 
     start_btn_label = lv_label_create(start_btn);
     lv_obj_set_style_text_color(start_btn_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(start_btn_label, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_obj_set_style_text_font(start_btn_label, &font_argus_label_48, LV_PART_MAIN);
     lv_label_set_text(start_btn_label, "START");
     lv_obj_center(start_btn_label);
 }
@@ -635,11 +686,11 @@ void wardriver_screen_update()
 
     if (!is_running) {
         bool ready = gps_ok && sd_ok && (wd_wifi_en || wd_bt_en);
+        // Grey when not ready, green when ready — a hint, not a lock. The button
+        // stays tappable so the user gets a reason dialog (see on_start_stop).
         lv_obj_set_style_bg_color(start_btn,
             ready ? lv_color_make(0x00, 0xCC, 0x44)
                   : lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-        if (ready) lv_obj_add_flag(start_btn, LV_OBJ_FLAG_CLICKABLE);
-        else       lv_obj_clear_flag(start_btn, LV_OBJ_FLAG_CLICKABLE);
         lv_label_set_text(start_btn_label, "START");
     }
 

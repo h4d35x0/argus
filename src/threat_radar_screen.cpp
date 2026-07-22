@@ -70,15 +70,15 @@ static void add_row(const TrThreat *t)
     // Metrics: distance travelled alongside, dwell minutes, waypoint count.
     lv_obj_t *m = lv_label_create(row);
     lv_obj_set_style_text_font(m, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(m, lv_color_make(0xCC, 0xCC, 0xCC), LV_PART_MAIN);
+    lv_obj_set_style_text_color(m, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text_fmt(m, LV_SYMBOL_GPS " %u m  ·  %u min  ·  %u pts",
         (unsigned)t->span_m, (unsigned)t->span_min, (unsigned)t->waypoints);
     lv_obj_align(m, LV_ALIGN_TOP_LEFT, 8, 30);
 
     // Footer: first-seen time, proximity (RSSI), MAC tail.
     lv_obj_t *f = lv_label_create(row);
-    lv_obj_set_style_text_font(f, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(f, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+    lv_obj_set_style_text_font(f, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(f, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text_fmt(f, "first %s  ·  %d dBm  ·  ..%02X:%02X:%02X",
         t->first_time, (int)t->best_rssi, t->mac[3], t->mac[4], t->mac[5]);
     lv_obj_align(f, LV_ALIGN_TOP_LEFT, 8, 54);
@@ -116,8 +116,8 @@ static void refresh()
 
     if (n == 0) {
         lv_obj_t *empty = lv_label_create(s_list);
-        lv_obj_set_style_text_font(empty, &lv_font_montserrat_16, LV_PART_MAIN);
-        lv_obj_set_style_text_color(empty, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
+        lv_obj_set_style_text_font(empty, &font_argus_label_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(empty, ARGUS_TEXT_DIM, LV_PART_MAIN);
         lv_label_set_text(empty,
             "No co-moving devices.\n\n"
             "Trackers seen at a single spot\n"
@@ -165,7 +165,7 @@ void threat_radar_screen_create()
     // a tail is flagged (repainted each refresh() below) and returns to calm
     // steel-blue when clear.
     s_title = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_title, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_title, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_title, argus_accent(), LV_PART_MAIN);
     lv_label_set_text(s_title, "THREAT RADAR");
     lv_obj_align(s_title, LV_ALIGN_TOP_MID, 0, 28);
@@ -179,7 +179,7 @@ void threat_radar_screen_create()
     lv_obj_clear_flag(s_banner, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(s_banner, LV_ALIGN_TOP_MID, 0, 58);
     s_banner_lbl = lv_label_create(s_banner);
-    lv_obj_set_style_text_font(s_banner_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_banner_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_banner_lbl, lv_color_white(), LV_PART_MAIN);
     lv_obj_center(s_banner_lbl);
 
@@ -209,7 +209,7 @@ void threat_radar_screen_create()
     lv_obj_add_event_cb(clr, on_clear, LV_EVENT_CLICKED, NULL);
     lv_obj_t *clr_lbl = lv_label_create(clr);
     lv_obj_set_style_text_font(clr_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(clr_lbl, lv_color_make(0xCC, 0xCC, 0xCC), LV_PART_MAIN);
+    lv_obj_set_style_text_color(clr_lbl, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text(clr_lbl, LV_SYMBOL_TRASH "  CLEAR");
     lv_obj_center(clr_lbl);
     lv_obj_add_flag(clr_lbl, LV_OBJ_FLAG_EVENT_BUBBLE);   // tap on label reaches the button

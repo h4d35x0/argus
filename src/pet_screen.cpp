@@ -14,19 +14,17 @@
 
 // ── HexHound — LVGL renderer ─────────────────────────────────────
 //
-// The HexHound is drawn from LVGL primitives (no image assets): an angular
-// "cyber-hound" head — hexagon-ish skull, pointed ears, a snout, and two eyes —
-// sitting inside a set of sonar rings that pulse as it sweeps the airwaves. Mood
-// recolours the head and eyes (calm steel-blue / bright when excited / HADES-red
-// when a threat is confirmed). Everything below reads engine state through the
-// hexhound_*() accessors; no game logic lives here.
+// The HexHound is a per-stage HD sprite loaded from the SD card
+// (/HexHound/<stage>.png: egg / pup / beast / gremlin / sentinel), centered in a
+// bobbing container inside a set of sonar rings that pulse as it sweeps the
+// airwaves. The rings recolour by mood (calm steel-blue / HADES-red on a
+// confirmed threat) as the at-a-glance threat cue. Everything below reads engine
+// state through the hexhound_*() accessors; no game logic lives here.
 
 static lv_obj_t  *s_screen    = nullptr;
 static lv_obj_t  *s_dog       = nullptr;   // container bobbed by the idle anim
-static lv_obj_t  *s_skull     = nullptr;   // recoloured by mood
-static lv_obj_t  *s_snout     = nullptr;
-static lv_obj_t  *s_eye[2]    = { nullptr, nullptr };
-static lv_obj_t  *s_ear[2]    = { nullptr, nullptr };
+static lv_obj_t  *s_sprite    = nullptr;   // per-stage HD sprite image
+static uint8_t    s_sprite_stage = 0xFF;   // stage whose sprite is loaded (0xFF=none)
 static lv_obj_t  *s_ring[3]   = { nullptr, nullptr, nullptr };  // sonar sweep
 static lv_obj_t  *s_stage_lbl = nullptr;
 static lv_obj_t  *s_ability   = nullptr;
@@ -59,34 +57,40 @@ static void pet_wifi_cb(const WifiBeacon *b)
     if (b) hexhound_note_wifi(b->bssid);   // feed distinct-AP XP
 }
 
+// Point the sprite at this stage's SD asset. Only reloads (re-decodes) when the
+// stage actually changes, so refresh() can call it every tick cheaply. LVGL
+// mounts the SD card as drive "A" (same as the wallpaper in background.cpp).
+static void update_sprite(uint8_t stage)
+{
+    if (!s_sprite || stage == s_sprite_stage) return;
+    s_sprite_stage = stage;
+    const char *path;
+    switch (stage) {
+        case HEX_PUP:      path = "A:/HexHound/pup.png";      break;
+        case HEX_BEAST:    path = "A:/HexHound/beast.png";    break;
+        case HEX_GREMLIN:  path = "A:/HexHound/gremlin.png";  break;
+        case HEX_SENTINEL: path = "A:/HexHound/sentinel.png"; break;
+        case HEX_EGG:
+        default:           path = "A:/HexHound/egg.png";      break;
+    }
+    lv_image_set_src(s_sprite, NULL);   // force reload even if the pointer repeats
+    lv_image_set_src(s_sprite, path);
+    lv_obj_center(s_sprite);
+}
+
 static void refresh()
 {
     const HexHoundState &st = hexhound_state();
     lv_color_t accent = mood_color(st.mood);
 
-    // Head + facial features track mood.
-    lv_obj_set_style_bg_color(s_skull, accent, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_snout, accent, LV_PART_MAIN);
-    for (int i = 0; i < 2; i++) {
-        lv_obj_set_style_bg_color(s_ear[i], accent, LV_PART_MAIN);
-        // Eyes glow the alert colour on threat, else a warm off-white.
-        lv_obj_set_style_bg_color(s_eye[i],
-            st.mood == HEX_WARY ? HADES_RED : lv_color_make(0xF0, 0xF4, 0xF8),
-            LV_PART_MAIN);
-    }
+    // Swap to this stage's HD sprite (no-op unless the stage changed).
+    update_sprite(st.stage);
+
+    // Sonar rings track mood: calm steel-blue, or HADES-red on a confirmed
+    // threat. With the creature now a fixed sprite, the rings are the pet's
+    // at-a-glance mood/threat cue.
     for (int i = 0; i < 3; i++)
         lv_obj_set_style_border_color(s_ring[i], accent, LV_PART_MAIN);
-
-    // Egg hides the face; the hound only shows once hatched.
-    bool egg = (st.stage == HEX_EGG);
-    for (int i = 0; i < 2; i++) {
-        egg ? lv_obj_add_flag(s_eye[i], LV_OBJ_FLAG_HIDDEN)
-            : lv_obj_clear_flag(s_eye[i], LV_OBJ_FLAG_HIDDEN);
-        egg ? lv_obj_add_flag(s_ear[i], LV_OBJ_FLAG_HIDDEN)
-            : lv_obj_clear_flag(s_ear[i], LV_OBJ_FLAG_HIDDEN);
-    }
-    egg ? lv_obj_add_flag(s_snout, LV_OBJ_FLAG_HIDDEN)
-        : lv_obj_clear_flag(s_snout, LV_OBJ_FLAG_HIDDEN);
 
     lv_label_set_text(s_stage_lbl, hexhound_stage_name());
     lv_obj_set_style_text_color(s_stage_lbl, accent, LV_PART_MAIN);
@@ -167,16 +171,6 @@ static lv_obj_t *box(lv_obj_t *parent, int w, int h, int radius, lv_color_t c)
     return o;
 }
 
-// A square rotated 45deg — an angular ear / cyber facet.
-static lv_obj_t *diamond(lv_obj_t *parent, int s, lv_color_t c)
-{
-    lv_obj_t *o = box(parent, s, s, 3, c);
-    lv_obj_set_style_transform_pivot_x(o, s / 2, LV_PART_MAIN);
-    lv_obj_set_style_transform_pivot_y(o, s / 2, LV_PART_MAIN);
-    lv_obj_set_style_transform_rotation(o, 450, LV_PART_MAIN);   // 45.0 deg
-    return o;
-}
-
 static lv_obj_t *ring(lv_obj_t *parent, int d, lv_color_t c)
 {
     lv_obj_t *o = lv_obj_create(parent);
@@ -202,8 +196,8 @@ void pet_screen_create()
 
     // Title.
     lv_obj_t *name = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(name, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(name, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(name, &font_argus_label_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(name, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text(name, "HEXHOUND");
     lv_obj_align(name, LV_ALIGN_TOP_MID, 0, 20);
 
@@ -214,65 +208,45 @@ void pet_screen_create()
         lv_obj_align(s_ring[i], LV_ALIGN_CENTER, 0, -74);
     }
 
-    // The hound — a container so the whole head bobs as one.
+    // The pet — a container so the whole sprite bobs as one.
     s_dog = lv_obj_create(s_screen);
-    lv_obj_set_size(s_dog, 200, 170);
+    lv_obj_set_size(s_dog, 200, 200);
     lv_obj_set_style_bg_opa(s_dog, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(s_dog, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(s_dog, 0, LV_PART_MAIN);
     lv_obj_clear_flag(s_dog, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(s_dog, LV_ALIGN_CENTER, 0, -74);
 
-    // Ears — angular diamonds poking up behind the skull.
-    s_ear[0] = diamond(s_dog, 46, ARGUS_ACCENT);
-    lv_obj_align(s_ear[0], LV_ALIGN_CENTER, -44, -46);
-    s_ear[1] = diamond(s_dog, 46, ARGUS_ACCENT);
-    lv_obj_align(s_ear[1], LV_ALIGN_CENTER, 44, -46);
-
-    // Skull — angular head (small radius reads as a cyber hexagon-ish plate).
-    s_skull = box(s_dog, 132, 112, 18, ARGUS_ACCENT);
-    lv_obj_align(s_skull, LV_ALIGN_CENTER, 0, -6);
-
-    // Snout — a shorter block jutting down from the skull.
-    s_snout = box(s_dog, 58, 46, 12, ARGUS_ACCENT);
-    lv_obj_align(s_snout, LV_ALIGN_CENTER, 0, 58);
-
-    // Nose (fixed dark tip on the snout).
-    lv_obj_t *nose = box(s_dog, 20, 14, 6, lv_color_make(0x0A, 0x10, 0x16));
-    lv_obj_align(nose, LV_ALIGN_CENTER, 0, 66);
-
-    // Eyes — two bright scanners on the skull, with dark pupils.
-    for (int i = 0; i < 2; i++) {
-        s_eye[i] = box(s_dog, 30, 22, 8, lv_color_make(0xF0, 0xF4, 0xF8));
-        lv_obj_align(s_eye[i], LV_ALIGN_CENTER, i == 0 ? -30 : 30, -8);
-        lv_obj_t *pupil = box(s_eye[i], 12, 14, 6, lv_color_make(0x0A, 0x10, 0x16));
-        lv_obj_center(pupil);
-    }
+    // Per-stage HD sprite (SD /HexHound/<stage>.png), transparent so it floats
+    // over the sonar rings. The source is set per stage by update_sprite() in
+    // refresh(); a missing card/asset just leaves it blank (no crash).
+    s_sprite = lv_image_create(s_dog);
+    lv_obj_center(s_sprite);
 
     // Speech line.
     s_speech = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_speech, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_speech, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_speech, ARGUS_ACCENT_ACTIVE, LV_PART_MAIN);
     lv_label_set_text(s_speech, "...tick... incubating...");
     lv_obj_align(s_speech, LV_ALIGN_CENTER, 0, 66);
 
     // Stage name + ability.
     s_stage_lbl = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_stage_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_stage_lbl, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_stage_lbl, &font_argus_label_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_stage_lbl, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text(s_stage_lbl, "Egg");
     lv_obj_align(s_stage_lbl, LV_ALIGN_CENTER, 0, 92);
 
     s_ability = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_ability, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_ability, ARGUS_ACCENT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_ability, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_ability, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(s_ability, "INCUBATING");
     lv_obj_align(s_ability, LV_ALIGN_CENTER, 0, 116);
 
     // Level + XP-into-stage bar.
     s_lvl = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_lvl, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_lvl, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_lvl, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_lvl, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text(s_lvl, "LVL 1");
     lv_obj_align(s_lvl, LV_ALIGN_CENTER, -150, 138);
 
@@ -286,15 +260,15 @@ void pet_screen_create()
 
     // Stats line.
     s_stats = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_stats, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_stats, ARGUS_ACCENT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_stats, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_stats, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_obj_set_style_text_align(s_stats, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(s_stats, "HUN 0   ENR 0   BND 0   PWND 0\nPEERS 0      XP 0");
     lv_obj_align(s_stats, LV_ALIGN_CENTER, 0, 176);
 
     // Evolution banner (hidden until an evolution fires).
     s_banner = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_banner, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_banner, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_banner, ARGUS_ACCENT_ACTIVE, LV_PART_MAIN);
     lv_label_set_text(s_banner, "");
     lv_obj_align(s_banner, LV_ALIGN_TOP_MID, 0, 48);

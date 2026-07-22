@@ -1,12 +1,14 @@
 #include "settings_screen.h"
 #include "theme.h"
 #include "usb_sd.h"
+#include "boot_prefs.h"
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <time.h>
 
 // Defined in main.cpp
 void main_loop_request_lvgl_priority(int cycles);
+void low_mem_show_dialog(const char *msg);   // modal dialog defined in main.cpp
 void clock_screen_set_analog_face(bool analog);
 void clock_screen_set_12h(bool use_12h);
 void clock_screen_set_matrix(bool enabled);
@@ -62,6 +64,18 @@ static lv_obj_t *screenshot_row;
 static lv_obj_t *screenshot_switch;
 static lv_obj_t *screenshot_val_label;
 static lv_obj_t *screenshot_hint;
+// "Enable at boot" per-radio opt-in toggles. Each writes its flag to
+// /Settings/boot_radios.txt via boot_prefs (NOT to settings.txt). No Bluetooth
+// toggle: the BLE controller must never be brought up at boot (it boot-loops
+// the watch), so BT is manual-only and has no boot pref.
+static lv_obj_t *boot_wifi_switch;
+static lv_obj_t *boot_wifi_val_label;
+static lv_obj_t *boot_ble_switch;
+static lv_obj_t *boot_ble_val_label;
+static lv_obj_t *boot_lora_switch;
+static lv_obj_t *boot_lora_val_label;
+static lv_obj_t *boot_gps_switch;
+static lv_obj_t *boot_gps_val_label;
 static lv_obj_t *year_roller;
 static lv_obj_t *month_roller;
 static lv_obj_t *day_roller;
@@ -92,7 +106,13 @@ static bool g_loading = false;
 // register_shiftable entries with base_y >= this also pick up the
 // MANUAL_HIDDEN_SHIFT when the switch is off.
 #define MANUAL_SECTION_TOP  (900)
-#define MAX_SHIFTABLE      32
+// Must exceed the TOTAL number of register_shiftable*() entries created at
+// runtime. Note the 5 manual-time rollers each register twice (header + roller),
+// so the runtime count (~35+) is higher than the call-site count. If this cap is
+// too low the LAST rows registered (the "Enable at boot" section, added last)
+// silently fail to register and miss the manual-time -230px shift, leaving a big
+// dead gap between WiFi and the rows below it. 64 gives generous headroom.
+#define MAX_SHIFTABLE      64
 
 struct ShiftableRow { lv_obj_t *obj; int base_x; int base_y; };
 static ShiftableRow s_shiftable[MAX_SHIFTABLE];
@@ -326,8 +346,8 @@ static lv_obj_t *make_time_roller(const char *header, const char *opts,
                                   lv_coord_t x_off, lv_coord_t y, lv_coord_t w)
 {
     lv_obj_t *hl = lv_label_create(settings_screen);
-    lv_obj_set_style_text_color(hl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hl, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(hl, header);
     lv_obj_align(hl, LV_ALIGN_TOP_MID, x_off, y);
     register_shiftable_xy(hl, x_off, y);
@@ -339,7 +359,7 @@ static lv_obj_t *make_time_roller(const char *header, const char *opts,
     lv_obj_set_width(r, w);
     lv_obj_set_style_bg_color(r, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(r, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(r, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(r, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_border_color(r, lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
     lv_obj_set_style_border_width(r, 1, LV_PART_MAIN);
     lv_obj_set_style_bg_color(r, lv_color_make(0x00, 0x55, 0x33), LV_PART_SELECTED);
@@ -382,6 +402,108 @@ static void on_set_time_clicked(lv_event_t *e)
     settings_save_to_sd();
 }
 
+// ---- "Enable at boot" toggle callbacks ------------------------------------
+// Each toggle persists its per-radio opt-in flag to /Settings/boot_radios.txt
+// via boot_prefs. These do NOT touch settings.txt, so they intentionally do not
+// call settings_save_to_sd().
+
+static void on_boot_wifi_changed(lv_event_t *e)
+{
+    bool on = lv_obj_has_state(boot_wifi_switch, LV_STATE_CHECKED);
+    // WiFi and BLE cannot both auto-enable (they can't run together). If BLE is
+    // already the chosen boot radio, refuse and tell the user rather than
+    // silently overriding their earlier choice.
+    if (on && boot_prefs_get(BOOT_RADIO_BLE)) {
+        lv_obj_clear_state(boot_wifi_switch, LV_STATE_CHECKED);
+        lv_label_set_text(boot_wifi_val_label, "Off");
+        low_mem_show_dialog(
+            "#ffcc33 ONE RADIO AT BOOT#\n\n"
+            "WiFi and Bluetooth cannot\n"
+            "both auto-enable at boot.\n\n"
+            "Turn Bluetooth off here\n"
+            "first, then enable WiFi.");
+        return;
+    }
+    lv_label_set_text(boot_wifi_val_label, on ? "On" : "Off");
+    boot_prefs_set(BOOT_RADIO_WIFI, on);
+}
+
+static void on_boot_ble_changed(lv_event_t *e)
+{
+    bool on = lv_obj_has_state(boot_ble_switch, LV_STATE_CHECKED);
+    // Symmetric mutual exclusion with WiFi (see on_boot_wifi_changed).
+    if (on && boot_prefs_get(BOOT_RADIO_WIFI)) {
+        lv_obj_clear_state(boot_ble_switch, LV_STATE_CHECKED);
+        lv_label_set_text(boot_ble_val_label, "Off");
+        low_mem_show_dialog(
+            "#ffcc33 ONE RADIO AT BOOT#\n\n"
+            "WiFi and Bluetooth cannot\n"
+            "both auto-enable at boot.\n\n"
+            "Turn WiFi off here first,\n"
+            "then enable Bluetooth.");
+        return;
+    }
+    lv_label_set_text(boot_ble_val_label, on ? "On" : "Off");
+    boot_prefs_set(BOOT_RADIO_BLE, on);
+}
+
+static void on_boot_lora_changed(lv_event_t *e)
+{
+    bool on = lv_obj_has_state(boot_lora_switch, LV_STATE_CHECKED);
+    lv_label_set_text(boot_lora_val_label, on ? "On" : "Off");
+    boot_prefs_set(BOOT_RADIO_LORA, on);
+}
+
+static void on_boot_gps_changed(lv_event_t *e)
+{
+    bool on = lv_obj_has_state(boot_gps_switch, LV_STATE_CHECKED);
+    lv_label_set_text(boot_gps_val_label, on ? "On" : "Off");
+    boot_prefs_set(BOOT_RADIO_GPS, on);
+}
+
+// Creates one "Enable at boot" row (left label + On/Off state label + toggle),
+// styled exactly like the Matrix BG row. The checked state is seeded BEFORE the
+// callback is wired so seeding never fires a spurious save. The row is
+// registered shiftable so the face / manual-time reflows move it as a unit.
+// Returns the switch; the state label is written to *val_out.
+static lv_obj_t *make_boot_row(const char *label, int y, bool checked,
+                               lv_event_cb_t cb, lv_obj_t **val_out)
+{
+    lv_obj_t *row = lv_obj_create(settings_screen);
+    lv_obj_set_size(row, 380, 40);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, y);
+    register_shiftable(row, y);
+
+    lv_obj_t *lbl = lv_label_create(row);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
+    lv_label_set_text(lbl, label);
+    lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_t *val = lv_label_create(row);
+    lv_obj_set_style_text_color(val, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(val, &font_argus_label_20, LV_PART_MAIN);
+    lv_label_set_text(val, checked ? "On" : "Off");
+    lv_obj_align(val, LV_ALIGN_RIGHT_MID, -80, 0);
+
+    lv_obj_t *sw = lv_switch_create(row);
+    lv_obj_set_size(sw, 70, 34);
+    lv_obj_set_style_bg_color(sw, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(sw, ARGUS_ACCENT, LV_PART_MAIN | LV_STATE_CHECKED);
+    // Seed state before wiring the callback so the seed doesn't re-save the
+    // value we just read out of boot_prefs.
+    if (checked) lv_obj_add_state(sw, LV_STATE_CHECKED);
+    lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_align(sw, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    *val_out = val;
+    return sw;
+}
+
 void settings_screen_create()
 {
     settings_screen = lv_obj_create(NULL);
@@ -393,7 +515,7 @@ void settings_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(settings_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "SETTINGS");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
@@ -408,14 +530,14 @@ void settings_screen_create()
     lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 110);
 
     lv_obj_t *lbl = lv_label_create(row);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(lbl, "Brightness");
     lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     brightness_val_label = lv_label_create(row);
     lv_obj_set_style_text_color(brightness_val_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(brightness_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(brightness_val_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(brightness_val_label, "100%");
     lv_obj_align(brightness_val_label, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -463,14 +585,14 @@ void settings_screen_create()
     lv_obj_align(face_row, LV_ALIGN_TOP_MID, 0, 232);
 
     lv_obj_t *face_lbl = lv_label_create(face_row);
-    lv_obj_set_style_text_color(face_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(face_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(face_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(face_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(face_lbl, "Watch Face");
     lv_obj_align(face_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     face_val_label = lv_label_create(face_row);
-    lv_obj_set_style_text_color(face_val_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(face_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(face_val_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(face_val_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(face_val_label, "Digital");
     lv_obj_align(face_val_label, LV_ALIGN_RIGHT_MID, -80, 0);
 
@@ -491,14 +613,14 @@ void settings_screen_create()
     lv_obj_align(hour_format_row, LV_ALIGN_TOP_MID, 0, 280);
 
     lv_obj_t *hf_lbl = lv_label_create(hour_format_row);
-    lv_obj_set_style_text_color(hf_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hf_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hf_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hf_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(hf_lbl, "Time Format");
     lv_obj_align(hf_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     hour_format_val_label = lv_label_create(hour_format_row);
-    lv_obj_set_style_text_color(hour_format_val_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hour_format_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hour_format_val_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hour_format_val_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(hour_format_val_label, "12h");
     lv_obj_align(hour_format_val_label, LV_ALIGN_RIGHT_MID, -80, 0);
 
@@ -520,8 +642,8 @@ void settings_screen_create()
     lv_obj_align(ampm_row, LV_ALIGN_TOP_MID, 0, 328);
 
     lv_obj_t *ampm_lbl = lv_label_create(ampm_row);
-    lv_obj_set_style_text_color(ampm_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(ampm_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(ampm_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(ampm_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(ampm_lbl, "Display AM/PM");
     lv_obj_align(ampm_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -543,8 +665,8 @@ void settings_screen_create()
     lv_obj_align(secs_row, LV_ALIGN_TOP_MID, 0, 376);
 
     lv_obj_t *secs_lbl = lv_label_create(secs_row);
-    lv_obj_set_style_text_color(secs_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(secs_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(secs_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(secs_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(secs_lbl, "Display Seconds");
     lv_obj_align(secs_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -567,14 +689,14 @@ void settings_screen_create()
     register_shiftable(matrix_row, 424);
 
     lv_obj_t *mx_lbl = lv_label_create(matrix_row);
-    lv_obj_set_style_text_color(mx_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(mx_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(mx_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(mx_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(mx_lbl, "Matrix BG");
     lv_obj_align(mx_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     matrix_val_label = lv_label_create(matrix_row);
-    lv_obj_set_style_text_color(matrix_val_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(matrix_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(matrix_val_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(matrix_val_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(matrix_val_label, "Off");
     lv_obj_align(matrix_val_label, LV_ALIGN_RIGHT_MID, -80, 0);
 
@@ -596,8 +718,8 @@ void settings_screen_create()
     register_shiftable(show_day_row, 472);
 
     lv_obj_t *show_day_lbl = lv_label_create(show_day_row);
-    lv_obj_set_style_text_color(show_day_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(show_day_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(show_day_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(show_day_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(show_day_lbl, "Show Day");
     lv_obj_align(show_day_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -620,8 +742,8 @@ void settings_screen_create()
     register_shiftable(show_date_row, 520);
 
     lv_obj_t *show_date_lbl = lv_label_create(show_date_row);
-    lv_obj_set_style_text_color(show_date_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(show_date_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(show_date_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(show_date_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(show_date_lbl, "Show Date");
     lv_obj_align(show_date_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -644,8 +766,8 @@ void settings_screen_create()
     register_shiftable(vibrate_row, 568);
 
     lv_obj_t *vibrate_lbl = lv_label_create(vibrate_row);
-    lv_obj_set_style_text_color(vibrate_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(vibrate_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(vibrate_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(vibrate_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(vibrate_lbl, "Vibrate");
     lv_obj_align(vibrate_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -678,8 +800,8 @@ void settings_screen_create()
     register_shiftable(dim_row, 626);
 
     lv_obj_t *dim_lbl = lv_label_create(dim_row);
-    lv_obj_set_style_text_color(dim_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(dim_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(dim_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dim_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(dim_lbl, "Dim Timer");
     lv_obj_align(dim_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
@@ -687,7 +809,7 @@ void settings_screen_create()
     lv_dropdown_set_options(dim_dropdown, "OFF\n5 Seconds\n30 Seconds\n1 Minute\n5 Minutes");
     lv_dropdown_set_selected(dim_dropdown, 0);
     lv_obj_set_size(dim_dropdown, 185, 34);
-    lv_obj_set_style_text_font(dim_dropdown, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dim_dropdown, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(dim_dropdown, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(dim_dropdown, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_border_color(dim_dropdown, lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
@@ -696,7 +818,7 @@ void settings_screen_create()
     lv_obj_t *dd_list = lv_dropdown_get_list(dim_dropdown);
     lv_obj_set_style_bg_color(dd_list, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(dd_list, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(dd_list, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dd_list, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_border_color(dd_list, lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
     lv_obj_add_event_cb(dim_dropdown, on_dim_timeout_changed, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(dim_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -712,14 +834,14 @@ void settings_screen_create()
     register_shiftable(dbr_row, 678);
 
     lv_obj_t *dbr_lbl = lv_label_create(dbr_row);
-    lv_obj_set_style_text_color(dbr_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(dbr_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(dbr_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dbr_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(dbr_lbl, "Dimmed");
     lv_obj_align(dbr_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     dim_brightness_val_label = lv_label_create(dbr_row);
     lv_obj_set_style_text_color(dim_brightness_val_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(dim_brightness_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dim_brightness_val_label, &font_argus_label_20, LV_PART_MAIN);
     int init_pct = (int)s_dim_brightness * 100 / (int)DEVICE_MAX_BRIGHTNESS_LEVEL;
     lv_label_set_text_fmt(dim_brightness_val_label, "%d%%", init_pct);
     lv_obj_align(dim_brightness_val_label, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -758,14 +880,14 @@ void settings_screen_create()
     register_shiftable(motion_row, 778);
 
     lv_obj_t *motion_lbl = lv_label_create(motion_row);
-    lv_obj_set_style_text_color(motion_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(motion_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(motion_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(motion_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(motion_lbl, "Motion brightens screen");
     lv_obj_align(motion_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     motion_wake_val_label = lv_label_create(motion_row);
-    lv_obj_set_style_text_color(motion_wake_val_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(motion_wake_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(motion_wake_val_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(motion_wake_val_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(motion_wake_val_label, "On");
     lv_obj_align(motion_wake_val_label, LV_ALIGN_RIGHT_MID, -80, 0);
 
@@ -804,14 +926,14 @@ void settings_screen_create()
     register_shiftable(manual_row, 852);
 
     lv_obj_t *manual_lbl = lv_label_create(manual_row);
-    lv_obj_set_style_text_color(manual_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(manual_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(manual_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(manual_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(manual_lbl, "Manual Time");
     lv_obj_align(manual_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     manual_time_val_label = lv_label_create(manual_row);
-    lv_obj_set_style_text_color(manual_time_val_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(manual_time_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(manual_time_val_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(manual_time_val_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(manual_time_val_label, "Off");
     lv_obj_align(manual_time_val_label, LV_ALIGN_RIGHT_MID, -80, 0);
 
@@ -825,8 +947,8 @@ void settings_screen_create()
 
     // Instruction line
     lv_obj_t *manual_hint = lv_label_create(settings_screen);
-    lv_obj_set_style_text_color(manual_hint, lv_color_make(0x77, 0x77, 0x77), LV_PART_MAIN);
-    lv_obj_set_style_text_font(manual_hint, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(manual_hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(manual_hint, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(manual_hint, "Set the date & time below, then press SET");
     lv_obj_align(manual_hint, LV_ALIGN_TOP_MID, 0, 900);
     register_shiftable(manual_hint, 900);
@@ -871,7 +993,7 @@ void settings_screen_create()
     lv_obj_t *set_lbl = lv_label_create(set_btn);
     lv_label_set_text(set_lbl, "SET TIME");
     lv_obj_set_style_text_color(set_lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(set_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(set_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(set_lbl);
     lv_obj_add_event_cb(set_btn, on_set_time_clicked, LV_EVENT_CLICKED, NULL);
 
@@ -901,14 +1023,14 @@ void settings_screen_create()
     register_shiftable(screenshot_row, 1144);
 
     lv_obj_t *ss_lbl = lv_label_create(screenshot_row);
-    lv_obj_set_style_text_color(ss_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(ss_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(ss_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(ss_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(ss_lbl, "Screenshot long press");
     lv_obj_align(ss_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     screenshot_val_label = lv_label_create(screenshot_row);
-    lv_obj_set_style_text_color(screenshot_val_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(screenshot_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(screenshot_val_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(screenshot_val_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(screenshot_val_label, "Off");
     lv_obj_align(screenshot_val_label, LV_ALIGN_RIGHT_MID, -80, 0);
 
@@ -921,8 +1043,8 @@ void settings_screen_create()
 
     // Hint — explains the 3 s threshold + where the files land.
     screenshot_hint = lv_label_create(settings_screen);
-    lv_obj_set_style_text_color(screenshot_hint, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
-    lv_obj_set_style_text_font(screenshot_hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(screenshot_hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(screenshot_hint, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(screenshot_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_width(screenshot_hint, 360);
     lv_label_set_long_mode(screenshot_hint, LV_LABEL_LONG_WRAP);
@@ -957,14 +1079,14 @@ void settings_screen_create()
     register_shiftable(wallpaper_row, 1264);
 
     lv_obj_t *wp_lbl = lv_label_create(wallpaper_row);
-    lv_obj_set_style_text_color(wp_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(wp_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(wp_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(wp_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(wp_lbl, "Wallpaper");
     lv_obj_align(wp_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     wallpaper_val_label = lv_label_create(wallpaper_row);
-    lv_obj_set_style_text_color(wallpaper_val_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(wallpaper_val_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(wallpaper_val_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(wallpaper_val_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(wallpaper_val_label, "Off");
     lv_obj_align(wallpaper_val_label, LV_ALIGN_RIGHT_MID, -80, 0);
 
@@ -978,8 +1100,8 @@ void settings_screen_create()
 
     // Hint — tells the user where to drop the image on the SD card.
     lv_obj_t *wp_hint = lv_label_create(settings_screen);
-    lv_obj_set_style_text_color(wp_hint, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
-    lv_obj_set_style_text_font(wp_hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(wp_hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(wp_hint, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(wp_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_width(wp_hint, 360);
     lv_label_set_long_mode(wp_hint, LV_LABEL_LONG_WRAP);
@@ -988,6 +1110,63 @@ void settings_screen_create()
         "Shown faintly behind the clock; works alongside Matrix BG.");
     lv_obj_align(wp_hint, LV_ALIGN_TOP_MID, 0, 1312);
     register_shiftable(wp_hint, 1312);
+
+    // ---- Enable at boot section ---------------------------------------------
+    // Per-radio opt-in for auto-enabling a radio when the watch powers on. The
+    // boot default is OFF for every radio - nothing comes up at boot unless the
+    // user turns it on here. State is persisted separately in
+    // /Settings/boot_radios.txt via boot_prefs (see boot_prefs.h), not in
+    // settings.txt. WiFi and Bluetooth are mutually exclusive here (they cannot
+    // run together), so enabling one at boot blocks the other with a warning.
+    lv_obj_t *sep_boot = lv_obj_create(settings_screen);
+    lv_obj_set_size(sep_boot, 380, 1);
+    lv_obj_set_style_bg_color(sep_boot, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sep_boot, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sep_boot, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(sep_boot, 0, LV_PART_MAIN);
+    lv_obj_align(sep_boot, LV_ALIGN_TOP_MID, 0, 1380);
+    register_shiftable(sep_boot, 1380);
+
+    // Section header
+    lv_obj_t *boot_hdr_row = lv_obj_create(settings_screen);
+    lv_obj_set_size(boot_hdr_row, 380, 30);
+    lv_obj_set_style_bg_opa(boot_hdr_row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(boot_hdr_row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(boot_hdr_row, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(boot_hdr_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(boot_hdr_row, LV_ALIGN_TOP_MID, 0, 1394);
+    register_shiftable(boot_hdr_row, 1394);
+
+    lv_obj_t *boot_hdr = lv_label_create(boot_hdr_row);
+    lv_obj_set_style_text_color(boot_hdr, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(boot_hdr, &font_argus_label_20, LV_PART_MAIN);
+    lv_label_set_text(boot_hdr, "Enable at boot");
+    lv_obj_align(boot_hdr, LV_ALIGN_LEFT_MID, 0, 0);
+
+    // One toggle per boot-enableable radio. Each seeds from boot_prefs. WiFi and
+    // Bluetooth are mutually exclusive (enforced in their callbacks) since the
+    // two cannot run together on this board. Rows are evenly spaced 48px apart.
+    boot_wifi_switch = make_boot_row("WiFi", 1434, boot_prefs_get(BOOT_RADIO_WIFI),
+                                     on_boot_wifi_changed, &boot_wifi_val_label);
+    boot_ble_switch  = make_boot_row("Bluetooth", 1482, boot_prefs_get(BOOT_RADIO_BLE),
+                                     on_boot_ble_changed,  &boot_ble_val_label);
+    boot_lora_switch = make_boot_row("LoRa", 1530, boot_prefs_get(BOOT_RADIO_LORA),
+                                     on_boot_lora_changed, &boot_lora_val_label);
+    boot_gps_switch  = make_boot_row("GPS",  1578, boot_prefs_get(BOOT_RADIO_GPS),
+                                     on_boot_gps_changed,  &boot_gps_val_label);
+
+    // Hint: clarifies the boot-time behaviour and why BT isn't listed.
+    lv_obj_t *boot_hint = lv_label_create(settings_screen);
+    lv_obj_set_style_text_color(boot_hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(boot_hint, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_style_text_align(boot_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_width(boot_hint, 360);
+    lv_label_set_long_mode(boot_hint, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(boot_hint,
+        "Radios turned on here power up automatically at boot. Everything is "
+        "off by default. WiFi and Bluetooth cannot both auto-enable.");
+    lv_obj_align(boot_hint, LV_ALIGN_TOP_MID, 0, 1626);
+    register_shiftable(boot_hint, 1626);
 
     // Reflect the current SD state in the row's interactability + checked
     // state. Boot order matters here — instance.isCardReady() may flip
@@ -1191,7 +1370,7 @@ void settings_screen_apply_sd_state()
         lv_obj_clear_state(screenshot_switch, LV_STATE_DISABLED);
         lv_obj_clear_flag(screenshot_row, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_style_text_color(screenshot_val_label,
-            lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
+            ARGUS_TEXT, LV_PART_MAIN);
     } else {
         // Force the toggle off and grey it — set g_loading around the
         // visual change so the value-changed callback doesn't write the
@@ -1206,6 +1385,6 @@ void settings_screen_apply_sd_state()
 
         lv_obj_add_state(screenshot_switch, LV_STATE_DISABLED);
         lv_obj_set_style_text_color(screenshot_val_label,
-            lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
+            ARGUS_TEXT_DIM, LV_PART_MAIN);
     }
 }

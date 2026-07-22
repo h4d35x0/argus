@@ -1,4 +1,5 @@
 #include "map_screen.h"
+#include "theme.h"
 #include "gps_screen.h"
 #include "meshtastic.h"
 #include <LilyGoLib.h>
@@ -459,7 +460,7 @@ static lv_obj_t *make_round_btn(const char *text, lv_align_t align,
 
     lv_obj_t *l = lv_label_create(b);
     lv_obj_set_style_text_color(l, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_font(l, &font_argus_label_28, LV_PART_MAIN);
     lv_label_set_text(l, text);
     lv_obj_center(l);
     return b;
@@ -535,14 +536,14 @@ void map_screen_create()
 
     info_label = lv_label_create(info_badge);
     lv_obj_set_style_text_color(info_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(info_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(info_label, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(info_label, "MAP");
     lv_obj_center(info_label);
 
     // Status overlay shown when there is no GPS fix.
     status_label = lv_label_create(map_screen);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0xCC, 0xCC, 0xCC), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(status_label, "No GPS fix\n(enable GPS to centre the map)");
     lv_obj_set_style_text_align(status_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_center(status_label);

@@ -31,6 +31,18 @@ static const char *kBgDir = "/backgrounds";
 // well within this.
 static constexpr uint32_t kMaxWallpaperPixels = 400000u;
 
+// SECOND, independent budget: the COMPRESSED file size. The PNG/JPEG decoders
+// buffer the whole compressed image in INTERNAL SRAM while inflating it, and
+// there is only ~100-130 KB free internal SRAM at boot. So a detailed image can
+// pass the pixel budget above (same 410x502 raster) yet still OOM the decode and
+// HARD-CRASH -> boot-loop. That is exactly what happened: ARGUS.png (85 KB
+// compressed) decodes fine, but a 144 KB "Privacy" wallpaper of the SAME pixel
+// dimensions boot-looped the watch. Reject any wallpaper whose file is over a
+// safe fixed cap, or whose size alone would not fit in the internal SRAM free
+// right now. A rejected wallpaper is simply not shown (graceful) - it can never
+// crash the boot. Reads only the file size, never decodes.
+static constexpr uint32_t kMaxWallpaperFileBytes = 100u * 1024u;
+
 // Inspect the header of the located wallpaper and reject it if decoding it
 // would blow the pixel budget. Reads only the first bytes of the file (never
 // the whole image) via the pure image_dims probe, so this cannot itself OOM.
@@ -64,6 +76,33 @@ static bool wallpaper_within_budget(const char *lv_path)
                   fs_path, (unsigned long)dims.width, (unsigned long)dims.height,
                   (unsigned long)kMaxWallpaperPixels);
     return false;
+}
+
+// Reject a wallpaper whose COMPRESSED file is over a fixed safe cap. On this board
+// a large wallpaper file (like a 147 KB photo) can boot-loop the decode, while the
+// bundled 410x502 art (57-87 KB) is safe. Skipping an oversized wallpaper is
+// graceful (simply not shown), never a crash. Reads only the file length, never
+// decodes. IMPORTANT: this is deliberately a FIXED cap, NOT a free-RAM-relative
+// check. An earlier version also skipped when file_bytes >= free internal SRAM,
+// but free internal dips during boot and that wrongly rejected the known-good
+// 87 KB wallpaper (it silently never rendered). The fixed cap is reliable.
+static bool wallpaper_fits_memory(const char *lv_path)
+{
+    const char *fs_path = lv_path;
+    if (fs_path[0] == 'A' && fs_path[1] == ':') fs_path += 2;
+
+    File f = SD.open(fs_path);
+    if (!f) return true;                         // cannot inspect -> defer
+    uint32_t bytes = (uint32_t)f.size();
+    f.close();
+
+    if (bytes > kMaxWallpaperFileBytes) {
+        Serial.printf("[background] skipping wallpaper %s: %lu B compressed "
+                      "(cap %lu B) - too large, would risk a boot-loop\n",
+                      fs_path, (unsigned long)bytes, (unsigned long)kMaxWallpaperFileBytes);
+        return false;
+    }
+    return true;
 }
 
 // Case-insensitive "does `name` end with `ext`?"
@@ -146,7 +185,10 @@ static bool load_source()
     if (!find_wallpaper()) return false;
     // Guard against an oversized source image OOMing the LVGL decode: inspect
     // the header BEFORE handing the path to LVGL. Over-budget -> stay hidden.
+    // Two independent checks: pixel dimensions AND compressed file size (the
+    // latter is what buffers in scarce internal SRAM during decode).
     if (!wallpaper_within_budget(bg_lv_path)) return false;
+    if (!wallpaper_fits_memory(bg_lv_path))   return false;
 
     int32_t w = lv_display_get_horizontal_resolution(NULL);
     int32_t h = lv_display_get_vertical_resolution(NULL);
@@ -184,9 +226,9 @@ static void ensure_backgrounds_dir()
             "\r\n"
             "Put an image here to use it as your watch background:\r\n"
             "  - Name it wallpaper.png (or .bmp / .jpg), or drop any image file.\r\n"
-            "  - Keep it small: at or below the 410x502 screen is ideal.\r\n"
-            "    Very large photos are skipped automatically so they cannot\r\n"
-            "    crash the watch (budget is about 1.2 million pixels).\r\n"
+            "  - Keep it small: 410x502 and UNDER 100 KB is ideal.\r\n"
+            "    Images that are too large in pixels OR in file size are\r\n"
+            "    skipped automatically so they cannot crash the watch.\r\n"
             "  - It shows faintly behind the clock and the Matrix rain.\r\n"
             "\r\n"
             "Then turn Wallpaper ON in Settings.\r\n");

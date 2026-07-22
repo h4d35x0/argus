@@ -15,3 +15,10 @@ void flock_reset_count();
 bool flock_start();
 void flock_stop();
 bool flock_is_running();
+
+// Flock wants BOTH radios, but this board can only run one radio at a time, so
+// a start may come up single-radio. These report which radios actually came up
+// for the most recent flock_start(); both are false while the detector is
+// stopped. The caller uses them to surface the degraded (single-radio) mode.
+bool flock_wifi_active();
+bool flock_ble_active();

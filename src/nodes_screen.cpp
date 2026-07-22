@@ -228,8 +228,8 @@ static void make_node_entry(lv_obj_t *parent, const MeshNode *n)
              (unsigned long)n->node_id, n->time_str);
     lv_obj_t *hdr = lv_label_create(entry);
     lv_obj_set_width(hdr, lv_pct(100));
-    lv_obj_set_style_text_color(hdr, ARGUS_ACCENT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hdr, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hdr, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(hdr, header);
     // LONG_DOT renders truncated content as "...". The header
     // ("[SHRT] !nodeid   HH:MM") is normally well under the 360-px row
@@ -241,7 +241,7 @@ static void make_node_entry(lv_obj_t *parent, const MeshNode *n)
     lv_obj_t *txt = lv_label_create(entry);
     lv_obj_set_width(txt, lv_pct(100));
     lv_obj_set_style_text_color(txt, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(txt, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(txt, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(txt, n->long_name);
     lv_label_set_long_mode(txt, LV_LABEL_LONG_WRAP);
 
@@ -346,8 +346,8 @@ static void make_node_entry(lv_obj_t *parent, const MeshNode *n)
     if (p > 0) {
         lv_obj_t *det = lv_label_create(entry);
         lv_obj_set_width(det, lv_pct(100));
-        lv_obj_set_style_text_color(det, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
-        lv_obj_set_style_text_font(det, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(det, ARGUS_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(det, &font_argus_label_14, LV_PART_MAIN);
         lv_label_set_text(det, detail);
         lv_label_set_long_mode(det, LV_LABEL_LONG_WRAP);
     }
@@ -360,8 +360,8 @@ static void rebuild_list()
     if (node_count == 0) {
         lv_obj_t *lbl = lv_label_create(nodes_box);
         lv_obj_add_flag(lbl, LV_OBJ_FLAG_FLOATING);  // exclude from flex layout so center works
-        lv_obj_set_style_text_color(lbl, lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, ARGUS_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, &font_argus_label_16, LV_PART_MAIN);
         lv_label_set_text(lbl, "No nodes detected yet.");
         lv_obj_center(lbl);
         lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -382,7 +382,7 @@ void nodes_screen_create()
     // Title + list + hint geometry mirrors the Meshtastic screen so
     // the two feel visually identical when swiping between them.
     lv_obj_t *title = lv_label_create(nodes_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "NODES");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 21);
@@ -403,8 +403,8 @@ void nodes_screen_create()
     lv_obj_set_style_pad_row(nodes_box, 0, LV_PART_MAIN);
 
     lv_obj_t *hint = lv_label_create(nodes_screen);
-    lv_obj_set_style_text_color(hint, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hint, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(hint, "hold: Trace/Pos/DM   swipe: nav");
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -22);
@@ -432,7 +432,7 @@ void nodes_screen_create()
     trace_label = lv_label_create(trace_panel);
     lv_obj_set_width(trace_label, lv_pct(100));
     lv_obj_set_style_text_color(trace_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(trace_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(trace_label, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(trace_label, "");
     lv_label_set_long_mode(trace_label, LV_LABEL_LONG_WRAP);
 
@@ -482,7 +482,7 @@ void nodes_screen_create()
 
     action_title = lv_label_create(action_panel);
     lv_obj_set_style_text_color(action_title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(action_title, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(action_title, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(action_title, "");
     lv_obj_align(action_title, LV_ALIGN_TOP_MID, 0, 0);
 
@@ -499,7 +499,7 @@ void nodes_screen_create()
     lv_obj_t *lbl_d = lv_label_create(btn_d);
     lv_label_set_text(lbl_d, "DM");
     lv_obj_set_style_text_color(lbl_d, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl_d, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl_d, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(lbl_d);
 
     lv_obj_t *btn_t = lv_button_create(action_panel);
@@ -511,7 +511,7 @@ void nodes_screen_create()
     lv_obj_t *lbl_t = lv_label_create(btn_t);
     lv_label_set_text(lbl_t, "Trace");
     lv_obj_set_style_text_color(lbl_t, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl_t, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl_t, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(lbl_t);
 
     lv_obj_t *btn_p = lv_button_create(action_panel);
@@ -523,7 +523,7 @@ void nodes_screen_create()
     lv_obj_t *lbl_p = lv_label_create(btn_p);
     lv_label_set_text(lbl_p, "Pos");
     lv_obj_set_style_text_color(lbl_p, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl_p, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl_p, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(lbl_p);
 
     rebuild_list();

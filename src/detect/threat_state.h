@@ -39,6 +39,7 @@ enum class ThreatDomain : uint8_t {
   BeaconFlood,   // WiFi beacon-flood / fake-AP spam (src/detect/beacon_flood)
   Airtag,        // future: unwanted-tracker (AirTag / Tile) tail
   Skimmer,       // future: card-skimmer BLE beacon
+  Surveillance,  // passive surveillance-device sighting (src/detect/surveillance_device)
   _Count,        // sentinel: number of domains (keep last)
 };
 

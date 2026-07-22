@@ -160,14 +160,14 @@ static void make_data_row(lv_obj_t *parent, const char *field, lv_obj_t **val_ou
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *lbl = lv_label_create(row);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(lbl, field);
     lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     lv_obj_t *val = lv_label_create(row);
     lv_obj_set_style_text_color(val, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(val, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(val, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(val, "--");
     lv_obj_align(val, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -327,7 +327,7 @@ void gps_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(gps_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "GPS");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
@@ -343,8 +343,8 @@ void gps_screen_create()
 
     // Status label (right of toggle, vertically centred with it)
     status_label = lv_label_create(gps_screen);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 60, 87);
     update_status();
 
@@ -399,24 +399,13 @@ bool gps_screen_has_lock()
         && instance.gps.satellites.value() >= 4;
 }
 
-// Boot-time restore: if /Settings/gps.txt says the radio was left on, power it
-// back up exactly the way on_toggle does and reflect it on the switch. Must run
-// after the SD card is mounted (instance.begin) and after gps_screen_create().
+// Boot-time power-on: bring GPS up the same way on_toggle does and reflect it on
+// the switch. Called from setup() ONLY when the user opted GPS into "Enable at
+// boot" (boot_prefs), so the enable decision lives in the caller and there is no
+// per-radio file check here. Must run after the SD card is mounted
+// (instance.begin) and after gps_screen_create().
 void gps_screen_restore_power()
 {
-    if (!instance.isCardReady() || usb_sd_is_running()) return;
-    if (!SD.exists(GPS_PATH)) return;
-
-    File f = SD.open(GPS_PATH, FILE_READ);
-    if (!f) return;
-    char buf[8] = {0};
-    int n = f.readBytesUntil('\n', (uint8_t *)buf, sizeof(buf) - 1);
-    f.close();
-    if (n <= 0) return;
-    buf[n] = '\0';
-
-    if (atoi(buf) != 1) return;   // was off (or garbage) — nothing to restore
-
     // Power GPS on the same way on_toggle does. See on_toggle for why Serial1
     // is torn down before powerControl re-inits the UART on enable.
     Serial1.end();

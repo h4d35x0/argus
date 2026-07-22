@@ -36,7 +36,8 @@ static volatile uint32_t s_now_sec = 0;
 // microseconds-long and never blocks.
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
-// Register the WiFi beacon consumer exactly once, on the first tick.
+// Whether our beacon consumer is currently attached. Toggled by the piggyback
+// logic in detect_pipeline_tick(): attached only while another WiFi scan runs.
 static bool s_registered = false;
 
 // The forensic log path, mirroring the /Settings convention used by gps_screen.
@@ -129,14 +130,18 @@ void detect_pipeline_tick(uint32_t now_sec)
     // Publish the clock for the (clockless) beacon callback first.
     s_now_sec = now_sec;
 
-    // Lazily attach the beacon consumer once (never in setup()).
-    // NOTE: wifi_beacon_add() brings WiFi up (STA + promiscuous) when it is the
-    // first global consumer - see wifi_beacon_manager.cpp start_wifi(). This runs
-    // in the steady-state loop, not the boot path, so it cannot boot-loop; but it
-    // does power the WiFi radio if no other scan already has.
-    if (!s_registered) {
-        wifi_beacon_add(beacon_cb);
-        s_registered = true;
+    // PIGGYBACK activation: attach our beacon consumer ONLY while some OTHER WiFi
+    // scan is already running (Evil Twin / Flock / Pwn / wardriver). This never
+    // powers WiFi on by itself and never flips a connected STA into monitor mode -
+    // it just enriches scans the user already started with threat posture + log.
+    // Detach as soon as no other consumer remains, so we never hold WiFi up alone.
+    // (wifi_beacon_add is a no-op on WiFi state when it is NOT the first consumer.)
+    int others = wifi_beacon_consumer_count() - (s_registered ? 1 : 0);
+    if (others > 0 && !s_registered) {
+        s_registered = wifi_beacon_add(beacon_cb);
+    } else if (others <= 0 && s_registered) {
+        wifi_beacon_remove(beacon_cb);
+        s_registered = false;
     }
 
     // Age the sliding window + aggregator and snapshot the per-domain severities

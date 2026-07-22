@@ -1,39 +1,53 @@
-# 13:37
+# ARGUS
 
-**Custom firmware for the LILYGO T-Watch Ultra** — turns the ESP32-S3 smartwatch (AMOLED display, LoRa, GNSS, NFC, full sensor suite) into a smartwatch plus a suite of RF and wireless tools.
+<p align="center"><img src="img/argus/clock.png" width="230" alt="ARGUS watch face"></p>
 
----
+**ARGUS** is the ARGUS Project's security firmware for the LILYGO T-Watch Ultra: an ESP32-S3 smartwatch (AMOLED display, LoRa, GNSS, NFC, full sensor suite) turned into an anti-surveillance field tool and daily-wear companion. It is a full smartwatch (clock, alarms, calendar, phone notifications, Meshtastic comms) plus a suite of RF/wireless detection and analysis tools, with the defensive, anti-stalking features front and centre.
+
+> **ARGUS is a fork of the phenomenal [`13:37` firmware by r3dfish](https://github.com/r3dfish/13-37).** That project is the foundation this is built on, the entire smartwatch core, the Meshtastic client, and most of the RF toolkit are r3dfish's excellent work. ARGUS rebrands it and adds an anti-surveillance / daily-wear layer on top. Full credit and huge thanks to r3dfish, please go star the original: **<https://github.com/r3dfish/13-37>**. See [Credits](#credits--acknowledgments).
+
+## Highlights
+
+- **Threat Radar** anti-stalking: correlates tracker / AP sightings against your GPS movement to flag anything *following you*, with haptic + on-face alerts and a hashed warning broadcast to your Meshtastic group.
+- **Phone notifications** on your wrist from **iPhone (ANCS)** and **Android (Gadgetbridge)**, with a pop-up banner over the watch face. No companion app on iOS.
+- **Anti-surveillance detectors**: unwanted AirTags / Find My trackers, Flipper Zero, card skimmers, evil-twin APs, and surveillance vendors (Flock / Axon / Ring).
+- **RF toolkit**: WiFi survey + port scan, WiFi/BLE/LoRa spectrum analyzers, TPMS, POCSAG/FLEX pager, LoRa APRS, wardriving, WPA handshake capture, NFC read/write.
+- **Meshtastic** LoRa client: map, nodes, DMs, traceroute, channels.
+- **HexHound**, a gamified recon "pet" fed by your detectors.
+
 ## Purchase
 
-The LilyGo TWatch Ultra can be purchased from LilyGo [here](https://www.lilygo.cc/cpstlm). The US version uses the 915mhz model.
+The LilyGo T-Watch Ultra can be purchased from LilyGo [here](https://www.lilygo.cc/cpstlm). The US version uses the 915 MHz model.
 
-## Firmware Features
+## Screens
 
-This custom firmware turns the T-Watch Ultra into a smartwatch plus a suite of RF and wireless tools. Screens are reached by swipe gestures, the power/back buttons, and the on-screen **Tools** grid.
+| | | |
+|:--:|:--:|:--:|
+| ![Watch face](img/argus/clock.png) | ![Tools grid](img/argus/tools_1.png) | ![Threat Radar](img/argus/radar.png) |
+| Watch face | Tools grid (defense-first) | Threat Radar |
+| ![Phone notifications](img/argus/notify.png) | ![HexHound](img/argus/hexhound.png) | ![Settings](img/argus/settings_1.png) |
+| Phone notifications | HexHound | Settings |
+| ![Meshtastic](img/argus/meshtastic.png) | ![Mesh config](img/argus/config_1.png) | ![Calendar](img/argus/calendar.png) |
+| Meshtastic | Mesh config | Calendar |
 
-## Navigation
-
-|Bottom Button or swipe left ->|Bottom Button or swipe left -> |Bottom Button or swipe left -> |Bottom Button or swipe left -> |Bottom Button or swipe left -> | Swipe Left ->| |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-![Mestastic_Configuration](img/Meshtastic_configuration1.bmp) | ![Meshtastic_Map](img/Meshtastic_Map.bmp) | ![Meshtastic_Send](img/Meshtastic_Send.bmp) | ![Meshtastic_Nodes](img/Meshtastic_Nodes.bmp) | ![Meshtastic_Messages](img/Meshtastic_Messages.bmp) | ![Clock](img/Clock.bmp) | ![Wardriver](img/Wardriver.bmp) |
-| |Top Button or swipe right <- |Top Button or swipe right <- |Top Button or swipe right <- |Top Button or swipe right <- | Swipe Right <- | Bottom Button or swipe right <- |
-
-| Swipe Down -> | Swipe Down -> | Swipe Down -> | Bottom Button -> | Swipe Up -> | |
-| :---: | :---: | :---: | :---: | :---: | :---: |
-![Tools4](img/Tools4.bmp) | ![Tools3](img/Tools3.bmp) | ![Tools2](img/Tools2.bmp) | ![Tools1](img/Tools1.bmp) | ![Clock](img/Clock.bmp) | ![Time](img/Time.bmp) |
-| | Swipe Up <-| Swipe Up <-| Swipe Up <-| Swipe Down <- | Bottom Button <- | 
-
-
-| Bottom Button -> | Bottom Button -> | Bottom Button -> | Bottom Button -> | Bottom Button -> | Bottom Button -> | Bottom Button -> | |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-![NFC_Radio](img/NFC_Radio.bmp) | ![Bluetooth_Radio](img/Bluetooth_Radio.bmp) | ![WiFi_Radio](img/WiFi_Radio.bmp) | ![LoRa_Radio](img/LORA_Radio.bmp) | ![GPS_Radio](img/GPS_Radio.bmp) | ![Clock](img/Clock.bmp) | ![Settings1](img/Settings1.bmp) | ![Settings2](img/Settings2.bmp) |
-| | Top Button <- | Top Button <- | Top Button <- | Top Button <- | Top Button <- | Top Button <- | Top Button <- |
+Screens are reached by swipe gestures, the power/back buttons, and the on-screen **Tools** grid (see **Radios** below for the button-navigation chains).
 
 ### Watch Face & System
 
 - **Clock** — analog or digital watch face with date, day, and battery; a status bar shows live LoRa, Bluetooth, WiFi, SD, and NFC indicators. A small red pill with the unread Meshtastic-message count sits to the immediate left of the LoRa icon whenever there are unread messages, so traffic is glanceable from the home screen. The digital readout uses a custom 96-px Montserrat subset font ([src/lv_font_montserrat_clock_96.c](src/lv_font_montserrat_clock_96.c), generated by [tools/gen_clock_font.py](tools/gen_clock_font.py)) so the digits stay sharp at the large size the round face uses, instead of being transform-scaled from the built-in 48-px font. Three small status-indicator icons (alarm bell / running-stopwatch / running-timer) pack right-to-left in the bottom row next to the battery whenever the corresponding feature is active. A second row of scan-detector badges sits across the bottom of the disc — left to right: **Flock** (warning triangle), **Evil-Twin** (`ET`), **AirTag** (white disc), **Flipper** (orange dolphin pill), **Skimmer** (`SK`) — each appears only while its detector count is greater than zero, and hidden slots collapse so the row stays packed.
 - **Matrix background** — optional animated "digital rain" wallpaper. The bright head still slides through the tiled text without disturbing the chars.
 - **Settings** — brightness, analog/digital face, 12/24-hour, screen-dim timeout and dim level, day/date/AM-PM/seconds toggles, haptic feedback, motion-wake (wrist-raise brightens the screen), a **Screenshot long press** toggle (see below), and a manual date/time picker that overrides automatic GPS/WiFi time sync. Persisted to `/Settings/settings.txt` on SD so the watch boots back into the same configuration. (The auto-detected timezone offset persists separately in `/Settings/timezone.txt` and survives reboots — see **GPS** below.)
+
+### Phone Notifications
+
+<img src="img/argus/notify.png" width="200" align="right" alt="Notify screen">
+
+**Notify** (Tools tile) mirrors your phone's notifications to your wrist like a mainstream smartwatch: a banner pops up over the clock face, the watch buzzes, and every notification lands in a scrollable list. Because this board cannot run WiFi and BLE at once, enabling notifications puts the watch in a BLE-first **Daily-wear** mode (the WiFi tools pause until you disable it). The choice and platform persist across reboots.
+
+- **iPhone / iPad (ANCS)** uses Apple's built-in Apple Notification Center Service, so there is **no companion app**: pick **Apple (ANCS)** on the Notify screen, tap **Enable**, then pair "Argus Watch" from iOS Settings > Bluetooth. Works with the screen locked once paired at the system level.
+- **Android (Gadgetbridge)** works by advertising as an InfiniTime watch and receiving notifications over the standard **Alert Notification Service**, so the open-source [Gadgetbridge](https://gadgetbridge.org/) app (F-Droid) forwards them with nothing custom to install. Pick **Android (Gadgetbridge)**, Enable, then add the device in Gadgetbridge.
+- **One phone at a time** (single BLE connection): the paired phone auto-reconnects and holds the link, so to switch phones, turn Bluetooth off on the current one first.
+- **Clear** dismisses on the watch, and on iOS clears it on the phone too (ANCS action). A new notification also gives a single haptic buzz.
 
 ### Time, Alarms & Timepieces
 
@@ -144,12 +158,24 @@ These are the per-radio status screens stepped through by short-pressing the pow
 - **AirTag Sniffer** — passive BLE detector for **separated Apple Find My trackers** (the anti-stalking case), *not* the whole Find My network. It matches Apple manufacturer data (company `0x004C`) with the Find My / "offline finding" subtype `0x12` **and** the AirTag lost-mode signature: payload-length byte `0x19` (25-byte payload) on a record of at least 29 bytes. That length check is the whole point — bare `0x12` is broadcast by *every* Apple device participating in Find My (iPhones / iPads / Macs in owned mode, AirPods / Beats, Apple Watch when separated, and third-party accessories), which buries the count in any populated area. The lost-mode length narrows it to trackers **separated from their owner** — i.e. a tag potentially following *you*. This still catches AirTag-shaped third-party Find My trackers (Chipolo Spot, Pebblebee, Belkin, …) in the same separated state, which is what the screen is really trying to surface. Same-MAC hits are dedup'd for 5 minutes. Detection runs through the shared BLE scan manager, so it coexists with the **Wardriver** (which feeds hits in automatically), **Flipper**, and **Skimmers**; the tile turns green while scanning. Each new hit is appended to `/AirTag/discovered.txt` on the SD card with RTC timestamp, MAC + address type, RSSI, the Find My subtype + length, the raw Apple payload (hex), and the current GPS fix when available. While the count is greater than zero, a white-disc badge with the running count appears on the home-screen scan-indicator row.
 - **Flipper** — passive BLE detector for Flipper Zero devices, matching on **two** signals so it catches custom firmwares too: (1) a complete- or shortened-local-name beginning with `Flipper ` (the stock-firmware advertised-name prefix), **or** (2) the Flipper BLE **service UUID `0x3082`** in the advertised 16-bit-UUID list. The second signal is what catches forks like **Momentum / Xtreme / Unleashed**, which let the user randomize the BLE name to dodge `Flipper ` name matching — they still advertise the service UUID, so the match holds regardless of name (verified against a Momentum unit advertising as "Wankiand", detected via the UUID alone). The tile turns green while detection is running — same affordance as the AirTag tile — and detection coexists with the **Wardriver** so toggling both runs them in parallel through the shared BLE scan manager. When the SD card is mounted (and not exposed over USB Mass Storage), each new hit is appended to `/Flipper/discovered.txt` with the RTC timestamp, MAC + address type, RSSI, advertised name (or `(uuid 0x3082)` for a nameless UUID-only match), and current GPS lat/lon/altitude if the GPS has a fix. Hits are dedup'd by MAC for 5 minutes to keep the log readable. While the count is greater than zero, a small orange dolphin indicator with the running count appears on the home screen next to the AirTag indicator.
 - **Skimmers** — passive BLE detector for card skimmers, following the heuristic from the [ESP32Marauder card-skimmer wiki](https://github.com/justcallmekoko/ESP32Marauder/wiki/detect-card-skimmers): the cheap HC-series Bluetooth modules these devices are built around almost always ship with one of three default names (`HC-03`, `HC-05`, `HC-06`) and the people building skimmers tend not to bother renaming them. The detector matches advertised complete- or shortened-local-name with any of those prefixes; same-MAC hits are dedup'd for 5 minutes. Detection runs through the shared BLE scan manager, so it coexists with the **Wardriver** (which feeds hits in automatically) and with **AirTag** / **Flipper**. Each new hit lands in `/Skimmers/discovered.txt` on the SD card with RTC timestamp, MAC + address type, RSSI, advertised name, and current GPS fix when available. While the count is greater than zero, a red **SK N** badge appears on the home-screen status row next to the Flipper indicator. Note: HC-0x clones are dual-mode (BR/EDR + BLE); pure-Classic-only modules aren't visible to a BLE-only scan. False positives are mostly hobby projects that left the default name on the module — context usually tells.
-- **WiFi** — site survey of nearby networks, association to a chosen SSID (on-screen keyboard for the password), and an ICMP ping sweep of the local /24. Discovered devices (IP, RTT, MAC where available) are listed live and written to `/PingSweeps/sweep_<timestamp>.txt` on the SD card. After the sweep finishes a four-pass **hostname resolver** runs against each discovered host: **mDNS** (`.local` query on 224.0.0.251:5353), **NetBIOS NBSTAT** (UDP 137), **DNS PTR** (reverse-lookup via the gateway's DNS), and **OUI vendor lookup** (built-in ~90-entry table of common consumer OUIs). The status line reports per-pass hit counts so it's obvious which protocol(s) yielded names. Devices whose MAC has the locally-administered bit set (most modern phones do MAC randomization) are tagged "rand-MAC" so absence of a hostname doesn't read as a missing scan. Each host card is **tappable** — opens the Port Scanner with that IP pre-filled.
+- **WiFi** — site survey of nearby networks, association to a chosen SSID (on-screen keyboard for the password), and an ICMP ping sweep of the local /24. **Saved passwords:** a network you connect to is remembered in `/Settings/wifi_passwords.txt` (one `SSID=password` per line, hand-editable over USB-SD), so tapping a known network reconnects without re-typing; unknown networks still prompt. Discovered devices (IP, RTT, MAC where available) are listed live and written to `/PingSweeps/sweep_<timestamp>.txt` on the SD card. After the sweep finishes a four-pass **hostname resolver** runs against each discovered host: **mDNS** (`.local` query on 224.0.0.251:5353), **NetBIOS NBSTAT** (UDP 137), **DNS PTR** (reverse-lookup via the gateway's DNS), and **OUI vendor lookup** (built-in ~90-entry table of common consumer OUIs). The status line reports per-pass hit counts so it's obvious which protocol(s) yielded names. Devices whose MAC has the locally-administered bit set (most modern phones do MAC randomization) are tagged "rand-MAC" so absence of a hostname doesn't read as a missing scan. Each host card is **tappable** — opens the Port Scanner with that IP pre-filled.
 - **Port Scanner** — TCP / UDP / banner-grab scanner reachable from a tap on any discovered host in the WiFi ping-sweep results. Three independently-selectable technique toggles at the top: **TCP Connect** (full three-way handshake; reports open / closed), **UDP** (open|filtered is suppressed — only confirmed-open ports are shown), and **Banner** (grabs the first ~256 bytes of any open TCP port). Selected techniques run in parallel where they share a probe (TCP + Banner coalesce into one connect attempt per port). Three preset port-range buttons (common 22/80/443 etc., top-100, top-1000) plus a custom range. Results stream live and are written to `/PortScans/<host>_<timestamp>.txt`.
 - **Analyze** — three paired spectrum analyzers sharing the same visual style. Opens on the **WiFi** view, which hops promiscuous-mode capture across 2.4 GHz channels 1–13 and renders a 13-bar utilisation chart (bar height = pps, bar colour = saturation, status line flags the quietest/busiest channels). Swipe **left** to the **Bluetooth** view: a live BLE scan groups unique devices into eight RSSI bands (−30 dBm → far) and shows how crowded each band is, with the strongest BD_ADDR called out in the status line. Swipe **left** again to the **LoRa** view: the SX1262 sweeps RSSI across the selected sub-GHz ISM band (915 MHz US, 868 MHz EU, or 433 MHz — tap the band button to cycle) and renders a 13-bin RSSI chart with the peak frequency surfaced in the status line. Swipe **right** to step back through the chain; the boot button returns to Tools and tears down whichever radio that view was using. The LoRa analyzer in particular **snapshots the prior SX1262 consumer** (pager / TPMS / APRS — whichever was running) on entry and re-arms it on exit, so opening the analyzer mid-pager-scan doesn't silently drop you off the scanner.
 - **Wardriver** — logs WiFi access points and BLE devices with GPS coordinates to a CSV file on SD (WiGLE-style). Each capture session holds up to **10 000 unique devices** (WiFi + BLE combined) in a 32 768-bucket hash table allocated in PSRAM, sized for a 0.5 load factor so MAC lookups stay fast. When a session reaches the cap, the wardriver does an automatic **session rollover** — it final-flushes the filled session to its current CSV at `/Wardrive/<timestamp>.csv`, opens a fresh timestamped CSV with the WiGLE header, zeroes the in-RAM table, and resumes capture without stopping the radios. The home-screen WiFi/BT badge tracks the **cumulative** device count across rolled sessions, so it keeps climbing past 10 000; each individual `/Wardrive/*.csv` is a self-contained, post-processable WiGLE file for one session. A new session is also started whenever you toggle the wardriver off and on, or boot the watch. The WiFi capture path also feeds an inline **evil-twin detector** (see below).
 - **Evil-twin detection** — running passively inside the wardriver. The detector watches WiFi beacons and flags **same-SSID / different-auth** conflicts: when one BSSID has been broadcasting an SSID under (e.g.) `[WPA2-PSK-CCMP][ESS]` and a second BSSID appears with the same SSID under a different mode like `[ESS]` (open), that's the classic impostor-AP pattern used for credential harvesting and DNS interception. Mesh extenders and enterprise rollouts (same SSID, same auth, many BSSIDs) are explicitly **not** flagged, so the noise floor stays low. Each conflict is written to `/EvilTwin/discovered.txt` on SD with the RTC timestamp, the SSID, both BSSIDs and their auth strings (legit + rogue), RSSI, channel, and the current GPS fix when one is available. Per-(SSID, rogue-BSSID) hits are dedup'd for 5 minutes so a single rogue radiating continuously doesn't fill the log. While the count is greater than zero, an orange "ET N" badge appears in the home-screen scan-indicator row between the Flock warning and the AirTag indicator.
 - **Flock Detector** — flags nearby surveillance hardware (Flock Safety, Axon, Ring) by matching BLE/WiFi MAC OUIs; runs alongside the scanners and shows a count on the watch face.
+- **HexHound** — a gamified cyber-recon "pet" that lives on the watch and is fed by your detector activity (WiFi/BLE hits, NFC reads, GNSS). It hatches and grows through stages (egg to pup to beast) the more RF activity ARGUS surfaces around you, so it doubles as a glanceable proxy for how busy the environment is.
+- **Pwn** — passive WPA handshake capture. Sniffs 802.11 management / EAPOL frames to grab 4-way handshakes for offline auditing of networks you are authorized to test. Toggling the tile arms the passive capture; it coexists with the other WiFi-scan consumers via the shared piggyback pipeline.
+
+### Threat Radar — anti-stalking
+
+<img src="img/argus/radar.png" width="200" align="right" alt="Threat Radar">
+
+The flagship defensive feature, on the **Radar** tile. Threat Radar correlates every confirmed detector hit (AirTag / Find My tracker, Evil Twin, Flipper, Flock, Skimmer) against your live GPS fix and asks one question: *is this device following me?* A MAC seen at a single spot is ambient; a MAC whose sightings spread across many waypoints as you move is scored **Possible -> Likely -> Confirmed** tail. It runs continuously in the background, fed by all five detectors and the wardriver.
+
+- **On-face alerts** — a Confirmed tail fires a haptic alert and raises a badge on the watch face; the UI accent shifts toward HADES-red as the threat posture rises.
+- **Counter-tail (vehicular)** — persistent ambient BLE/WiFi that co-moves with you (a car radiating infotainment / TPMS / hotspot) is promoted to a `VEHICLE` contact, with a learned "familiar = your own car, seen with you on 2+ days" suppression so your daily driver does not cry wolf.
+- **Mesh reputation** — when a tail hits Confirmed, ARGUS broadcasts a hashed tracker fingerprint over Meshtastic (`TRFLAG|<hash>|<cat>`) so your whole group is warned; peers fold the hashes into a local reputation store, escalation logged to `/Settings/threat_log.txt`.
 
 ### Screenshot
 
@@ -412,7 +438,9 @@ pio run -t upload
 pio device monitor          # 115200 baud
 ```
 
-That's it — no manual library edits. The pre-build hook ([`scripts/patch_lilygolib.py`](scripts/patch_lilygolib.py)) applies the required LilyGoLib patches on every build, and all dependencies are pinned for reproducible output. The build emits `bootloader.bin`, `partitions.bin`, and `firmware.bin` under `.pio/build/twatch_ultra/`.
+That's it — no manual library edits. LilyGoLib and its NFC forks are **vendored under `lib/`** with the required patches baked in (SEND_BUF_SIZE and LV_USE_SNAPSHOT), so there is no build-time patch step, and all dependencies are pinned for reproducible output. The build emits `bootloader.bin`, `partitions.bin`, and `firmware.bin` under `.pio/build/twatch_ultra/`.
+
+> **Note:** ARGUS is ARGUS Project's fork of the open-source T-Watch Ultra firmware. The `r3dfish/13-37` links in this section point to the **upstream base project**; there are no ARGUS-specific prebuilt binaries or web-flasher yet, so build ARGUS from source (above). The two extra PlatformIO envs (`ancs_spike`, `screenshots`) are development-only.
 
 If the board isn't auto-detected, pass the port: `pio run -t upload --upload-port /dev/ttyACM0` (Linux) / `COMx` (Windows) / `/dev/cu.usbmodemXXXX` (macOS).
 
@@ -471,9 +499,21 @@ To add another LilyGoLib define patch, append a `(filename, define, value)` tupl
 
 ---
 
+## Credits & Acknowledgments
+
+ARGUS exists because of **[r3dfish](https://github.com/r3dfish)** and the **[`13:37`](https://github.com/r3dfish/13-37)** firmware. That build is a genuinely phenomenal piece of open-source work: it turned the LILYGO T-Watch Ultra into a real, polished daily-driver smartwatch *and* a serious RF/wireless toolkit, with a full Meshtastic client, spectrum analyzers, TPMS/pager/APRS decoders, NFC read/write, wardriving, and a clean, thoughtful UI. The vast majority of what ARGUS can do, it can do because r3dfish built it first and shared it.
+
+ARGUS is a respectful fork: it rebrands the UI and layers on an anti-surveillance / daily-wear focus (Threat Radar, phone notifications, the detector suite, HexHound). **The core is theirs.** If you find this project useful, please go support the original:
+
+**➡️ [github.com/r3dfish/13-37](https://github.com/r3dfish/13-37) — star it, build it, thank them.**
+
+Thanks also to LILYGO for the hardware, the [Meshtastic](https://meshtastic.org/) project, and the maintainers of LVGL, RadioLib, LilyGoLib, and the other libraries this firmware stands on.
+
 ## License
 
 This firmware — everything under `src/`, `scripts/`, and the project configuration — is released under the **MIT License** (see [LICENSE](LICENSE)).
+
+ARGUS is a fork of [`13:37` by r3dfish](https://github.com/r3dfish/13-37); the upstream project's license and copyright are retained where its code is used.
 
 ### Third-party licenses
 

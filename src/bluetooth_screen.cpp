@@ -83,14 +83,14 @@ static void make_data_row(lv_obj_t *parent, const char *field, lv_obj_t **val_ou
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *lbl = lv_label_create(row);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(lbl, field);
     lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
     lv_obj_t *val = lv_label_create(row);
     lv_obj_set_style_text_color(val, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(val, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(val, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(val, "--");
     lv_obj_align(val, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -208,7 +208,7 @@ void bluetooth_screen_create()
     // Title — kept under 8 chars so it sits cleanly on the round display
     // at the 48 pt size used by the rest of the radio screens.
     lv_obj_t *title = lv_label_create(bt_screen_root);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "Bluetooth");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
@@ -222,8 +222,8 @@ void bluetooth_screen_create()
     lv_obj_align(toggle_sw, LV_ALIGN_TOP_MID, -90, 72);
 
     status_label = lv_label_create(bt_screen_root);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 60, 87);
     update_status();
 
@@ -272,4 +272,21 @@ bool bluetooth_screen_is_active()
 bool bluetooth_screen_is_powered()
 {
     return s_radio_wanted;
+}
+
+// Boot-time BLE bring-up: called from setup() only when the user opted Bluetooth
+// into "Enable at boot". Brings the controller up the same on-demand way the
+// toggle does (adds this screen's scan consumer), so the refcount + toggle state
+// stay consistent. WiFi is guaranteed off at this point because the boot chooser
+// makes WiFi and Bluetooth mutually exclusive; ble_scan_add() still guards
+// against WiFi being up and simply returns false (leaving BT off) if so.
+// NOTE: auto-bringing BLE up at boot has historically boot-looped this watch;
+// this path is gated behind an explicit user opt-in and must be verified on
+// hardware with a BOOT+RST recovery ready.
+void bluetooth_screen_restore_power()
+{
+    if (s_radio_wanted) return;               // already up
+    if (!ble_scan_add(noop_scan_cb)) return;  // guard refuses if WiFi is up
+    s_radio_wanted = true;
+    if (toggle_sw) lv_obj_add_state(toggle_sw, LV_STATE_CHECKED);
 }

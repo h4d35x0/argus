@@ -3,8 +3,18 @@
 #include "handshake.h"
 #include <WiFi.h>
 #include "esp_wifi.h"
+#include "esp_bt.h"
 #include <lvgl.h>
 #include <string.h>
+
+// True while the BLE controller is up. Symmetric to ble_scan_manager's
+// wifi_is_active(): on this board WiFi.mode(WIFI_STA) HANGS if the BLE
+// controller already holds the internal SRAM, so we must refuse to bring WiFi
+// up while BLE is enabled rather than freeze the watch.
+static bool ble_is_active()
+{
+    return esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED;
+}
 
 #define WBM_MAX_CONSUMERS 4
 
@@ -112,6 +122,12 @@ static void on_channel_hop(lv_timer_t *)
 
 static bool start_wifi()
 {
+    // COEXISTENCE GUARD: WiFi.mode(WIFI_STA) below HANGS if the BLE controller
+    // is up. Refuse cleanly BEFORE the call so a WiFi detector (Evil Twin, Pwn,
+    // Flock) can tell the user "turn Bluetooth off first" instead of freezing.
+    if (ble_is_active())
+        return false;
+
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     if (esp_wifi_set_promiscuous(true) != ESP_OK) {
@@ -168,6 +184,8 @@ void wifi_beacon_remove(wifi_beacon_cb_t cb)
 }
 
 bool wifi_beacon_active() { return s_count > 0; }
+
+int wifi_beacon_consumer_count() { return s_count; }
 
 // Toggle reception of DATA frames (for handshake/PMKID capture). Off by default,
 // so the survey path is unchanged unless a capture consumer asks for it. Updates

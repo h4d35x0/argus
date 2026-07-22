@@ -76,7 +76,7 @@ static void make_channel_row(lv_obj_t *parent, int idx)
     lv_obj_set_style_text_color(name_lbl,
         is_active ? lv_color_make(0x34, 0xC7, 0x59)
                   : lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(name_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(name_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_DOT);
     lv_obj_align(name_lbl, LV_ALIGN_TOP_LEFT, 0, 0);
 
@@ -99,7 +99,7 @@ static void make_channel_row(lv_obj_t *parent, int idx)
     lv_obj_t *sub_lbl = lv_label_create(card);
     lv_label_set_text(sub_lbl, sub);
     lv_obj_set_style_text_color(sub_lbl, lv_color_make(0xC7, 0xC7, 0xCC), LV_PART_MAIN);
-    lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(sub_lbl, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_long_mode(sub_lbl, LV_LABEL_LONG_DOT);
     lv_obj_align(sub_lbl, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
@@ -134,7 +134,7 @@ void channels_screen_create()
     lv_obj_set_style_border_width(ch_screen, 0, LV_PART_MAIN);
 
     lv_obj_t *title = lv_label_create(ch_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "CHANNELS");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
@@ -158,14 +158,14 @@ void channels_screen_create()
     // every channel-state change here, and is re-read at boot.
     lv_obj_t *psk_hint = lv_label_create(ch_screen);
     lv_obj_set_style_text_color(psk_hint, lv_color_make(0x55, 0x99, 0xCC), LV_PART_MAIN);
-    lv_obj_set_style_text_font(psk_hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(psk_hint, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(psk_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(psk_hint, "Edit PSK in channels.txt on SD");
     lv_obj_align(psk_hint, LV_ALIGN_BOTTOM_MID, 0, -47);
 
     lv_obj_t *hint = lv_label_create(ch_screen);
-    lv_obj_set_style_text_color(hint, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hint, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(hint, "Tap: activate   toggle: enable   swipe: back");
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -28);

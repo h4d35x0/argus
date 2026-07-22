@@ -158,7 +158,7 @@ static void make_message_entry(lv_obj_t *parent, const MeshMessage *msg, int idx
     lv_obj_set_style_text_color(hdr,
         to_me ? lv_color_make(0xB8, 0xA4, 0xFF) : ARGUS_ACCENT,
         LV_PART_MAIN);
-    lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hdr, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(hdr, header);
     // Match the Nodes-screen header treatment: LONG_DOT shows "..."
     // for overflow instead of hard-clipping into the bezel.
@@ -168,7 +168,7 @@ static void make_message_entry(lv_obj_t *parent, const MeshMessage *msg, int idx
     lv_obj_t *txt = lv_label_create(entry);
     lv_obj_set_width(txt, lv_pct(100));
     lv_obj_set_style_text_color(txt, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(txt, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(txt, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(txt, msg->text);
     lv_label_set_long_mode(txt, LV_LABEL_LONG_WRAP);
 
@@ -193,8 +193,8 @@ static void make_message_entry(lv_obj_t *parent, const MeshMessage *msg, int idx
         }
         lv_obj_t *q = lv_label_create(entry);
         lv_obj_set_width(q, lv_pct(100));
-        lv_obj_set_style_text_color(q, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
-        lv_obj_set_style_text_font(q, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(q, ARGUS_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(q, &font_argus_label_14, LV_PART_MAIN);
         lv_label_set_text(q, qual);
         lv_label_set_long_mode(q, LV_LABEL_LONG_DOT);
     }
@@ -207,8 +207,8 @@ static void rebuild_list()
     if (count == 0) {
         lv_obj_t *lbl = lv_label_create(msg_list);
         lv_obj_add_flag(lbl, LV_OBJ_FLAG_FLOATING);  // exclude from flex layout so center works
-        lv_obj_set_style_text_color(lbl, lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, ARGUS_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, &font_argus_label_16, LV_PART_MAIN);
         lv_label_set_text(lbl, "No messages yet.");
         lv_obj_center(lbl);
         lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -267,7 +267,7 @@ void meshtastic_screen_create()
     // Title — font_montserrat_48 (~60 px tall) at y=21 (5 px lower
     // than the previous y=16 for a touch more bezel clearance).
     lv_obj_t *title = lv_label_create(mesh_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "MESHTASTIC");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 21);
@@ -305,8 +305,8 @@ void meshtastic_screen_create()
     lv_obj_add_flag(clear_link, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *hint = lv_label_create(mesh_screen);
-    lv_obj_set_style_text_color(hint, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hint, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(hint, "Tap: reply   hold: delete   swipe: nav");
     // -22 (was -42) per request — drops the hint another 20 px
@@ -343,7 +343,7 @@ void meshtastic_screen_create()
     confirm_text = lv_label_create(confirm_panel);
     lv_obj_set_width(confirm_text, lv_pct(100));
     lv_obj_set_style_text_color(confirm_text, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(confirm_text, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(confirm_text, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(confirm_text, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(confirm_text, "Delete this message?");
     lv_label_set_long_mode(confirm_text, LV_LABEL_LONG_WRAP);
@@ -358,7 +358,7 @@ void meshtastic_screen_create()
     lv_obj_t *cl = lv_label_create(cancel_btn);
     lv_label_set_text(cl, "Cancel");
     lv_obj_set_style_text_color(cl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(cl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(cl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(cl);
 
     lv_obj_t *del_btn = lv_button_create(confirm_panel);
@@ -370,7 +370,7 @@ void meshtastic_screen_create()
     lv_obj_t *dl = lv_label_create(del_btn);
     lv_label_set_text(dl, "Delete");
     lv_obj_set_style_text_color(dl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(dl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(dl);
 
     lv_obj_add_event_cb(mesh_screen, on_gesture, LV_EVENT_GESTURE, NULL);

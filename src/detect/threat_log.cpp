@@ -16,6 +16,7 @@ static const char* const kDomainNames[] = {
     "BeaconFlood",  // ThreatDomain::BeaconFlood
     "Airtag",       // ThreatDomain::Airtag
     "Skimmer",      // ThreatDomain::Skimmer
+    "Surveillance", // ThreatDomain::Surveillance
 };
 static_assert(sizeof(kDomainNames) / sizeof(kDomainNames[0]) ==
                   static_cast<size_t>(ThreatDomain::_Count),

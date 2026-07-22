@@ -32,6 +32,7 @@ g++ harness (`bash test/run.sh`).
 | `ble_spam.*` | BLE-spam flood (Flipper etc.) | BLE adv observations | `SpamFlag` |
 | `beacon_flood.*` | WiFi beacon-flood / fake-AP spam | AP beacons (bssid/ssid/channel) | `BeaconFlag` |
 | `tracker_ident.*` | AirTag / Find My tracker payload ident | one BLE adv | `TrackerId` + `is_unwanted_tracker()` |
+| `surveillance_device.*` | Passive surveillance-device ident (camera glasses / body cams / hidden + action cams / non-Apple BLE trackers) | one BLE adv and/or one WiFi AP | `DeviceVerdict` {`DeviceClass`, `Confidence`} |
 | `../geo_cell.*` | GPS lat/lon -> coarse cell id | a WGS84 fix | `int32` cell |
 | `threat_map.*` | Verdict -> unified Severity + `feed()` | any detector flag | reports to aggregator |
 | `threat_state.*` | Aggregator: unified posture | `(domain, severity, time)` | `ThreatLevel` + dominant/active_mask |
@@ -101,3 +102,33 @@ polled for EVERY domain each cycle or a first-rise is swallowed as baseline;
 (2) geo::coarse_cell must be non-negative or tail_detect drops it as "unknown".
 When wiring the hardware integration, extend the e2e first - it is cheaper than a
 flash cycle. Keep everything pure.
+
+## INTEGRATION (hardware-gated) - surveillance_device
+
+`surveillance_device` is a PURE, stateless per-sighting fingerprinter (like
+tracker_ident): nothing calls it yet. It reports under the new
+`ThreatDomain::Surveillance` (see threat_state.h) via
+`detect::feed(threat, verdict, now)` (threat_map.h). Wiring it is a SEPARATE,
+hardware-gated step - do it as its own flash+verify, not batched:
+
+1. **BLE half** - in `ble_scan_manager` / the GAP scan callback (the same place
+   ble_spam and tracker_ident are fed - `src/flipper.cpp`'s `on_scan_result`
+   already exposes `res.ble_adv` + `res.adv_data_len + res.scan_rsp_len`), call
+   `DeviceVerdict v = detect::classify_ble(adv, adv_len);` and, when
+   `v.cls != DeviceClass::None`, `detect::feed(threat, v, now_sec)`.
+2. **WiFi half** - in the beacon path (`wifi_beacon_manager`, where evil_twin /
+   beacon_flood are fed), build a `WifiApSighting{bssid, ssid}` from the beacon
+   (copy the 6-byte BSSID - `bssid[0..2]` is the OUI - and the SSID string), call
+   `detect::classify_wifi(ap)`, and `feed()` the verdict the same way. For a
+   sighting seen on BOTH radios, `detect::classify(Sighting{adv, adv_len, &ap})`
+   folds them and keeps the higher-confidence half.
+3. **Aggregator / UI** - no change: `Surveillance` is just another domain the
+   existing `threat.tick()` / `level()` / `dominant()` / `active_mask()` and the
+   forensic `threat_log` (which now names the domain "Surveillance") already
+   fold in, driving `argus_accent()` + HexHound like every other domain.
+
+Signature provenance (which constants are verified vs heuristic-to-verify) is
+documented in surveillance_device.h under "SIGNATURE HONESTY"; verify the
+HEURISTIC ones against a real capture before treating a low-confidence verdict as
+actionable. Extend `test_subsystem_e2e.cpp` with a Surveillance path before
+wiring hardware.

@@ -345,7 +345,7 @@ static lv_obj_t *make_card(lv_obj_t *parent, const char *text, int user_idx,
     lv_obj_t *lbl = lv_label_create(card);
     lv_obj_set_width(lbl, lv_pct(100));
     lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(lbl, text);
     lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
     return card;
@@ -431,7 +431,7 @@ void send_message_screen_create()
     // screens so all three feel visually identical when swiping.
     title_label = lv_label_create(send_screen);
     lv_obj_set_style_text_color(title_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_36, LV_PART_MAIN);
+    lv_obj_set_style_text_font(title_label, &font_argus_ui, LV_PART_MAIN);   // Bank Gothic heading, matches other screens
     lv_label_set_text(title_label, "SEND MESSAGE");
     lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 21);
 
@@ -451,14 +451,14 @@ void send_message_screen_create()
     lv_obj_set_style_pad_row(list_box, 6, LV_PART_MAIN);
 
     status_label = lv_label_create(send_screen);
-    lv_obj_set_style_text_color(status_label, ARGUS_ACCENT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(status_label, "");
     lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -55);
 
     nav_hint = lv_label_create(send_screen);
-    lv_obj_set_style_text_color(nav_hint, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-    lv_obj_set_style_text_font(nav_hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(nav_hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(nav_hint, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(nav_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(nav_hint, "Tap: send   hold custom: delete   swipe: nav");
     lv_obj_align(nav_hint, LV_ALIGN_BOTTOM_MID, 0, -42);
@@ -472,7 +472,7 @@ void send_message_screen_create()
     lv_obj_align(compose_ta, LV_ALIGN_TOP_MID, 0, 56);
     lv_textarea_set_max_length(compose_ta, CUSTOM_MAX_LEN - 1);
     lv_textarea_set_placeholder_text(compose_ta, "Type your message...");
-    lv_obj_set_style_text_font(compose_ta, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(compose_ta, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_bg_color(compose_ta, lv_color_make(0x11, 0x11, 0x11), LV_PART_MAIN);
     lv_obj_set_style_text_color(compose_ta, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_border_color(compose_ta, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
@@ -515,7 +515,7 @@ void send_message_screen_create()
     confirm_text = lv_label_create(confirm_panel);
     lv_obj_set_width(confirm_text, lv_pct(100));
     lv_obj_set_style_text_color(confirm_text, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(confirm_text, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(confirm_text, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_align(confirm_text, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(confirm_text, "Delete this message?");
     lv_label_set_long_mode(confirm_text, LV_LABEL_LONG_WRAP);
@@ -530,7 +530,7 @@ void send_message_screen_create()
     lv_obj_t *cl = lv_label_create(cancel_btn);
     lv_label_set_text(cl, "Cancel");
     lv_obj_set_style_text_color(cl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(cl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(cl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(cl);
 
     lv_obj_t *del_btn = lv_button_create(confirm_panel);
@@ -542,7 +542,7 @@ void send_message_screen_create()
     lv_obj_t *dl = lv_label_create(del_btn);
     lv_label_set_text(dl, "Delete");
     lv_obj_set_style_text_color(dl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(dl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(dl);
 
     lv_obj_add_event_cb(send_screen, on_gesture, LV_EVENT_GESTURE, NULL);

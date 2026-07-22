@@ -11,6 +11,7 @@
 #include "deauth_flood.h"
 #include "ble_spam.h"
 #include "beacon_flood.h"
+#include "surveillance_device.h"
 
 namespace detect {
 
@@ -21,6 +22,10 @@ Severity severity_of(TailFlag f);
 Severity severity_of(DeauthFlag f);
 Severity severity_of(SpamFlag f);
 Severity severity_of(BeaconFlag f);
+// Surveillance takes the richer verdict (class AND confidence): a class sets the
+// ceiling severity, the confidence caps it, so a weak SSID guess never drives the
+// same alarm as a verified UUID. See threat_map.cpp for the full rationale.
+Severity severity_of(const DeviceVerdict &v);
 
 // Convenience: translate a detector verdict and report it to the aggregator
 // under that detector's fixed domain, in one call at the scan-loop call site.
@@ -30,6 +35,7 @@ void feed(ThreatState &ts, TailFlag f, uint32_t t_sec);
 void feed(ThreatState &ts, DeauthFlag f, uint32_t t_sec);
 void feed(ThreatState &ts, SpamFlag f, uint32_t t_sec);
 void feed(ThreatState &ts, BeaconFlag f, uint32_t t_sec);
+void feed(ThreatState &ts, const DeviceVerdict &v, uint32_t t_sec);
 
 // AirTag / Find My unwanted-tracker follow path. The follow evidence reuses a
 // SEPARATE TailDetector instance fed ONLY sightings that tracker_ident flags as

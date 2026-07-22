@@ -255,8 +255,8 @@ static lv_obj_t *make_btn(lv_obj_t *parent, const char *text, int x_ofs, int y_o
     lv_obj_align(btn, LV_ALIGN_TOP_MID, x_ofs, y_ofs);
 
     lv_obj_t *lbl = lv_label_create(btn);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0x77, 0x77, 0x77), LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(lbl, text);
     lv_obj_center(lbl);
 
@@ -272,7 +272,7 @@ void nfc_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(nfc_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "NFC");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
@@ -288,8 +288,8 @@ void nfc_screen_create()
 
     // Status label (right of toggle)
     status_label = lv_label_create(nfc_screen);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 60, 87);
 
     // Read / Write buttons — gray until NFC is on
@@ -312,15 +312,15 @@ void nfc_screen_create()
 
     data_label = lv_label_create(data_panel);
     lv_obj_set_width(data_label, lv_pct(100));
-    lv_obj_set_style_text_color(data_label, lv_color_make(0xCC, 0xCC, 0xCC), LV_PART_MAIN);
-    lv_obj_set_style_text_font(data_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(data_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(data_label, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_long_mode(data_label, LV_LABEL_LONG_WRAP);
     lv_label_set_text(data_label, "");
 
     // Navigation hint
     lv_obj_t *hint = lv_label_create(nfc_screen);
-    lv_obj_set_style_text_color(hint, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hint, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(hint, "Boot button to return");
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -8);
@@ -345,24 +345,13 @@ bool nfc_screen_is_active()
     return lv_screen_active() == nfc_screen;
 }
 
-// Boot-time restore: if /Settings/nfc.txt says NFC was left on, power it back up
-// exactly the way on_toggle does and reflect it on the switch. Must run after the
-// SD card is mounted (instance.begin) and after nfc_screen_create().
+// Boot-time power-on: bring NFC up the same way on_toggle does and reflect it on
+// the switch. Called from setup() ONLY when the user opted NFC into "Enable at
+// boot" (boot_prefs), so the enable decision lives in the caller and there is no
+// per-radio file check here. Must run after the SD card is mounted
+// (instance.begin) and after nfc_screen_create().
 void nfc_screen_restore_power()
 {
-    if (!instance.isCardReady() || usb_sd_is_running()) return;
-    if (!SD.exists(NFC_PATH)) return;
-
-    File f = SD.open(NFC_PATH, FILE_READ);
-    if (!f) return;
-    char buf[8] = {0};
-    int n = f.readBytesUntil('\n', (uint8_t *)buf, sizeof(buf) - 1);
-    f.close();
-    if (n <= 0) return;
-    buf[n] = '\0';
-
-    if (atoi(buf) != 1) return;   // was off (or garbage); nothing to restore
-
     // Power NFC on the same way on_toggle does.
     instance.powerControl(POWER_NFC, true);
     instance.initNFC();

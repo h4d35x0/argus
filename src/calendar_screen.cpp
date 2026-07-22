@@ -86,7 +86,7 @@ static lv_obj_t *make_cell(lv_obj_t *parent, lv_coord_t x, lv_coord_t y,
     lv_obj_align(cell, LV_ALIGN_TOP_LEFT, x, y);
 
     lv_obj_t *l = lv_label_create(cell);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(l, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(l, lv_color_white(), LV_PART_MAIN);
     lv_label_set_text(l, "");
     lv_obj_center(l);
@@ -248,7 +248,7 @@ void calendar_screen_create()
     lv_obj_add_event_cb(next_btn, on_next, LV_EVENT_CLICKED, NULL);
 
     month_label = lv_label_create(calendar_screen);
-    lv_obj_set_style_text_color(month_label, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(month_label, ARGUS_TEXT, LV_PART_MAIN);
     lv_obj_set_style_text_font(month_label, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(month_label, "");
     lv_obj_align(month_label, LV_ALIGN_TOP_MID, 0, 77);
@@ -257,7 +257,7 @@ void calendar_screen_create()
     int grid_x0 = (CAL_SCREEN_W - CAL_GRID_W) / 2;
     for (int c = 0; c < 7; c++) {
         lv_obj_t *wl = lv_label_create(calendar_screen);
-        lv_obj_set_style_text_font(wl, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_font(wl, &font_argus_label_16, LV_PART_MAIN);
         // Saturday/Sunday slightly dimmer to read as weekends at a glance.
         bool weekend = (c == 0 || c == 6);
         lv_obj_set_style_text_color(wl,

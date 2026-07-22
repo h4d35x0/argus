@@ -1,5 +1,6 @@
 #include "time_screen.h"
 #include "theme.h"
+#include <SD.h>
 #include "alarm_screen.h"
 #include "stopwatch_screen.h"
 #include "timer_screen.h"
@@ -30,22 +31,42 @@ static lv_obj_t *make_tile(lv_obj_t *parent, const char *label_text)
 {
     lv_obj_t *tile = lv_obj_create(parent);
     lv_obj_set_size(tile, 180, 180);
-    lv_obj_set_style_bg_color(tile, lv_color_make(0x11, 0x11, 0x11), LV_PART_MAIN);
+    // Match the Tools grid tile face: dark vertical gradient + steel-blue rim.
+    lv_obj_set_style_bg_color(tile, lv_color_make(0x16, 0x1E, 0x28), LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_color(tile, lv_color_make(0x0D, 0x13, 0x1B), LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(tile, LV_GRAD_DIR_VER, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(tile, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-    lv_obj_set_style_border_width(tile, 1, LV_PART_MAIN);
-    lv_obj_set_style_radius(tile, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_color(tile, ARGUS_ACCENT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(tile, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(tile, 20, LV_PART_MAIN);
     lv_obj_set_style_pad_all(tile, 0, LV_PART_MAIN);
     lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *lbl = lv_label_create(tile);
-    lv_obj_set_style_text_color(lbl, lv_color_make(0xCC, 0xCC, 0xCC), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);   // Orbitron (brand label)
     lv_label_set_text(lbl, label_text);
     lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -12);
 
     return tile;
+}
+
+// Load the ARGUS HD sprite /Icons/<name>.png if present on the SD card,
+// else fall back to the procedural draw_*_icon(). Same pattern as tools_screen.
+static void tile_icon(lv_obj_t *tile, const char *name, void (*fallback)(lv_obj_t *))
+{
+    char sdpath[40];
+    snprintf(sdpath, sizeof(sdpath), "/Icons/%s.png", name);
+    if (SD.exists(sdpath)) {
+        char lvpath[44];
+        snprintf(lvpath, sizeof(lvpath), "A:/Icons/%s.png", name);
+        lv_obj_t *img = lv_image_create(tile);
+        lv_image_set_src(img, lvpath);
+        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 8);
+    } else {
+        fallback(tile);
+    }
 }
 
 // ---- Icons -----------------------------------------------------------------
@@ -366,7 +387,7 @@ void time_screen_create()
     lv_obj_set_style_border_width(time_screen, 0, LV_PART_MAIN);
 
     lv_obj_t *title = lv_label_create(time_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TIME");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
@@ -399,10 +420,10 @@ void time_screen_create()
     lv_obj_t *t_timer     = make_tile(grid, "Timer");
     lv_obj_t *t_calendar  = make_tile(grid, "Calendar");
 
-    draw_alarm_icon(t_alarm);
-    draw_stopwatch_icon(t_stopwatch);
-    draw_timer_icon(t_timer);
-    draw_calendar_icon(t_calendar);
+    tile_icon(t_alarm,     "alarm",     draw_alarm_icon);
+    tile_icon(t_stopwatch, "stopwatch", draw_stopwatch_icon);
+    tile_icon(t_timer,     "timer",     draw_timer_icon);
+    tile_icon(t_calendar,  "calendar",  draw_calendar_icon);
 
     lv_obj_add_event_cb(t_alarm,     [](lv_event_t *) { alarm_screen_show();    }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_stopwatch, [](lv_event_t *) { stopwatch_screen_show(); }, LV_EVENT_CLICKED, NULL);

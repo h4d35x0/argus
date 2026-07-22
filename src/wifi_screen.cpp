@@ -3,12 +3,16 @@
 #include "pingsweep.h"
 #include "hostresolve.h"
 #include "portscan_screen.h"
+#include "wifi_pass_store.h"
 #include <LilyGoLib.h>
 #include <WiFi.h>
 #include <string.h>
+#include "esp_bt.h"   // esp_bt_controller_get_status() for the coexistence guard
 
 // Defined in tools_screen.cpp
 void tools_screen_show();
+// Defined in main.cpp - the shared HADES-red modal used for radio/memory refusals.
+void low_mem_show_dialog(const char *msg);
 
 // UI phases. "Connected, sweeping" is not a separate phase — it is WST_CONNECTED
 // with pingsweep_is_running() true.
@@ -43,6 +47,10 @@ static ScanNet   s_nets[24];
 static int       s_net_count = 0;
 static int       s_pending   = -1;   // network index awaiting a password
 static uint32_t  s_connect_start = 0;
+// SSID + password of the in-flight connect, so a successful one can be saved to
+// the SD password store for next time (see begin_connect / WST_CONNECTING).
+static char      s_trying_ssid[33] = {0};
+static char      s_trying_pw[64]   = {0};
 static int       s_shown_dev = -1;   // device count last drawn into the list
 
 // ---- list rendering --------------------------------------------------------
@@ -77,8 +85,8 @@ static void add_text(lv_obj_t *card, const char *txt, const lv_font_t *font, lv_
 static void placeholder(const char *txt)
 {
     lv_obj_t *l = lv_label_create(list_box);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(l, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_font(l, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(l, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(l, txt);
     // float out of the flex flow so we can centre absolutely in the list box.
     lv_obj_add_flag(l, LV_OBJ_FLAG_FLOATING);
@@ -328,6 +336,12 @@ static void exit_password_mode()
 
 static void begin_connect(const char *ssid, const char *pass)
 {
+    // Remember what we're trying so a successful connect can be persisted.
+    strncpy(s_trying_ssid, ssid ? ssid : "", sizeof(s_trying_ssid) - 1);
+    s_trying_ssid[sizeof(s_trying_ssid) - 1] = '\0';
+    strncpy(s_trying_pw, pass ? pass : "", sizeof(s_trying_pw) - 1);
+    s_trying_pw[sizeof(s_trying_pw) - 1] = '\0';
+
     WiFi.mode(WIFI_STA);
     if (pass && pass[0]) WiFi.begin(ssid, pass);
     else                 WiFi.begin(ssid);
@@ -343,8 +357,15 @@ static void on_net_clicked(lv_event_t *e)
     if (s_nets[idx].open) {
         begin_connect(s_nets[idx].ssid, nullptr);
     } else {
-        s_state = WST_PASSWORD;
-        enter_password_mode();
+        // If we already have this network's password saved on the SD, connect
+        // straight away; otherwise prompt for it (and it'll be saved on success).
+        char saved[64];
+        if (wifi_pass_lookup(s_nets[idx].ssid, saved, sizeof(saved))) {
+            begin_connect(s_nets[idx].ssid, saved);
+        } else {
+            s_state = WST_PASSWORD;
+            enter_password_mode();
+        }
     }
     update_status();
     update_buttons();
@@ -365,9 +386,42 @@ static void on_kb_event(lv_event_t *e)
 
 static void start_scan()
 {
-    WiFi.mode(WIFI_STA);
+    // Guards mirror the hardened path in wifi_radio_screen.cpp. Without them this
+    // scan could HARD-FREEZE the watch: WiFi.mode(WIFI_STA) never returns when the
+    // BLE controller is up, and a low-internal-SRAM esp_wifi_init failure was
+    // ignored and barreled on into a null-deref crash. Fail gracefully instead.
+
+    // (a) BLE up -> WiFi.mode(WIFI_STA) hangs. Refuse before calling it.
+    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+        low_mem_show_dialog(
+            "#ff5555 SCAN COULD NOT START#\n\n"
+            "Bluetooth is using the radio.\n\n"
+            "Turn Bluetooth off (and any\n"
+            "BLE detectors), then scan.");
+        return;   // stay in the current state (IDLE / LIST)
+    }
+
+    // (b) Low internal SRAM -> esp_wifi_init returns false. Release the partial
+    //     allocation and tell the user rather than crashing on the next alloc.
+    if (!WiFi.mode(WIFI_STA) || WiFi.getMode() != WIFI_MODE_STA) {
+        WiFi.mode(WIFI_OFF);
+        low_mem_show_dialog(
+            "#ff5555 SCAN COULD NOT START#\n\n"
+            "Not enough free memory.\n\n"
+            "Turn Bluetooth off or reboot,\n"
+            "then scan.");
+        return;
+    }
+
     WiFi.scanDelete();
-    WiFi.scanNetworks(true);   // async
+    // (c) Scan launch itself can fail; don't enter WST_SCANNING if it did.
+    if (WiFi.scanNetworks(true) == WIFI_SCAN_FAILED) {
+        low_mem_show_dialog(
+            "#ff5555 SCAN COULD NOT START#\n\n"
+            "The WiFi scan failed to launch.\n\n"
+            "Try again, or reboot.");
+        return;
+    }
     s_state = WST_SCANNING;
 }
 
@@ -425,6 +479,10 @@ static void on_refresh(lv_timer_t *)
         if (WiFi.status() == WL_CONNECTED) {
             s_state = WST_CONNECTED;
             s_shown_dev = -1;
+            // Remember the working password for this SSID (no-op for open nets or
+            // if it was already stored).
+            if (s_trying_ssid[0] && s_trying_pw[0])
+                wifi_pass_save(s_trying_ssid, s_trying_pw);
             show_devices();
         } else if (millis() - s_connect_start > 15000) {
             WiFi.disconnect(true);
@@ -473,7 +531,7 @@ static lv_obj_t *make_button(lv_obj_t *parent, lv_coord_t w, lv_coord_t h,
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_t *l = lv_label_create(b);
     lv_obj_set_style_text_color(l, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(l, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(l);
     if (label_out) *label_out = l;
     return b;
@@ -488,21 +546,21 @@ void wifi_screen_create()
 
     // Title — font_48 to match the PAGER / TPMS / SETTINGS / analyze headers.
     lv_obj_t *title = lv_label_create(wifi_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "WiFi");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     status_label = lv_label_create(wifi_screen);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(status_label, "Tap SCAN to survey nearby networks");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 56);
 
     // Password field (hidden until a secured network is chosen)
     pw_label = lv_label_create(wifi_screen);
-    lv_obj_set_style_text_font(pw_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(pw_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
+    lv_obj_set_style_text_font(pw_label, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(pw_label, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text(pw_label, "Password");
     lv_obj_align(pw_label, LV_ALIGN_TOP_MID, 0, 78);
     lv_obj_add_flag(pw_label, LV_OBJ_FLAG_HIDDEN);
@@ -513,7 +571,7 @@ void wifi_screen_create()
     lv_textarea_set_max_length(pw_ta, 63);
     lv_obj_set_size(pw_ta, 376, 44);
     lv_obj_align(pw_ta, LV_ALIGN_TOP_MID, 0, 100);
-    lv_obj_set_style_text_font(pw_ta, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(pw_ta, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_bg_color(pw_ta, lv_color_make(0x11, 0x11, 0x11), LV_PART_MAIN);
     lv_obj_set_style_text_color(pw_ta, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_border_color(pw_ta, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
@@ -559,8 +617,14 @@ void wifi_screen_create()
     lv_obj_set_size(keyboard, 410, 240);
     lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_event_cb(keyboard, on_kb_event, LV_EVENT_READY,  NULL);
-    lv_obj_add_event_cb(keyboard, on_kb_event, LV_EVENT_CANCEL, NULL);
+    // Attach the ready/cancel handler to the TEXTAREA, not the keyboard. The
+    // checkmark key (LV_SYMBOL_OK) forwards READY to both the keyboard and the
+    // textarea, but the return/enter key (LV_SYMBOL_NEW_LINE) on a one-line
+    // textarea forwards READY ONLY to the textarea. Listening on the textarea
+    // catches both keys (and CANCEL from the close key); listening on the
+    // keyboard alone silently drops the enter-key press.
+    lv_obj_add_event_cb(pw_ta, on_kb_event, LV_EVENT_READY,  NULL);
+    lv_obj_add_event_cb(pw_ta, on_kb_event, LV_EVENT_CANCEL, NULL);
 
     lv_timer_create(on_refresh, 1000, NULL);
 }

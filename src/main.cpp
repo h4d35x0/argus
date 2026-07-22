@@ -18,6 +18,9 @@
 #include "settings_screen.h"
 #include "screenshot.h"
 #include "tools_screen.h"
+#include "notifications_screen.h"
+#include "notify_popup.h"
+#include "device_mode.h"
 #include "pet_screen.h"
 #include "handshake.h"
 #include "tpms_screen.h"
@@ -57,8 +60,8 @@
 #include "threat_radar.h"
 #include "hexhound.h"
 #include "ble_scan_manager.h"
-#include <esp_wifi.h>   // DIAG: esp_wifi_get_mode for the RAM telemetry line
-#include <esp_bt.h>     // DIAG: esp_bt_controller_get_status for the RAM telemetry line
+#include "boot_prefs.h"
+#include <esp_wifi.h>   // esp_wifi_get_mode() for live WiFi-mode reads
 #include "threat_radar_screen.h"
 #include "tracker_rep.h"
 #include "counter_tail.h"
@@ -67,13 +70,17 @@
 #include "nfc_icon.h"
 #include "detect_pipeline.h"
 // WiFi threat-detection pipeline (evil-twin + beacon-flood -> HADES-red + log).
-// OFF by default: activating it registers a wifi_beacon consumer whose first
-// attach POWERS the WiFi radio into promiscuous mode ~1s after boot and holds it
-// for the session (wifi_beacon_manager start_wifi()). That is an unverified
-// power/behavior change (and bypasses the WiFi toggle), so it must be verified
-// on-device and its attach/detach policy decided (passive piggyback vs opt-in
-// setting) before shipping. Set to 1 only after that. See tasks/todo.md.
-#define ARGUS_WIFI_THREAT_PIPELINE 0
+// ON, using PIGGYBACK activation (detect_pipeline.cpp): the pipeline attaches its
+// beacon consumer ONLY while another WiFi scan (Evil Twin / Flock / Pwn /
+// wardriver) is already running, and detaches when none remain. So it never
+// powers WiFi on by itself, never flips a connected STA into monitor mode, and
+// adds nothing to the boot path - it just enriches scans the user already started
+// with threat posture (HADES-red accent + HexHound) and a forensic log.
+#define ARGUS_WIFI_THREAT_PIPELINE 1
+
+// Modal dialog helper; defined lower down (near the low-mem section) but called
+// from setup()'s boot-radio block above it, so it needs an early prototype.
+void low_mem_show_dialog(const char *msg);
 
 static lv_obj_t *clock_screen;
 static lv_obj_t *time_label;
@@ -209,7 +216,7 @@ static void build_battery_widget(lv_obj_t *screen)
     // battery body without clipping the digits.
     bat_label = lv_label_create(bat_body);
     lv_obj_set_style_text_color(bat_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(bat_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(bat_label, &font_argus_mono_16, LV_PART_MAIN);   // VT323 (brand readout)
     lv_label_set_text(bat_label, "--");
     lv_obj_align(bat_label, LV_ALIGN_CENTER, 0, 0);
 
@@ -643,7 +650,7 @@ static void update_wardriver_indicator()
         }
     } else {
         lv_obj_set_style_text_color(wardriver_wifi_label,
-            lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+            ARGUS_TEXT_DIM, LV_PART_MAIN);
         lv_label_set_text(wardriver_wifi_label, LV_SYMBOL_EYE_OPEN);
         lv_obj_add_flag(wardriver_bt_label, LV_OBJ_FLAG_HIDDEN);
     }
@@ -1060,8 +1067,11 @@ void clock_screen_show()
 }
 
 // Pad each side by this many px so the clock has breathing room from the
-// screen edge.
-#define CLOCK_TEXT_PAD_X     16
+// screen edge. Kept small so the 116 px digits fill nearly the full width.
+// NOTE: do NOT add negative letter-spacing here - the clock is a FIXED-mode
+// spangroup and letter-spacing on it corrupts glyph layout (clipped/missing
+// digits). Size the clock purely by picking the largest font that fits.
+#define CLOCK_TEXT_PAD_X     4
 // Cap the up-scale so the rendered glyphs don't get too soft. The base
 // font is now the custom 96 px Montserrat subset (digits / colon / AM /
 // PM / space), so 1.5× = ~144 px tall is the practical visual ceiling
@@ -1082,6 +1092,13 @@ extern "C" const lv_font_t lv_font_montserrat_clock_96;
 // widest formats fit WITHOUT a runtime transform. See tools/gen_clock_font.py.
 extern "C" const lv_font_t lv_font_montserrat_clock_72;
 extern "C" const lv_font_t lv_font_montserrat_clock_56;
+// Larger 110 px Bank Gothic size so the "00:00" formats fill more of the 378 px
+// usable width. resize_clock_text() only picks it when its worst-case string fits,
+// so it is a pure "go bigger when there is room" option with no overflow risk.
+extern "C" const lv_font_t lv_font_montserrat_clock_110;
+// 116 px - the largest Bank Gothic size whose "00:00" fits the ~402 px usable
+// width with no letter-spacing tricks. Selected only when it actually fits.
+extern "C" const lv_font_t lv_font_montserrat_clock_116;
 
 // Size the home-screen digital clock to fill the width, by SELECTING the largest
 // pre-generated font whose worst-case string fits - NOT by transform-scaling one
@@ -1122,11 +1139,13 @@ static void resize_clock_text()
     // Largest font (widest -> narrowest) whose worst-case string fits usable_w.
     // The 56 px fallback fits every supported format, so a font is always chosen.
     const lv_font_t *fonts[] = {
+        &lv_font_montserrat_clock_116,
+        &lv_font_montserrat_clock_110,
         &lv_font_montserrat_clock_96,
         &lv_font_montserrat_clock_72,
         &lv_font_montserrat_clock_56,
     };
-    const lv_font_t *chosen = fonts[2];
+    const lv_font_t *chosen = fonts[4];
     for (unsigned i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++) {
         lv_point_t sz;
         lv_text_get_size(&sz, ref, fonts[i], 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
@@ -1274,14 +1293,14 @@ void setup()
     // Small "HADES" wordmark above the ARGUS hero.
     lv_obj_t *boot_wm = lv_label_create(boot_splash);
     lv_label_set_text(boot_wm, "HADES");
-    lv_obj_set_style_text_color(boot_wm, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(boot_wm, ARGUS_ACCENT, LV_PART_MAIN);   // ARGUS steel-blue
     lv_obj_set_style_text_font(boot_wm, &font_argus_wordmark, LV_PART_MAIN);
     lv_obj_align(boot_wm, LV_ALIGN_CENTER, 0, -46);
 
     // ARGUS hero.
     lv_obj_t *boot_brand = lv_label_create(boot_splash);
     lv_label_set_text(boot_brand, FW_NAME);   // "ARGUS"
-    lv_obj_set_style_text_color(boot_brand, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(boot_brand, ARGUS_ACCENT, LV_PART_MAIN);   // ARGUS steel-blue
     lv_obj_set_style_text_font(boot_brand, &font_argus_argus, LV_PART_MAIN);
     lv_obj_align(boot_brand, LV_ALIGN_CENTER, 0, 8);
 
@@ -1316,7 +1335,7 @@ void setup()
     // GPS indicator — anchored to top-right; others chain off it via realign_status_icons()
     gps_indicator = lv_label_create(clock_screen);
     lv_obj_set_style_text_font(gps_indicator, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(gps_indicator, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_text_color(gps_indicator, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(gps_indicator, LV_SYMBOL_GPS);
     lv_obj_align(gps_indicator, LV_ALIGN_TOP_RIGHT, -70, 20);
 
@@ -1335,11 +1354,11 @@ void setup()
 
     wardriver_wifi_label = lv_label_create(wardriver_container);
     lv_obj_set_style_text_font(wardriver_wifi_label, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(wardriver_wifi_label, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_text_color(wardriver_wifi_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(wardriver_wifi_label, LV_SYMBOL_EYE_OPEN);
 
     wardriver_bt_label = lv_label_create(wardriver_container);
-    lv_obj_set_style_text_font(wardriver_bt_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(wardriver_bt_label, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(wardriver_bt_label, lv_color_make(0x55, 0x99, 0xFF), LV_PART_MAIN);
     lv_label_set_text(wardriver_bt_label, "");
     lv_obj_add_flag(wardriver_bt_label, LV_OBJ_FLAG_HIDDEN);
@@ -1347,19 +1366,19 @@ void setup()
     // WiFi indicator
     wifi_indicator = lv_label_create(clock_screen);
     lv_obj_set_style_text_font(wifi_indicator, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(wifi_indicator, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_text_color(wifi_indicator, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(wifi_indicator, LV_SYMBOL_WIFI);
 
     // Bluetooth indicator
     bt_indicator = lv_label_create(clock_screen);
     lv_obj_set_style_text_font(bt_indicator, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(bt_indicator, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_text_color(bt_indicator, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(bt_indicator, LV_SYMBOL_BLUETOOTH);
 
     // SD card indicator
     sd_indicator = lv_label_create(clock_screen);
     lv_obj_set_style_text_font(sd_indicator, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(sd_indicator, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_text_color(sd_indicator, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(sd_indicator, LV_SYMBOL_SD_CARD);
 
     // NFC indicator (between SD and LoRa) — arc logo image, recolored for on/off state
@@ -1375,7 +1394,7 @@ void setup()
     // LoRa icon. White count on a red pill, hidden when count == 0.
     mesh_top_count_label = lv_label_create(clock_screen);
     lv_obj_set_style_text_color(mesh_top_count_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(mesh_top_count_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(mesh_top_count_label, &font_argus_mono_16, LV_PART_MAIN);   // VT323 (brand readout)
     lv_obj_set_style_bg_color(mesh_top_count_label, lv_color_make(0xC0, 0x20, 0x20), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(mesh_top_count_label, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_radius(mesh_top_count_label, 8, LV_PART_MAIN);
@@ -1420,8 +1439,8 @@ void setup()
     lv_spangroup_refr_mode(time_label);
 
     date_label = lv_label_create(clock_screen);
-    lv_obj_set_style_text_color(date_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(date_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(date_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(date_label, &font_argus_label_20, LV_PART_MAIN);   // Orbitron (brand label)
     lv_obj_set_style_text_align(date_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(date_label, "");
     lv_obj_align(date_label, LV_ALIGN_CENTER, 0, 60);
@@ -1433,7 +1452,7 @@ void setup()
     // when the alarm module reports the alarm enabled.
     alarm_indicator = lv_label_create(clock_screen);
     lv_obj_set_style_text_font(alarm_indicator, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(alarm_indicator, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(alarm_indicator, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text(alarm_indicator, LV_SYMBOL_BELL);
     lv_obj_align(alarm_indicator, LV_ALIGN_BOTTOM_MID, -95, -10);
     lv_obj_add_flag(alarm_indicator, LV_OBJ_FLAG_HIDDEN);
@@ -1493,7 +1512,7 @@ void setup()
 
     // Discovery count
     airtag_count_label = lv_label_create(airtag_indicator);
-    lv_obj_set_style_text_font(airtag_count_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(airtag_count_label, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(airtag_count_label, lv_color_white(), LV_PART_MAIN);
     lv_label_set_text(airtag_count_label, "0");
 
@@ -1535,7 +1554,7 @@ void setup()
     lv_obj_align(flipper_eye, LV_ALIGN_LEFT_MID, 4, -1);
 
     flipper_count_label = lv_label_create(flipper_indicator);
-    lv_obj_set_style_text_font(flipper_count_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(flipper_count_label, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(flipper_count_label, lv_color_make(0xFF, 0x88, 0x00), LV_PART_MAIN);
     lv_label_set_text(flipper_count_label, "0");
 
@@ -1567,12 +1586,12 @@ void setup()
     lv_obj_clear_flag(sk_badge, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *sk_lbl = lv_label_create(sk_badge);
-    lv_obj_set_style_text_font(sk_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(sk_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(sk_lbl, lv_color_white(), LV_PART_MAIN);
     lv_label_set_text(sk_lbl, "SK");
 
     skimmer_count_label = lv_label_create(skimmer_indicator);
-    lv_obj_set_style_text_font(skimmer_count_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(skimmer_count_label, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(skimmer_count_label, lv_color_make(0xFF, 0x66, 0x66), LV_PART_MAIN);
     lv_label_set_text(skimmer_count_label, "0");
 
@@ -1606,12 +1625,12 @@ void setup()
     lv_obj_clear_flag(et_badge, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *et_lbl = lv_label_create(et_badge);
-    lv_obj_set_style_text_font(et_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(et_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(et_lbl, lv_color_white(), LV_PART_MAIN);
     lv_label_set_text(et_lbl, "ET");
 
     evil_twin_count_label = lv_label_create(evil_twin_indicator);
-    lv_obj_set_style_text_font(evil_twin_count_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(evil_twin_count_label, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(evil_twin_count_label, lv_color_make(0xFF, 0x88, 0x00), LV_PART_MAIN);
     lv_label_set_text(evil_twin_count_label, "0");
 
@@ -1636,7 +1655,7 @@ void setup()
     lv_label_set_text(flock_icon, LV_SYMBOL_WARNING);
 
     flock_count_label = lv_label_create(flock_indicator);
-    lv_obj_set_style_text_font(flock_count_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(flock_count_label, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(flock_count_label, lv_color_make(0xFF, 0x88, 0x00), LV_PART_MAIN);
     lv_label_set_text(flock_count_label, "0");
 
@@ -1652,6 +1671,8 @@ void setup()
     channels_screen_create();
     settings_screen_create();
     tools_screen_create();
+    notifications_screen_create();
+    notify_popup_init();
     threat_radar_screen_create();
     pet_screen_create();
     tpms_screen_create();
@@ -1727,13 +1748,11 @@ void setup()
     // just data; meshtastic_set_active() reads from s_channels when
     // it starts transmitting.
     meshtastic_load_channels_from_sd();
-    // Restore persisted radio power states (SD is mounted; the screens' *_create() ran above).
-    // Bluetooth is intentionally excluded - bringing the BLE controller up at boot boot-looped
-    // the watch, so BT power is never auto-restored here.
-    gps_screen_restore_power();
-    wifi_radio_screen_restore_power();
-    nfc_screen_restore_power();
-    lora_screen_restore_power();
+    // NOTE: the user's "Enable at boot" radios are brought up LOWER DOWN, AFTER
+    // settings_screen_load() has enabled the wallpaper and we have forced it to
+    // decode. Bringing a radio up here (before the wallpaper decodes) leaves too
+    // little free internal SRAM for the PNG decode -> OOM boot-loop when both a
+    // wallpaper AND a boot radio (esp. WiFi ~45 KB) are enabled. See below.
     realign_status_icons();
     layout_battery_indicators(); // seed packing so a boot-enabled alarm renders immediately
     update_clock();
@@ -1763,6 +1782,34 @@ void setup()
     // the WiFi auto-sync hook + background worker.
     timezone_load_on_boot();
     timezone_init();
+
+    // Decode the wallpaper NOW, while internal SRAM is still fully free, BEFORE
+    // any boot radio takes its ~45 KB (WiFi) share. settings_screen_load() above
+    // enabled the wallpaper; lv_refr_now() renders the clock screen, which forces
+    // the PNG decode and caches the result in PSRAM. A later WiFi bring-up then
+    // cannot collide with the decode. Without this ordering, wallpaper + WiFi-at-
+    // boot together OOM the decode and boot-loop the watch.
+    lv_refr_now(NULL);
+
+    // Now bring up the user's "Enable at boot" radios (Settings > Enable at boot).
+    // Everything is OFF at boot by default; a radio powers on here ONLY if opted in
+    // via boot_prefs (/Settings/boot_radios.txt). WiFi and BLE are mutually
+    // exclusive in the chooser, so at most one of the two is ever set. If BLE-at-
+    // boot boot-loops, recover by setting ble=0 in boot_radios.txt (card reader).
+    if (boot_prefs_get(BOOT_RADIO_GPS))  gps_screen_restore_power();
+    if (boot_prefs_get(BOOT_RADIO_WIFI)) wifi_radio_screen_restore_power();
+    if (boot_prefs_get(BOOT_RADIO_BLE))  bluetooth_screen_restore_power();
+    if (boot_prefs_get(BOOT_RADIO_LORA)) lora_screen_restore_power();
+    // Repaint the radio indicators now that the boot radios are up (the earlier
+    // update_*_indicator() calls ran before this and would show them off).
+    update_lora_indicator();
+    update_bt_indicator();
+    update_wifi_indicator();
+
+    // Re-apply persisted phone-notification state (Daily-wear). Done LAST, after
+    // the boot radios, so it correctly no-ops if WiFi-at-boot or a BLE scanner is
+    // already holding the radio (and keeps the preference for next time).
+    device_mode_restore_boot();
 }
 
 // ── Low-memory warning ────────────────────────────────────────────────────
@@ -1799,16 +1846,6 @@ static void low_mem_check()
     static uint32_t s_last_warn_ms = 0;
     size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
 
-    // DIAG (temporary): print internal-RAM headroom + radio state once/sec so we
-    // can see exactly what each radio costs and where WiFi hits the wall.
-    // wifi = esp_wifi mode (0=OFF,1=STA,...); ble = controller status
-    // (0=IDLE/down, 1=INITED, 2=ENABLED/up). Remove after tuning.
-    wifi_mode_t wm = WIFI_MODE_NULL;
-    esp_wifi_get_mode(&wm);   // returns ESP_ERR_WIFI_NOT_INIT (wm stays NULL) if off
-    Serial.printf("[ram] int free=%u largest=%u wifi=%d ble=%d\n",
-                  (unsigned)free_internal,
-                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
-                  (int)wm, (int)esp_bt_controller_get_status());
     if (free_internal >= LOW_MEM_WARN_BYTES) return;
 
     // Never stack a second dialog on top of an unacknowledged one.
@@ -1846,7 +1883,7 @@ void low_mem_show_dialog(const char *msg)
     s_low_mem_dialog = scrim;
 
     lv_obj_t *card = lv_obj_create(scrim);
-    lv_obj_set_size(card, 350, 220);
+    lv_obj_set_size(card, 360, 260);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, lv_color_make(0x18, 0x0A, 0x0A), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, LV_PART_MAIN);
@@ -1864,18 +1901,138 @@ void low_mem_show_dialog(const char *msg)
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     lv_obj_t *btn = lv_button_create(card);
+    lv_obj_set_size(btn, 160, 60);                  // large, finger-friendly target
+    lv_obj_set_ext_click_area(btn, 24);             // extra forgiving hit area
     lv_obj_set_style_bg_color(btn, HADES_RED, LV_PART_MAIN);
-    lv_obj_set_style_margin_top(btn, 12, LV_PART_MAIN);
+    lv_obj_set_style_margin_top(btn, 16, LV_PART_MAIN);
+    lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
     lv_obj_add_event_cb(btn, low_mem_dialog_ok, LV_EVENT_CLICKED, NULL);
     lv_obj_t *btn_lbl = lv_label_create(btn);
     lv_label_set_text(btn_lbl, "OK");
+    lv_obj_set_style_text_font(btn_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(btn_lbl, lv_color_white(), LV_PART_MAIN);
     lv_obj_center(btn_lbl);
 }
 
+#ifdef SCREENSHOT_AUTO
+// Screen entry points used by the auto-capture (redundant forward declarations
+// are harmless if a header already provides them).
+void threat_radar_screen_show();
+void pet_screen_show();
+void alarm_screen_show();
+void stopwatch_screen_show();
+void timer_screen_show();
+void calendar_screen_show();
+void meshtastic_screen_show();
+void configuration_screen_show();
+
+// Recursively find the descendant with the largest vertical scroll range - the
+// scroll container may be nested (screen > wrapper > list), not a direct child.
+static lv_obj_t *s_best_sc;
+static int32_t   s_best_range;
+static void scan_scrollable(lv_obj_t *obj)
+{
+    uint32_t cnt = lv_obj_get_child_count(obj);
+    for (uint32_t i = 0; i < cnt; i++) {
+        lv_obj_t *c = lv_obj_get_child(obj, i);
+        if (lv_obj_has_flag(c, LV_OBJ_FLAG_SCROLLABLE)) {
+            int32_t range = lv_obj_get_scroll_top(c) + lv_obj_get_scroll_bottom(c);
+            if (range > s_best_range) { s_best_range = range; s_best_sc = c; }
+        }
+        scan_scrollable(c);
+    }
+}
+
+// Capture the active screen, scrolling its main container so long screens (Tools
+// grid, Settings list) are captured in full across several frames named
+// <name>-a, <name>-b, ... A screen that fits on one viewport gets a single
+// <name>.bmp.
+static void capture_screen_scrolled(const char *name)
+{
+    lv_obj_t *scr = lv_screen_active();
+
+    s_best_sc = NULL;
+    s_best_range = 0;
+    // The screen ITSELF may be the scroll container (items are direct children,
+    // as on Settings), so measure it too - not just its descendants.
+    if (lv_obj_has_flag(scr, LV_OBJ_FLAG_SCROLLABLE)) {
+        s_best_range = lv_obj_get_scroll_top(scr) + lv_obj_get_scroll_bottom(scr);
+        if (s_best_range > 0) s_best_sc = scr;
+    }
+    scan_scrollable(scr);
+    lv_obj_t *sc = s_best_sc;
+    int32_t best = s_best_range;
+    Serial.printf("[shots]   %s scroll range = %d\n", name, (int)best);
+
+    if (!sc || best <= 8) {                 // fits on one screen
+        screenshot_capture_named(name);
+        return;
+    }
+
+    lv_obj_scroll_to_y(sc, 0, LV_ANIM_OFF); // start at the top
+    char fname[48];
+    for (int frame = 0; frame < 8; frame++) {
+        lv_refr_now(NULL);
+        delay(250);
+        snprintf(fname, sizeof(fname), "%s-%c", name, (char)('a' + frame));
+        bool ok = screenshot_capture_named(fname);
+        Serial.printf("[shots]   %s -> %s\n", fname, ok ? "OK" : "FAIL");
+        if (lv_obj_get_scroll_bottom(sc) <= 0) break;   // reached the end
+        int32_t step = lv_obj_get_height(sc) - 40;      // ~one viewport, slight overlap
+        lv_obj_scroll_by(sc, 0, -step, LV_ANIM_OFF);
+    }
+}
+
+// Dev-only (the `screenshots` build env): walk a curated set of side-effect-free
+// screens, render each, and snapshot it to /Screenshots/<name>.bmp on the SD so
+// the README can be illustrated from real UI. Requires a microSD card inserted.
+// Radio/data screens (WiFi/BT/GPS/NFC/map/wardriver) are intentionally omitted -
+// showing them starts hardware; capture those by hand with the long-press tool.
+static void screenshot_auto_run()
+{
+    struct Item { const char *name; void (*show)(); };
+    static const Item items[] = {
+        { "01-clock",         clock_screen_show         },
+        { "02-tools",         tools_screen_show         },
+        { "03-radar",         threat_radar_screen_show  },
+        { "04-notify",        notifications_screen_show },
+        { "05-hexhound",      pet_screen_show           },
+        { "06-settings",      settings_screen_show      },
+        { "07-meshtastic",    meshtastic_screen_show    },
+        { "08-configuration", configuration_screen_show },
+        { "09-alarm",         alarm_screen_show         },
+        { "10-stopwatch",     stopwatch_screen_show     },
+        { "11-timer",         timer_screen_show         },
+        { "12-calendar",      calendar_screen_show      },
+    };
+    Serial.println("[shots] auto-capture starting (need microSD inserted)");
+    for (auto &it : items) {
+        it.show();
+        lv_refr_now(NULL);
+        delay(500);            // let the screen's own timers/animations settle
+        lv_refr_now(NULL);
+        Serial.printf("[shots] %s\n", it.name);
+        capture_screen_scrolled(it.name);   // multi-frame for scrollable screens
+        delay(150);
+    }
+    clock_screen_show();
+    lv_refr_now(NULL);
+    Serial.println("[shots] auto-capture DONE - files in /Screenshots on the SD");
+}
+#endif
+
 void loop()
 {
     instance.loop(); // required for power button and PMU event dispatch
+
+#ifdef SCREENSHOT_AUTO
+    // Fire once, ~6 s after boot, so the UI and SD mount have settled.
+    static bool s_shots_done = false;
+    if (!s_shots_done && millis() > 6000) {
+        s_shots_done = true;
+        screenshot_auto_run();
+    }
+#endif
 
     // NOTE: auto-bringing the BLE controller up here (ble_scan_boot_keepalive at
     // ~4 s) boot-looped/froze the watch - the BLE bring-up is unstable regardless
@@ -1964,7 +2121,12 @@ void loop()
     // one. This window gives LVGL ~12 fast iterations to fully redraw.
     // Queues continue to fill in the callbacks; we just defer the
     // draining for a few ms while the UI catches up.
-    bool lvgl_priority = s_lvgl_priority_cycles > 0;
+    // While a modal dialog is open, give LVGL full cadence so its OK button
+    // responds instantly. Otherwise the per-iteration background work (bg ticks,
+    // 1 Hz detector flushes) runs between lv_task_handler() calls and the touch
+    // feels laggy / hard to press, especially on a radio screen that never
+    // requested priority itself.
+    bool lvgl_priority = s_lvgl_priority_cycles > 0 || s_low_mem_dialog != nullptr;
     {
         // Pause the matrix-rain animation while LVGL is trying to complete
         // a screen transition. Without this, the 120 ms rain timer keeps

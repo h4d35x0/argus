@@ -100,13 +100,10 @@ static void make_filename(char *out, size_t n)
              t.tm_hour, t.tm_min, t.tm_sec);
 }
 
-bool screenshot_capture()
+// Snapshot the active screen and write it as a 16-bit RGB565 BMP to `path`.
+// Shared by both the timestamped capture and the named auto-capture.
+static bool capture_active_to(const char *path)
 {
-    // Gate the same way the settings screen does — if USB-SD has the card,
-    // or the card simply isn't there, we can't write anything.
-    if (usb_sd_is_running() || !instance.isCardReady()) return false;
-    if (!ensure_dir()) return false;
-
     lv_obj_t *scr = lv_screen_active();
     if (!scr) return false;
 
@@ -124,10 +121,7 @@ bool screenshot_capture()
     int row_pad = (4 - (row_bytes % 4)) % 4;          // BMP rows align to 4 bytes
     uint32_t data_size = (uint32_t)(row_bytes + row_pad) * (uint32_t)h;
 
-    char filename[64];
-    make_filename(filename, sizeof(filename));
-
-    File f = SD.open(filename, FILE_WRITE);
+    File f = SD.open(path, FILE_WRITE);
     if (!f) {
         lv_draw_buf_destroy(snap);
         return false;
@@ -149,10 +143,29 @@ bool screenshot_capture()
 
     f.close();
     lv_draw_buf_destroy(snap);
-
-    // Trace print removed — caller already gets `true` on success and
-    // SD-side errors above print their own diagnostics.
     return true;
+}
+
+bool screenshot_capture()
+{
+    // Gate the same way the settings screen does — if USB-SD has the card,
+    // or the card simply isn't there, we can't write anything.
+    if (usb_sd_is_running() || !instance.isCardReady()) return false;
+    if (!ensure_dir()) return false;
+
+    char filename[64];
+    make_filename(filename, sizeof(filename));
+    return capture_active_to(filename);
+}
+
+bool screenshot_capture_named(const char *name)
+{
+    if (usb_sd_is_running() || !instance.isCardReady()) return false;
+    if (!ensure_dir()) return false;
+
+    char path[80];
+    snprintf(path, sizeof(path), SCREENSHOT_DIR "/%s.bmp", name);
+    return capture_active_to(path);
 }
 
 // ---- Long-press poll -------------------------------------------------------

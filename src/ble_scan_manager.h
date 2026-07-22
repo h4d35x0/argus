@@ -16,10 +16,29 @@
 
 typedef void (*ble_scan_cb_t)(esp_ble_gap_cb_param_t *param);
 
+// Why a ble_scan_add() call failed. Queryable via ble_scan_last_error() so the
+// caller can show the user a specific "free the other radio" hint instead of a
+// dead toggle.
+typedef enum {
+    BLE_SCAN_OK = 0,           // add succeeded (or was already registered)
+    BLE_SCAN_ERR_WIFI_ACTIVE,  // WiFi radio is up; the BLE controller cannot
+                               // coexist with it on this board's internal SRAM
+    BLE_SCAN_ERR_NO_SLOTS,     // consumer table full
+    BLE_SCAN_ERR_CONTROLLER,   // controller / Bluedroid bring-up failed
+} ble_scan_err_t;
+
 // Register a consumer. Idempotent — calling twice with the same cb is a no-op.
-// Returns false if the controller fails to come up on the first add or the
-// consumer table is full (capacity 8 — raise BLE_SCAN_MAX_CONSUMERS if needed).
+// Returns false and sets ble_scan_last_error() if:
+//   - WiFi is currently up (BLE_SCAN_ERR_WIFI_ACTIVE) — bringing the BLE
+//     controller up while WiFi holds the internal SRAM HANGS inside
+//     esp_bt_controller_enable(), so we refuse BEFORE that call rather than
+//     freeze the watch. Turn WiFi off first.
+//   - the consumer table is full (BLE_SCAN_ERR_NO_SLOTS), or
+//   - the controller fails to come up on the first add (BLE_SCAN_ERR_CONTROLLER).
 bool ble_scan_add(ble_scan_cb_t cb);
+
+// Reason the most recent ble_scan_add() returned false (BLE_SCAN_OK on success).
+ble_scan_err_t ble_scan_last_error();
 
 // Unregister a consumer. The controller is torn down when the last consumer
 // is removed.

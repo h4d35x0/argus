@@ -13,3 +13,7 @@ void bluetooth_screen_create();
 void bluetooth_screen_show();
 bool bluetooth_screen_is_active();
 bool bluetooth_screen_is_powered();
+
+// Bring BLE up at boot IF the user opted Bluetooth into "Enable at boot".
+// Called from setup(); see the definition for the boot-loop caveat.
+void bluetooth_screen_restore_power();

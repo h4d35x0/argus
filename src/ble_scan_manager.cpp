@@ -1,11 +1,24 @@
 #include "ble_scan_manager.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
+#include <WiFi.h>
 
 #define BLE_SCAN_MAX_CONSUMERS 8   // headroom: 5 detectors + wardriver + BT-toggle no-op
 
 static ble_scan_cb_t s_consumers[BLE_SCAN_MAX_CONSUMERS] = {};
 static int           s_consumer_count = 0;
+static ble_scan_err_t s_last_error    = BLE_SCAN_OK;
+
+// True while the WiFi radio is powered in any mode. On this board (ESP32-S3,
+// T-Watch Ultra) the WiFi and BLE controllers together exceed the free
+// CONTIGUOUS internal SRAM, and — worse — esp_bt_controller_enable() HANGS
+// (never returns) when WiFi already holds that RAM. So we must know WiFi's
+// state BEFORE we touch the BLE controller. WiFi.getMode() == WIFI_MODE_NULL
+// only when the radio is fully off (STA/AP/promiscuous all report non-NULL).
+static bool wifi_is_active()
+{
+    return WiFi.getMode() != WIFI_MODE_NULL;
+}
 
 static void gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
@@ -30,6 +43,12 @@ static void gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 // initialised by something outside our control.
 static bool bring_up_controller()
 {
+    // Defense in depth: never call esp_bt_controller_enable() with WiFi up — it
+    // hangs. ble_scan_add() already guards this, but guard here too so any future
+    // caller can't reintroduce the freeze.
+    if (wifi_is_active())
+        return false;
+
     bool ok = true;
     if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE) {
         esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
@@ -70,24 +89,46 @@ static void tear_down_controller()
 
 bool ble_scan_add(ble_scan_cb_t cb)
 {
-    if (!cb) return false;
+    if (!cb) { s_last_error = BLE_SCAN_ERR_CONTROLLER; return false; }
 
     // Idempotent: already-registered cbs aren't added twice.
     for (int i = 0; i < s_consumer_count; i++)
-        if (s_consumers[i] == cb) return true;
+        if (s_consumers[i] == cb) { s_last_error = BLE_SCAN_OK; return true; }
 
-    if (s_consumer_count >= BLE_SCAN_MAX_CONSUMERS) return false;
+    if (s_consumer_count >= BLE_SCAN_MAX_CONSUMERS) {
+        s_last_error = BLE_SCAN_ERR_NO_SLOTS;
+        return false;
+    }
 
     bool first = (s_consumer_count == 0);
+
+    // COEXISTENCE GUARD (the reason this whole enum exists): only the FIRST
+    // consumer triggers a controller bring-up. If WiFi is up at that moment,
+    // esp_bt_controller_enable() inside bring_up_controller() would HANG and
+    // freeze the watch (hard restart needed). Refuse cleanly BEFORE the call so
+    // the caller can tell the user "turn WiFi off first". Additional consumers
+    // (first == false) run against an already-live controller and are safe.
+    if (first && wifi_is_active()) {
+        s_last_error = BLE_SCAN_ERR_WIFI_ACTIVE;
+        return false;
+    }
+
     s_consumers[s_consumer_count++] = cb;
 
     if (first) {
         if (!bring_up_controller()) {
             s_consumer_count--;
+            s_last_error = BLE_SCAN_ERR_CONTROLLER;
             return false;
         }
     }
+    s_last_error = BLE_SCAN_OK;
     return true;
+}
+
+ble_scan_err_t ble_scan_last_error()
+{
+    return s_last_error;
 }
 
 void ble_scan_remove(ble_scan_cb_t cb)

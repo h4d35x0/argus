@@ -150,7 +150,7 @@ static void update_status()
             snprintf(buf, sizeof(buf), "Scan %.3f", pager_get_freq());
         }
         lv_label_set_text(status_label, buf);
-        lv_obj_set_style_text_color(status_label, ARGUS_ACCENT, LV_PART_MAIN);
+        lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
         return;
     }
     if (lora_screen_is_powered()) {
@@ -166,7 +166,7 @@ static void update_status()
         return;
     }
     lv_label_set_text(status_label, "Off");
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
 }
 
 static void rebuild_msg_list()
@@ -176,8 +176,8 @@ static void rebuild_msg_list()
     if (n == 0) {
         lv_obj_t *lbl = lv_label_create(msg_list);
         lv_obj_add_flag(lbl, LV_OBJ_FLAG_FLOATING);
-        lv_obj_set_style_text_color(lbl, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, ARGUS_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, &font_argus_label_16, LV_PART_MAIN);
         lv_label_set_text(lbl, "No messages yet.");
         lv_obj_center(lbl);
         return;
@@ -218,7 +218,7 @@ static void rebuild_msg_list()
         lv_obj_t *h = lv_label_create(entry);
         lv_obj_set_width(h, lv_pct(100));
         lv_obj_set_style_text_color(h, func_color(m->func), LV_PART_MAIN);
-        lv_obj_set_style_text_font(h, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(h, &font_argus_label_14, LV_PART_MAIN);
         lv_label_set_text(h, hdr);
         lv_label_set_long_mode(h, LV_LABEL_LONG_DOT);
 
@@ -227,7 +227,7 @@ static void rebuild_msg_list()
             lv_obj_t *t = lv_label_create(entry);
             lv_obj_set_width(t, lv_pct(100));
             lv_obj_set_style_text_color(t, lv_color_white(), LV_PART_MAIN);
-            lv_obj_set_style_text_font(t, &lv_font_montserrat_16, LV_PART_MAIN);
+            lv_obj_set_style_text_font(t, &font_argus_label_16, LV_PART_MAIN);
             lv_label_set_text(t, m->text);
             lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
         }
@@ -475,7 +475,7 @@ static void on_tx_send(lv_event_t *)
     if (ok) {
         lv_label_set_text(tx_status_label, "Sent");
         lv_obj_set_style_text_color(tx_status_label,
-            ARGUS_ACCENT, LV_PART_MAIN);
+            ARGUS_TEXT, LV_PART_MAIN);
     } else {
         char buf[32];
         snprintf(buf, sizeof(buf), "Failed (err %d)", (int)pager_last_error());
@@ -541,7 +541,7 @@ static lv_obj_t *make_mode_btn(lv_obj_t *parent, const char *text, int idx,
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
     lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_center(lbl);
 
     lv_obj_add_event_cb(btn, on_mode_btn, LV_EVENT_CLICKED, (void *)(intptr_t)idx);
@@ -560,7 +560,7 @@ void pager_screen_create()
     // below sits at y=70 which leaves a 14 px gap clear of the bigger
     // title (font_48 extends to ~y=56 from the y=8 origin).
     lv_obj_t *title = lv_label_create(pager_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "PAGER");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
@@ -576,7 +576,7 @@ void pager_screen_create()
     lv_dropdown_set_options(freq_dropdown, FREQ_LABELS);
     lv_obj_set_size(freq_dropdown, 150, 44);
     lv_obj_align(freq_dropdown, LV_ALIGN_TOP_MID, -69, 70);
-    lv_obj_set_style_text_font(freq_dropdown, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(freq_dropdown, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(freq_dropdown, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(freq_dropdown, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_border_color(freq_dropdown, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
@@ -593,7 +593,7 @@ void pager_screen_create()
     lv_textarea_set_text(rx_freq_ta, "152.240");
     lv_obj_set_size(rx_freq_ta, 130, 44);
     lv_obj_align(rx_freq_ta, LV_ALIGN_TOP_MID, 79, 70);
-    lv_obj_set_style_text_font(rx_freq_ta, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(rx_freq_ta, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(rx_freq_ta, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(rx_freq_ta, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_scroll_dir(rx_freq_ta, LV_DIR_HOR);
@@ -609,8 +609,8 @@ void pager_screen_create()
     lv_obj_add_event_cb(scan_switch, on_scan_toggled, LV_EVENT_VALUE_CHANGED, NULL);
 
     status_label = lv_label_create(pager_screen);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(status_label, "Off");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 50, 128);
 
@@ -642,7 +642,7 @@ void pager_screen_create()
     lv_label_set_text(tx_lbl, "TX");
     lv_obj_set_style_text_color(tx_lbl, lv_color_make(0x66, 0xFF, 0xAA), LV_PART_MAIN);
     // Bumped font_14 → font_20 so the label scales with the bigger button.
-    lv_obj_set_style_text_font(tx_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tx_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(tx_lbl);
 
     lv_obj_t *clear_btn = lv_obj_create(pager_screen);
@@ -659,7 +659,7 @@ void pager_screen_create()
     lv_obj_t *clbl = lv_label_create(clear_btn);
     lv_label_set_text(clbl, "CLEAR");
     lv_obj_set_style_text_color(clbl, lv_color_make(0xFF, 0x66, 0x66), LV_PART_MAIN);
-    lv_obj_set_style_text_font(clbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(clbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(clbl);
 
     // Message list — 320 wide × 160 tall (height trimmed from 180 to make
@@ -722,7 +722,7 @@ void pager_screen_create()
     // Panel title
     lv_obj_t *tx_title = lv_label_create(tx_panel);
     lv_obj_set_style_text_color(tx_title, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(tx_title, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tx_title, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(tx_title, "TRANSMIT");
     lv_obj_align(tx_title, LV_ALIGN_TOP_LEFT, 0, 0);
 
@@ -730,8 +730,8 @@ void pager_screen_create()
     // Updated in pager_screen_show() so it stays in sync with the mode
     // buttons on the underlying screen.
     lv_obj_t *tx_mode_hint = lv_label_create(tx_panel);
-    lv_obj_set_style_text_color(tx_mode_hint, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(tx_mode_hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(tx_mode_hint, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tx_mode_hint, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(tx_mode_hint, "");
     lv_obj_align(tx_mode_hint, LV_ALIGN_TOP_RIGHT, 0, 4);
     lv_obj_add_event_cb(pager_screen, [](lv_event_t *) {
@@ -747,8 +747,8 @@ void pager_screen_create()
     // the user to edit; typing into the text area effectively means
     // "Custom..." regardless of what the dropdown last showed.
     lv_obj_t *freq_lbl = lv_label_create(tx_panel);
-    lv_obj_set_style_text_color(freq_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(freq_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(freq_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(freq_lbl, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(freq_lbl, "Frequency (MHz)");
     lv_obj_align(freq_lbl, LV_ALIGN_TOP_LEFT, 0, 36);
 
@@ -756,7 +756,7 @@ void pager_screen_create()
     lv_dropdown_set_options(tx_freq_dropdown, TX_FREQ_LABELS);
     lv_obj_set_size(tx_freq_dropdown, 200, 44);
     lv_obj_align(tx_freq_dropdown, LV_ALIGN_TOP_LEFT, 0, 58);
-    lv_obj_set_style_text_font(tx_freq_dropdown, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tx_freq_dropdown, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(tx_freq_dropdown, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(tx_freq_dropdown, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_border_color(tx_freq_dropdown, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
@@ -773,7 +773,7 @@ void pager_screen_create()
     lv_textarea_set_text(tx_freq_ta, "152.240");
     lv_obj_set_size(tx_freq_ta, 130, 44);
     lv_obj_align(tx_freq_ta, LV_ALIGN_TOP_RIGHT, 0, 58);
-    lv_obj_set_style_text_font(tx_freq_ta, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tx_freq_ta, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(tx_freq_ta, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(tx_freq_ta, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_scroll_dir(tx_freq_ta, LV_DIR_HOR);
@@ -781,8 +781,8 @@ void pager_screen_create()
 
     // Capcode field — shifted down 70 px to clear the new frequency row.
     lv_obj_t *cap_lbl = lv_label_create(tx_panel);
-    lv_obj_set_style_text_color(cap_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(cap_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(cap_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(cap_lbl, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(cap_lbl, "Capcode");
     lv_obj_align(cap_lbl, LV_ALIGN_TOP_LEFT, 0, 106);
 
@@ -796,7 +796,7 @@ void pager_screen_create()
     // pixels, which makes LVGL animate the scroll up/down every cursor
     // blink. 44 leaves enough headroom for the cursor not to cause that.
     lv_obj_set_size(tx_capcode_ta, 200, 44);
-    lv_obj_set_style_text_font(tx_capcode_ta, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tx_capcode_ta, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(tx_capcode_ta, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(tx_capcode_ta, lv_color_white(), LV_PART_MAIN);
     // Horizontal-only scroll — for a one-line numeric field there's never
@@ -808,8 +808,8 @@ void pager_screen_create()
 
     // Message field — shifted down with the rest.
     lv_obj_t *msg_lbl = lv_label_create(tx_panel);
-    lv_obj_set_style_text_color(msg_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(msg_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(msg_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(msg_lbl, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(msg_lbl, "Message");
     lv_obj_align(msg_lbl, LV_ALIGN_TOP_LEFT, 0, 172);
 
@@ -824,7 +824,7 @@ void pager_screen_create()
     // field above so cursor-blink jitter doesn't show up here either.
     lv_obj_set_size(tx_msg_ta, 356, 44);
     lv_obj_set_scroll_dir(tx_msg_ta, LV_DIR_HOR);
-    lv_obj_set_style_text_font(tx_msg_ta, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tx_msg_ta, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(tx_msg_ta, lv_color_make(0x22, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_text_color(tx_msg_ta, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(tx_msg_ta, LV_ALIGN_TOP_LEFT, 0, 194);
@@ -844,7 +844,7 @@ void pager_screen_create()
     lv_obj_t *send_lbl = lv_label_create(send_btn);
     lv_label_set_text(send_lbl, "SEND");
     lv_obj_set_style_text_color(send_lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(send_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(send_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(send_lbl);
 
     lv_obj_t *close_btn = lv_obj_create(tx_panel);
@@ -860,12 +860,12 @@ void pager_screen_create()
     lv_obj_t *close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, "CLOSE");
     lv_obj_set_style_text_color(close_lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(close_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(close_lbl);
 
     // Inline status line for "Sending..." / "Sent" / "Failed (err N)"
     tx_status_label = lv_label_create(tx_panel);
-    lv_obj_set_style_text_font(tx_status_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(tx_status_label, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(tx_status_label, "");
     lv_obj_align(tx_status_label, LV_ALIGN_TOP_LEFT, 0, 306);
 

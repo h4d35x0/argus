@@ -33,7 +33,7 @@ static const char *MX_EGGS[] = {
     "HADES",
     "ARGUS",
     "HADES",
-    "1337",           // homage to the r3dfish/13-37 base this is forked from
+    "REDTEAM",        // was the 1337 homage; swapped for ARGUS voice (differentiate from 13-37)
     "HACKTHEPLANET",
 };
 static const int MX_EGG_COUNT = sizeof(MX_EGGS) / sizeof(MX_EGGS[0]);

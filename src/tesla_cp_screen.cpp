@@ -123,7 +123,7 @@ void tesla_cp_screen_create()
 
     // Title — font_48 to match the PAGER / TPMS / SETTINGS headers.
     lv_obj_t *title = lv_label_create(tesla_cp_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TESLA CP");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
@@ -145,7 +145,7 @@ void tesla_cp_screen_create()
     lv_obj_t *us_lbl = lv_label_create(region_btn_us);
     lv_label_set_text(us_lbl, "US 315");
     lv_obj_set_style_text_color(us_lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(us_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(us_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_center(us_lbl);
 
     region_btn_eu = lv_obj_create(tesla_cp_screen);
@@ -160,15 +160,15 @@ void tesla_cp_screen_create()
     lv_obj_t *eu_lbl = lv_label_create(region_btn_eu);
     lv_label_set_text(eu_lbl, "EU 433.92");
     lv_obj_set_style_text_color(eu_lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(eu_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(eu_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_center(eu_lbl);
 
     // Sub-title — repainted by update_region_selection() to reflect the
     // chosen variant ("315 MHz OOK - US RKE band" / "433.92 MHz OOK -
     // EU / Intl RKE band").
     sub_label = lv_label_create(tesla_cp_screen);
-    lv_obj_set_style_text_color(sub_label, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(sub_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(sub_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(sub_label, &font_argus_label_16, LV_PART_MAIN);
     lv_label_set_text(sub_label, "");
     lv_obj_align(sub_label, LV_ALIGN_TOP_MID, 0, 114);
 
@@ -217,20 +217,20 @@ void tesla_cp_screen_create()
     send_btn_label = lv_label_create(send_btn);
     lv_label_set_text(send_btn_label, "OPEN CHARGE PORT");
     lv_obj_set_style_text_color(send_btn_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(send_btn_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(send_btn_label, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(send_btn_label);
 
     // Status line for "Transmitting..." / "Sent" / "Failed (err N)".
     status_label = lv_label_create(tesla_cp_screen);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(status_label, "Tap to send");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 340);
 
     // Disclaimer line so it's obvious what this is and isn't.
     hint_label = lv_label_create(tesla_cp_screen);
-    lv_obj_set_style_text_font(hint_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(hint_label, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
+    lv_obj_set_style_text_font(hint_label, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_obj_set_style_text_align(hint_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(hint_label,
         "Your own vehicle / authorized use only.\n"

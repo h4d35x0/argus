@@ -242,7 +242,7 @@ void bt_analyze_screen_create()
     lv_obj_set_style_pad_all(screen, 0, LV_PART_MAIN);
 
     title_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(title_label, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title_label, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title_label, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title_label, "Bluetooth");
     // Anchored at the top centre to match the PAGER / TPMS / SETTINGS
@@ -251,14 +251,14 @@ void bt_analyze_screen_create()
     lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 8);
 
     status_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0xCC, 0xCC, 0xCC), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(status_label, "starting...");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 88);
 
     legend_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(legend_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
-    lv_obj_set_style_text_font(legend_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(legend_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(legend_label, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(legend_label, "");
     lv_obj_align(legend_label, LV_ALIGN_TOP_MID, 0, 108);
 
@@ -284,7 +284,7 @@ void bt_analyze_screen_create()
         lv_obj_set_pos(bars[i], x, CHART_BOTTOM_Y - 2);
 
         bucket_labels[i] = lv_label_create(screen);
-        lv_obj_set_style_text_color(bucket_labels[i], lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
+        lv_obj_set_style_text_color(bucket_labels[i], ARGUS_TEXT, LV_PART_MAIN);
         lv_obj_set_style_text_font(bucket_labels[i], &lv_font_montserrat_14, LV_PART_MAIN);
         lv_label_set_text(bucket_labels[i], bucket_text[i]);
         lv_obj_set_pos(bucket_labels[i], x + (BAR_W - 22) / 2, CHART_BOTTOM_Y + 4);
@@ -300,8 +300,8 @@ void bt_analyze_screen_create()
     lv_obj_set_pos(base, start_x, CHART_BOTTOM_Y);
 
     lv_obj_t *axis_hint = lv_label_create(screen);
-    lv_obj_set_style_text_color(axis_hint, lv_color_make(0x66, 0x66, 0x66), LV_PART_MAIN);
-    lv_obj_set_style_text_font(axis_hint, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(axis_hint, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(axis_hint, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(axis_hint, "RSSI (dBm) - closer is stronger");
     // Bottom of visible circle is at y≈456; pull the hint up so the
     // label clears the bezel.

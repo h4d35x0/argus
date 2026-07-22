@@ -95,7 +95,7 @@ static void add_packet_card(const AprsPacket *p)
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
 
     lv_obj_t *hdr = lv_label_create(card);
-    lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(hdr, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(hdr, lv_color_make(0x00, 0xCC, 0xCC), LV_PART_MAIN);
     lv_label_set_text_fmt(hdr, "%s   %s   %.0f dBm",
         p->time_str, p->source[0] ? p->source : "?", p->rssi);
@@ -103,7 +103,7 @@ static void add_packet_card(const AprsPacket *p)
     lv_obj_t *info = lv_label_create(card);
     lv_obj_set_width(info, lv_pct(100));
     lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_font(info, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(info, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(info, lv_color_white(), LV_PART_MAIN);
     lv_label_set_text(info, p->info[0] ? p->info : p->raw);
 }
@@ -117,8 +117,8 @@ static void rebuild_list()
     lv_obj_clean(pkt_list);
     if (n == 0) {
         lv_obj_t *empty = lv_label_create(pkt_list);
-        lv_obj_set_style_text_color(empty, lv_color_make(0x55, 0x55, 0x55), LV_PART_MAIN);
-        lv_obj_set_style_text_font(empty, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(empty, ARGUS_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(empty, &font_argus_label_16, LV_PART_MAIN);
         lv_label_set_text(empty, "No packets received");
         // float out of any list flex flow and centre absolutely in the box.
         lv_obj_add_flag(empty, LV_OBJ_FLAG_FLOATING);
@@ -238,7 +238,7 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *text,
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
     lv_obj_set_style_text_color(lbl, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_center(lbl);
     if (label_out) *label_out = lbl;
     return btn;
@@ -253,7 +253,7 @@ void aprs_screen_create()
 
     // Title — font_48 to match the PAGER / TPMS / SETTINGS headers.
     lv_obj_t *title = lv_label_create(aprs_screen);
-    lv_obj_set_style_text_color(title, ARGUS_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "LoRa APRS");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
@@ -263,22 +263,22 @@ void aprs_screen_create()
     // subtitle clears the font_48 title (which extends to ~y=58 from its
     // y=10 origin).
     lv_obj_t *subtitle = lv_label_create(aprs_screen);
-    lv_obj_set_style_text_color(subtitle, lv_color_make(0x77, 0x77, 0x77), LV_PART_MAIN);
-    lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(subtitle, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(subtitle, &font_argus_label_14, LV_PART_MAIN);
     lv_label_set_text(subtitle, "433.775 MHz");
     lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 62);
 
     // Status line
     status_label = lv_label_create(aprs_screen);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_color(status_label, lv_color_make(0x88, 0x88, 0x88), LV_PART_MAIN);
+    lv_obj_set_style_text_font(status_label, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(status_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_label_set_text(status_label, "Stopped");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 82);
 
     // Callsign field — label left, one-line text area right
     lv_obj_t *call_lbl = lv_label_create(aprs_screen);
-    lv_obj_set_style_text_color(call_lbl, lv_color_make(0xAA, 0xAA, 0xAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(call_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(call_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(call_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(call_lbl, "Callsign");
     lv_obj_align(call_lbl, LV_ALIGN_TOP_LEFT, 14, 116);
 
@@ -287,7 +287,7 @@ void aprs_screen_create()
     lv_textarea_set_max_length(call_ta, APRS_CALLSIGN_MAX - 1);
     lv_obj_set_size(call_ta, 240, 44);
     lv_obj_align(call_ta, LV_ALIGN_TOP_RIGHT, -14, 108);
-    lv_obj_set_style_text_font(call_ta, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(call_ta, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_bg_color(call_ta, lv_color_make(0x11, 0x11, 0x11), LV_PART_MAIN);
     lv_obj_set_style_text_color(call_ta, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_border_color(call_ta, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
