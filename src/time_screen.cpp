@@ -5,6 +5,8 @@
 #include "stopwatch_screen.h"
 #include "timer_screen.h"
 #include "calendar_screen.h"
+#include "world_clock_screen.h"
+#include "sun_moon_screen.h"
 #include <LilyGoLib.h>
 
 // Defined in main.cpp
@@ -30,7 +32,7 @@ static void on_gesture(lv_event_t *e)
 static lv_obj_t *make_tile(lv_obj_t *parent, const char *label_text)
 {
     lv_obj_t *tile = lv_obj_create(parent);
-    lv_obj_set_size(tile, 180, 180);
+    lv_obj_set_size(tile, 118, 118);   // 3-across grid (matches the Tools page)
     // Match the Tools grid tile face: dark vertical gradient + steel-blue rim.
     lv_obj_set_style_bg_color(tile, lv_color_make(0x16, 0x1E, 0x28), LV_PART_MAIN);
     lv_obj_set_style_bg_grad_color(tile, lv_color_make(0x0D, 0x13, 0x1B), LV_PART_MAIN);
@@ -45,9 +47,9 @@ static lv_obj_t *make_tile(lv_obj_t *parent, const char *label_text)
 
     lv_obj_t *lbl = lv_label_create(tile);
     lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);   // Orbitron (brand label)
+    lv_obj_set_style_text_font(lbl, &font_argus_label_14, LV_PART_MAIN);   // Orbitron (fits 118px tile)
     lv_label_set_text(lbl, label_text);
-    lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -12);
+    lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -6);
 
     return tile;
 }
@@ -63,10 +65,34 @@ static void tile_icon(lv_obj_t *tile, const char *name, void (*fallback)(lv_obj_
         snprintf(lvpath, sizeof(lvpath), "A:/Icons/%s.png", name);
         lv_obj_t *img = lv_image_create(tile);
         lv_image_set_src(img, lvpath);
-        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 8);
+        // 140px sprites in a 118px tile: scale to ~78px and pin the scale pivot to
+        // top-centre so the glyph renders high (not floating low over the label).
+        // Same treatment as the Tools page.
+        lv_image_set_scale(img, 142);
+        lv_image_set_pivot(img, 70, 0);
+        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 6);
     } else {
         fallback(tile);
     }
+}
+
+// The procedural draw_*_icon() helpers below were authored in the original 180px
+// tile coordinate space. Draw each into a 180x180 layer scaled to fit the 118px
+// tile, so the composition is preserved without re-tuning every primitive — the
+// same helper the Tools page uses.
+static lv_obj_t *icon_layer(lv_obj_t *tile)
+{
+    lv_obj_t *layer = lv_obj_create(tile);
+    lv_obj_remove_style_all(layer);
+    lv_obj_set_size(layer, 180, 180);
+    lv_obj_add_flag(layer, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_clear_flag(layer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_transform_pivot_x(layer, 90, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(layer, 73, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_x(layer, 198, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_y(layer, 198, LV_PART_MAIN);
+    lv_obj_align(layer, LV_ALIGN_TOP_LEFT, -31, -28);
+    return layer;
 }
 
 // ---- Icons -----------------------------------------------------------------
@@ -75,6 +101,8 @@ static void tile_icon(lv_obj_t *tile, const char *name, void (*fallback)(lv_obj_
 // hands that read roughly "alarm time".
 static void draw_alarm_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     static lv_point_precise_t alarm_leg_l[] = { {72, 116}, {62, 130} };
     lv_obj_t *leg_l = lv_line_create(tile);
     lv_line_set_points(leg_l, alarm_leg_l, 2);
@@ -152,6 +180,8 @@ static void draw_alarm_icon(lv_obj_t *tile)
 // hand caught mid-sweep.
 static void draw_stopwatch_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     lv_obj_t *btn = lv_obj_create(tile);
     lv_obj_set_size(btn, 18, 8);
     lv_obj_set_style_radius(btn, 2, LV_PART_MAIN);
@@ -224,6 +254,8 @@ static void draw_stopwatch_icon(lv_obj_t *tile)
 // the neck, sand stripes in both halves, and a falling stream at the neck.
 static void draw_timer_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     lv_obj_t *top_bar = lv_obj_create(tile);
     lv_obj_set_size(top_bar, 60, 6);
     lv_obj_set_style_radius(top_bar, 2, LV_PART_MAIN);
@@ -317,6 +349,8 @@ static void draw_timer_icon(lv_obj_t *tile)
 // day cells with one painted gold as "today".
 static void draw_calendar_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     lv_obj_t *bar = lv_obj_create(tile);
     lv_obj_set_size(bar, 84, 2);
     lv_obj_set_style_bg_color(bar, lv_color_make(0x77, 0x77, 0x77), LV_PART_MAIN);
@@ -378,6 +412,104 @@ static void draw_calendar_icon(lv_obj_t *tile)
     }
 }
 
+// World Clock — a globe (steel outline) with a meridian, equator and two tropic
+// lines. Procedural fallback for /Icons/worldclock.png. Drawn in the 180px tile
+// space, same as the other Time icons.
+static void draw_worldclock_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+
+    lv_color_t steel = lv_color_make(0x9B, 0xBC, 0xD6);
+    lv_color_t dim   = lv_color_make(0x5B, 0x7C, 0x96);
+
+    lv_obj_t *g = lv_obj_create(tile);
+    lv_obj_set_size(g, 100, 100);
+    lv_obj_set_style_radius(g, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(g, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_color(g, steel, LV_PART_MAIN);
+    lv_obj_set_style_border_width(g, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(g, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(g, LV_ALIGN_TOP_MID, 0, 34);
+
+    lv_obj_t *mer = lv_obj_create(tile);          // meridian (vertical stadium)
+    lv_obj_set_size(mer, 44, 100);
+    lv_obj_set_style_radius(mer, 22, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(mer, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_color(mer, dim, LV_PART_MAIN);
+    lv_obj_set_style_border_width(mer, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(mer, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(mer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(mer, LV_ALIGN_TOP_MID, 0, 34);
+
+    for (int i = 0; i < 3; i++) {                 // equator + two tropics
+        lv_obj_t *ln = lv_obj_create(tile);
+        lv_obj_set_size(ln, i == 1 ? 100 : 80, i == 1 ? 3 : 2);
+        lv_obj_set_style_bg_color(ln, dim, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(ln, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(ln, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(ln, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(ln, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(ln, LV_ALIGN_TOP_MID, 0, 62 + i * 20);
+    }
+}
+
+// Sun & Moon — an amber sun disc beside a steel crescent moon. Procedural
+// fallback for /Icons/sunmoon.png.
+static void draw_sunmoon_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+
+    lv_color_t amber = lv_color_make(0xFF, 0xB0, 0x20);
+    lv_color_t steel = lv_color_make(0xC8, 0xDE, 0xF0);
+    lv_color_t dark  = lv_color_make(0x12, 0x18, 0x20);
+
+    for (int i = 0; i < 8; i++) {                 // sun rays
+        lv_obj_t *ray = lv_obj_create(tile);
+        lv_obj_set_size(ray, 4, 12);
+        lv_obj_set_style_radius(ray, 2, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(ray, amber, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(ray, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(ray, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(ray, 0, LV_PART_MAIN);
+        lv_obj_set_style_transform_pivot_x(ray, 2, LV_PART_MAIN);
+        lv_obj_set_style_transform_pivot_y(ray, 44, LV_PART_MAIN);
+        lv_obj_set_style_transform_rotation(ray, i * 450, LV_PART_MAIN);
+        lv_obj_clear_flag(ray, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(ray, LV_ALIGN_TOP_MID, -26, 42);
+    }
+
+    lv_obj_t *sun = lv_obj_create(tile);          // sun disc (left)
+    lv_obj_set_size(sun, 60, 60);
+    lv_obj_set_style_radius(sun, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(sun, amber, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sun, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sun, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(sun, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(sun, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(sun, LV_ALIGN_TOP_MID, -26, 52);
+
+    lv_obj_t *moon = lv_obj_create(tile);         // moon disc (right)
+    lv_obj_set_size(moon, 56, 56);
+    lv_obj_set_style_radius(moon, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(moon, steel, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(moon, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(moon, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(moon, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(moon, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(moon, LV_ALIGN_TOP_MID, 30, 56);
+
+    lv_obj_t *carve = lv_obj_create(tile);        // carve the crescent
+    lv_obj_set_size(carve, 56, 56);
+    lv_obj_set_style_radius(carve, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(carve, dark, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(carve, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(carve, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(carve, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(carve, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(carve, LV_ALIGN_TOP_MID, 18, 52);
+}
+
 // ---- Public API ------------------------------------------------------------
 
 void time_screen_create()
@@ -392,9 +524,9 @@ void time_screen_create()
     lv_label_set_text(title, "TIME");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
 
-    // Two-column flex grid — same geometry as the Tools grid so the two
-    // screens feel like siblings. With only four tiles the grid doesn't
-    // need to scroll, but the dir is left vertical for future additions.
+    // Three-column flex grid — same geometry as the Tools grid so the two
+    // screens feel like siblings. Six tiles fit as 3x2; the dir stays vertical
+    // so the grid scrolls if more Time tools are added later.
     lv_obj_t *grid = lv_obj_create(time_screen);
     lv_obj_set_size(grid, 400, 432);
     lv_obj_align(grid, LV_ALIGN_TOP_MID, 0, 52);
@@ -412,35 +544,48 @@ void time_screen_create()
         LV_FLEX_ALIGN_START,
         LV_FLEX_ALIGN_START);
 
-    // Insertion order (row-major, grid wraps every 2 tiles):
+    // Insertion order (row-major, grid wraps every 2 tiles; grid scrolls):
     //   [Alarm]   [Stopwatch]
     //   [Timer]   [Calendar]
+    //   [World]   [Sun/Moon]
     lv_obj_t *t_alarm     = make_tile(grid, "Alarm");
     lv_obj_t *t_stopwatch = make_tile(grid, "Stopwatch");
     lv_obj_t *t_timer     = make_tile(grid, "Timer");
     lv_obj_t *t_calendar  = make_tile(grid, "Calendar");
+    lv_obj_t *t_world     = make_tile(grid, "World");
+    lv_obj_t *t_sunmoon   = make_tile(grid, "Sun/Moon");
 
-    tile_icon(t_alarm,     "alarm",     draw_alarm_icon);
-    tile_icon(t_stopwatch, "stopwatch", draw_stopwatch_icon);
-    tile_icon(t_timer,     "timer",     draw_timer_icon);
-    tile_icon(t_calendar,  "calendar",  draw_calendar_icon);
+    tile_icon(t_alarm,     "alarm",      draw_alarm_icon);
+    tile_icon(t_stopwatch, "stopwatch",  draw_stopwatch_icon);
+    tile_icon(t_timer,     "timer",      draw_timer_icon);
+    tile_icon(t_calendar,  "calendar",   draw_calendar_icon);
+    tile_icon(t_world,     "worldclock", draw_worldclock_icon);
+    tile_icon(t_sunmoon,   "sunmoon",    draw_sunmoon_icon);
 
-    lv_obj_add_event_cb(t_alarm,     [](lv_event_t *) { alarm_screen_show();    }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_alarm,     [](lv_event_t *) { alarm_screen_show();     }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_stopwatch, [](lv_event_t *) { stopwatch_screen_show(); }, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(t_timer,     [](lv_event_t *) { timer_screen_show();    }, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(t_calendar,  [](lv_event_t *) { calendar_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_timer,     [](lv_event_t *) { timer_screen_show();     }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_calendar,  [](lv_event_t *) { calendar_screen_show();  }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_world,     [](lv_event_t *) { world_clock_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_sunmoon,   [](lv_event_t *) { sun_moon_screen_show();  }, LV_EVENT_CLICKED, NULL);
 
     // lv_obj_create() children are CLICKABLE by default and would otherwise
-    // swallow taps on the icon shapes. EVENT_BUBBLE on every child sends taps
-    // up to the tile's CLICKED handler — same trick the Tools screen uses.
-    uint32_t tile_count = lv_obj_get_child_count(grid);
-    for (uint32_t i = 0; i < tile_count; i++) {
-        lv_obj_t *tile = lv_obj_get_child(grid, i);
-        uint32_t kid_count = lv_obj_get_child_count(tile);
-        for (uint32_t j = 0; j < kid_count; j++) {
-            lv_obj_add_flag(lv_obj_get_child(tile, j), LV_OBJ_FLAG_EVENT_BUBBLE);
+    // swallow taps on the icon shapes. EVENT_BUBBLE on every descendant sends
+    // taps up to the tile's CLICKED handler — same trick the Tools screen uses.
+    // Recursive because icon_layer() nests the glyph primitives one level deeper.
+    struct BubbleWalk {
+        static void apply(lv_obj_t *obj) {
+            uint32_t n = lv_obj_get_child_count(obj);
+            for (uint32_t k = 0; k < n; k++) {
+                lv_obj_t *child = lv_obj_get_child(obj, k);
+                lv_obj_add_flag(child, LV_OBJ_FLAG_EVENT_BUBBLE);
+                apply(child);
+            }
         }
-    }
+    };
+    uint32_t tile_count = lv_obj_get_child_count(grid);
+    for (uint32_t i = 0; i < tile_count; i++)
+        BubbleWalk::apply(lv_obj_get_child(grid, i));
 
     lv_obj_add_event_cb(time_screen, on_gesture, LV_EVENT_GESTURE, NULL);
 }

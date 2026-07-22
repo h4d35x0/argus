@@ -51,6 +51,8 @@
 #include "alarm.h"
 #include "alarm_screen.h"
 #include "calendar_screen.h"
+#include "world_clock_screen.h"
+#include "sun_moon_screen.h"
 #include "time_screen.h"
 #include "airtag.h"
 #include "flipper.h"
@@ -1698,6 +1700,8 @@ void setup()
     timer_screen_create();
     alarm_screen_create();
     calendar_screen_create();
+    world_clock_screen_create();
+    sun_moon_screen_create();
     time_screen_create();
     wardriver_screen_create();
     lv_obj_add_event_cb(clock_screen, on_clock_gesture, LV_EVENT_GESTURE, NULL);

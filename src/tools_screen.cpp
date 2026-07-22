@@ -268,10 +268,40 @@ static void tile_icon(lv_obj_t *tile, const char *name, void (*fallback)(lv_obj_
         // Sprites are 140px (drawn for the old 180px tiles); scale to ~78px so
         // the glyph sits above the label on the 118px 3-across tile.
         lv_image_set_scale(img, 142);                // 140 * 142/256 ~= 78px
-        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 4);
+        // set_scale shrinks the image toward its pivot. The default centre pivot
+        // leaves the ~78px glyph rendered in the MIDDLE of the 140px layout box
+        // (tile y~31..109) — floating low over the label. Pin the pivot to
+        // top-centre (x=70 keeps it horizontally centred) so the glyph renders
+        // from the top of the box down, then anchor near the tile top.
+        lv_image_set_pivot(img, 70, 0);
+        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 6);   // glyph band ~y=6..84, clear of the label
     } else {
         fallback(tile);
     }
+}
+
+// The procedural draw_*_icon() helpers below were authored in the original
+// 180px tile coordinate space (glyph band ~y=20..126, horizontally centred on a
+// 180-wide tile). The grid later shrank to 118px 3-across, which left every
+// procedural fallback both overflowing the label and mis-centred horizontally.
+// Rather than re-tune dozens of primitives per icon, each draws into a fixed
+// 180x180 layer that is scaled as a unit (~0.77x) and top-anchored, so the
+// original composition is preserved and framed to match the ~78px HD sprites.
+// One place normalises the whole set; the per-icon geometry stays untouched.
+// (pager/hexhound are handled directly for the 118px tile and are NOT wrapped.)
+static lv_obj_t *icon_layer(lv_obj_t *tile)
+{
+    lv_obj_t *layer = lv_obj_create(tile);
+    lv_obj_remove_style_all(layer);                              // transparent, no bg/border/pad
+    lv_obj_set_size(layer, 180, 180);
+    lv_obj_add_flag(layer, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_clear_flag(layer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_transform_pivot_x(layer, 90, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(layer, 73, LV_PART_MAIN); // centre of the glyph band
+    lv_obj_set_style_transform_scale_x(layer, 198, LV_PART_MAIN); // 256 * 0.77 -> band ~82px
+    lv_obj_set_style_transform_scale_y(layer, 198, LV_PART_MAIN);
+    lv_obj_align(layer, LV_ALIGN_TOP_LEFT, -31, -28);            // (118-180)/2 x; lifts band to y~4..86
+    return layer;
 }
 
 // Upper-left: WiFi — signal glyph in cyan, for the site-survey / ping-sweep tool
@@ -291,7 +321,7 @@ static void draw_notify_icon(lv_obj_t *tile)
     lv_obj_set_style_text_color(bell, lv_color_make(0xF0, 0xB4, 0x30), LV_PART_MAIN);
     lv_obj_set_style_text_font(bell, &lv_font_montserrat_48, LV_PART_MAIN);
     lv_label_set_text(bell, LV_SYMBOL_BELL);
-    lv_obj_align(bell, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_align(bell, LV_ALIGN_TOP_MID, 0, 14);   // lifted to sit in the upper band, clear of the label
 }
 
 // Analyze — spectrum-analyzer logo: a row of vertical bars at varying heights
@@ -299,6 +329,8 @@ static void draw_notify_icon(lv_obj_t *tile)
 // suggest channel saturation.
 static void draw_analyzer_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Baseline (axis) under the bars.
     lv_obj_t *base = lv_obj_create(tile);
     lv_obj_set_size(base, 116, 2);
@@ -343,6 +375,8 @@ static void draw_analyzer_icon(lv_obj_t *tile)
 // Upper-right: AirTag — round disc with a small dot in the centre
 static void draw_airtag_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Outer disc (off-white)
     lv_obj_t *outer = lv_obj_create(tile);
     lv_obj_set_size(outer, 84, 84);
@@ -390,9 +424,11 @@ static void draw_flipper_icon(lv_obj_t *tile)
     // the bitmap.
     lv_obj_set_style_image_recolor(img, flip_orange, LV_PART_MAIN);
     lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, LV_PART_MAIN);
-    // Centre-ish inside the tile; the label sits at the bottom so we
-    // anchor a bit higher than dead-centre.
-    lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 26);
+    // flipper_logo_img is 120x80 — full size overflows the 118px tile. Scale to
+    // ~88px wide and pin the pivot top-centre so it anchors high, like the sprites.
+    lv_image_set_scale(img, 188);                // 120 * 188/256 ~= 88px wide
+    lv_image_set_pivot(img, 60, 0);
+    lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 16);
 }
 
 // Skimmer detector icon — a credit card on its side with a thin magnetic
@@ -400,6 +436,8 @@ static void draw_flipper_icon(lv_obj_t *tile)
 // compromise". Reads at-a-glance as "card reader / skimmer".
 static void draw_skimmer_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Card body — wide rounded rectangle in a neutral plastic colour.
     lv_obj_t *card = lv_obj_create(tile);
     lv_obj_set_size(card, 116, 74);
@@ -475,6 +513,8 @@ static void draw_skimmer_icon(lv_obj_t *tile)
 // glance the icon reads as "two APs claiming the same name".
 static void draw_eviltwin_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Legitimate AP: three concentric arcs (large, medium, small) + dot,
     // stacked vertically, centre-left of the tile.
     lv_color_t legit  = lv_color_make(0xCC, 0xCC, 0xCC);
@@ -544,6 +584,8 @@ static void draw_eviltwin_icon(lv_obj_t *tile)
 // surveillance cameras and drones detected by OUI/name matching.
 static void draw_flock_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     lv_color_t cam_body  = lv_color_make(0x33, 0x33, 0x33);
     lv_color_t cam_edge  = lv_color_make(0x66, 0x66, 0x66);
     lv_color_t lens_ring = lv_color_make(0x88, 0x88, 0x88);
@@ -627,6 +669,8 @@ static void draw_flock_icon(lv_obj_t *tile)
 // the lower-left edge as the distinguishing microSD silhouette feature.
 static void draw_microsd_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Card body — narrower and a touch darker than the previous SD-ish slab.
     lv_obj_t *card = lv_obj_create(tile);
     lv_obj_set_size(card, 60, 88);
@@ -692,6 +736,21 @@ static void draw_microsd_icon(lv_obj_t *tile)
 // pad made of four separate rounded keys around a centre circle.
 static void draw_pager_icon(lv_obj_t *tile)
 {
+    // Fine-tune: draw the whole gadget into a full-tile layer scaled ~0.91 about
+    // its centre, so it comes out a touch smaller and a hair lower without
+    // re-tuning every element. (Transform cascades to children in LVGL 9.5.)
+    lv_obj_t *wrap = lv_obj_create(tile);
+    lv_obj_remove_style_all(wrap);
+    lv_obj_set_size(wrap, 118, 118);
+    lv_obj_add_flag(wrap, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_clear_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_transform_pivot_x(wrap, 59, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(wrap, 42, LV_PART_MAIN);   // pager's vertical centre
+    lv_obj_set_style_transform_scale_x(wrap, 233, LV_PART_MAIN);  // 233/256 ~= 0.91
+    lv_obj_set_style_transform_scale_y(wrap, 233, LV_PART_MAIN);
+    lv_obj_align(wrap, LV_ALIGN_TOP_MID, 0, 3);                   // tiny downward nudge
+    tile = wrap;
+
     lv_color_t body_yellow = lv_color_make(0xFF, 0xCC, 0x33);
     lv_color_t body_shade  = lv_color_make(0xCC, 0x99, 0x22);
     lv_color_t btn_face    = lv_color_make(0x10, 0x10, 0x10);
@@ -699,21 +758,22 @@ static void draw_pager_icon(lv_obj_t *tile)
     lv_color_t dpad_face   = lv_color_make(0x28, 0x28, 0x28);
     lv_color_t dpad_edge   = lv_color_make(0x55, 0x55, 0x55);
 
-    // Yellow body -- body spans y=20..116 in tile coords
+    // Yellow body -- compact 87x72 envelope (0.75x of the old 116x96) so the
+    // glyph clears the label. Body spans y=4..76 in tile coords.
     lv_obj_t *body = lv_obj_create(tile);
-    lv_obj_set_size(body, 116, 96);
-    lv_obj_set_style_radius(body, 8, LV_PART_MAIN);
+    lv_obj_set_size(body, 87, 72);
+    lv_obj_set_style_radius(body, 6, LV_PART_MAIN);
     lv_obj_set_style_bg_color(body, body_yellow, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(body, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_color(body, body_shade, LV_PART_MAIN);
     lv_obj_set_style_border_width(body, 2, LV_PART_MAIN);
     lv_obj_set_style_pad_all(body, 0, LV_PART_MAIN);
     lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 4);
 
     // Green LCD display
     lv_obj_t *lcd = lv_obj_create(tile);
-    lv_obj_set_size(lcd, 96, 30);
+    lv_obj_set_size(lcd, 72, 23);
     lv_obj_set_style_radius(lcd, 2, LV_PART_MAIN);
     lv_obj_set_style_bg_color(lcd, lv_color_make(0x00, 0xCC, 0x66), LV_PART_MAIN);  // 13-37 green LCD (user: use theirs)
     lv_obj_set_style_bg_opa(lcd, LV_OPA_COVER, LV_PART_MAIN);
@@ -721,19 +781,19 @@ static void draw_pager_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(lcd, 1, LV_PART_MAIN);
     lv_obj_set_style_pad_all(lcd, 0, LV_PART_MAIN);
     lv_obj_clear_flag(lcd, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(lcd, LV_ALIGN_TOP_MID, 0, 28);
+    lv_obj_align(lcd, LV_ALIGN_TOP_MID, 0, 10);
 
     // Two darker bands standing in for pager message text
     for (int row = 0; row < 2; row++) {
         lv_obj_t *line = lv_obj_create(tile);
-        lv_obj_set_size(line, 72, 3);
+        lv_obj_set_size(line, 54, 3);
         lv_obj_set_style_radius(line, 1, LV_PART_MAIN);
         lv_obj_set_style_bg_color(line, lv_color_make(0x00, 0x55, 0x22), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(line, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_border_width(line, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(line, 0, LV_PART_MAIN);
         lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(line, LV_ALIGN_TOP_MID, 0, 35 + row * 9);
+        lv_obj_align(line, LV_ALIGN_TOP_MID, 0, 15 + row * 7);
     }
 
     // ---- Control row ----
@@ -743,7 +803,7 @@ static void draw_pager_icon(lv_obj_t *tile)
 
     // Green action button
     lv_obj_t *gbtn = lv_obj_create(tile);
-    lv_obj_set_size(gbtn, 18, 18);
+    lv_obj_set_size(gbtn, 14, 14);
     lv_obj_set_style_radius(gbtn, 3, LV_PART_MAIN);
     lv_obj_set_style_bg_color(gbtn, btn_face, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(gbtn, LV_OPA_COVER, LV_PART_MAIN);
@@ -751,21 +811,21 @@ static void draw_pager_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(gbtn, 1, LV_PART_MAIN);
     lv_obj_set_style_pad_all(gbtn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(gbtn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(gbtn, LV_ALIGN_TOP_MID, -38, 76);
+    lv_obj_align(gbtn, LV_ALIGN_TOP_MID, -29, 46);
 
     lv_obj_t *gled = lv_obj_create(gbtn);
-    lv_obj_set_size(gled, 8, 5);
+    lv_obj_set_size(gled, 6, 4);
     lv_obj_set_style_radius(gled, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_bg_color(gled, lv_color_make(0x22, 0xFF, 0x44), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(gled, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(gled, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(gled, 0, LV_PART_MAIN);
     lv_obj_clear_flag(gled, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(gled, LV_ALIGN_TOP_MID, 0, 3);
+    lv_obj_align(gled, LV_ALIGN_TOP_MID, 0, 2);
 
     // Red action button
     lv_obj_t *rbtn = lv_obj_create(tile);
-    lv_obj_set_size(rbtn, 18, 18);
+    lv_obj_set_size(rbtn, 14, 14);
     lv_obj_set_style_radius(rbtn, 3, LV_PART_MAIN);
     lv_obj_set_style_bg_color(rbtn, btn_face, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(rbtn, LV_OPA_COVER, LV_PART_MAIN);
@@ -773,33 +833,26 @@ static void draw_pager_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(rbtn, 1, LV_PART_MAIN);
     lv_obj_set_style_pad_all(rbtn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(rbtn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(rbtn, LV_ALIGN_TOP_MID, -18, 76);
+    lv_obj_align(rbtn, LV_ALIGN_TOP_MID, -14, 46);
 
     lv_obj_t *rled = lv_obj_create(rbtn);
-    lv_obj_set_size(rled, 8, 5);
+    lv_obj_set_size(rled, 6, 4);
     lv_obj_set_style_radius(rled, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_bg_color(rled, lv_color_make(0xFF, 0x22, 0x22), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(rled, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(rled, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(rled, 0, LV_PART_MAIN);
     lv_obj_clear_flag(rled, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(rled, LV_ALIGN_TOP_MID, 0, 3);
+    lv_obj_align(rled, LV_ALIGN_TOP_MID, 0, 2);
 
-    // Right side: Advisor-style 4-way directional pad.
-    // Four separate rounded keys with a 2 px gap between each arm and the
-    // centre circle.  D-pad geometric centre sits at tile (+30, 87).
-    //
-    // Geometry (tile TOP_MID relative, y from tile top):
-    //   up    align(+30, 73) size(12, 8)  bottom at 81
-    //   ctr   align(+30, 83) size( 8, 8)  top 83, bot 91   <-- 2 px gaps
-    //   down  align(+30, 93) size(12, 8)  top  at 93
-    //   left  align(+20, 81) size( 8,12)  right at tile+24  <-- 2 px to ctr
-    //   right align(+40, 81) size( 8,12)  left  at tile+36  <-- 2 px from ctr
+    // Right side: Advisor-style 4-way directional pad — four rounded arm keys
+    // around a centre circle, at 0.75x scale to match the compact body. Order:
+    // up, down, left, right (tile TOP_MID relative). Centre key follows below.
     struct { int x, y, w, h; } dp_keys[4] = {
-        { 30, 73, 12,  8 },
-        { 30, 93, 12,  8 },
-        { 20, 81,  8, 12 },
-        { 40, 81,  8, 12 },
+        { 23, 44, 9, 6 },
+        { 23, 59, 9, 6 },
+        { 15, 50, 6, 9 },
+        { 30, 50, 6, 9 },
     };
     for (int i = 0; i < 4; i++) {
         lv_obj_t *key = lv_obj_create(tile);
@@ -816,7 +869,7 @@ static void draw_pager_icon(lv_obj_t *tile)
 
     // Centre circle (OK / select key)
     lv_obj_t *dp_ctr = lv_obj_create(tile);
-    lv_obj_set_size(dp_ctr, 8, 8);
+    lv_obj_set_size(dp_ctr, 6, 6);
     lv_obj_set_style_radius(dp_ctr, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_bg_color(dp_ctr, lv_color_make(0x44, 0x44, 0x44), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(dp_ctr, LV_OPA_COVER, LV_PART_MAIN);
@@ -824,12 +877,14 @@ static void draw_pager_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(dp_ctr, 1, LV_PART_MAIN);
     lv_obj_set_style_pad_all(dp_ctr, 0, LV_PART_MAIN);
     lv_obj_clear_flag(dp_ctr, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(dp_ctr, LV_ALIGN_TOP_MID, 30, 83);
+    lv_obj_align(dp_ctr, LV_ALIGN_TOP_MID, 23, 51);
 }
 
 // Lower-right: TPMS — tire ring with a small valve stem
 static void draw_tpms_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Tire (thick gray ring)
     lv_obj_t *tire = lv_obj_create(tile);
     lv_obj_set_size(tire, 84, 84);
@@ -867,6 +922,8 @@ static void draw_tpms_icon(lv_obj_t *tile)
 // Lower-right: Mouse — rounded body with a button-divider line and scroll wheel
 static void draw_mouse_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Mouse body — rounded, taller than wide
     lv_obj_t *body = lv_obj_create(tile);
     lv_obj_set_size(body, 62, 92);
@@ -904,6 +961,8 @@ static void draw_mouse_icon(lv_obj_t *tile)
 // APRS — broadcast antenna with two radiating signal arcs
 static void draw_aprs_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Signal arcs radiating up from the transmitter tip (tip centre at y=59)
     for (int i = 0; i < 2; i++) {
         lv_coord_t d = 40 + i * 30;
@@ -963,6 +1022,8 @@ static void draw_aprs_icon(lv_obj_t *tile)
 // the port-status LED so the icon doesn't read as "generic outlet".
 static void draw_tesla_cp_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     // Outer port housing — matte black with subtle bezel.
     lv_obj_t *port = lv_obj_create(tile);
     lv_obj_set_size(port, 120, 78);
@@ -1031,6 +1092,8 @@ static void on_handshake_clicked(lv_event_t *)
 // this in matrix-green; rethemed to the ARGUS accent, threat blip in HADES.)
 static void draw_radar_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     lv_color_t accent = ARGUS_ACCENT;
     const int rings[3] = { 96, 64, 32 };
     for (int i = 0; i < 3; i++) {
@@ -1077,12 +1140,19 @@ static void draw_pet_icon(lv_obj_t *tile)
     lv_obj_t *img = lv_image_create(tile);
     lv_image_set_src(img, "A:/HexHound/pup_icon.png");
     lv_obj_clear_flag(img, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 10);
+    // pup_icon.png is 142px native — without this it renders full-size and buries
+    // the label. Scale + top-centre pivot so it anchors high like the HD sprites
+    // in tile_icon() (a centre pivot would leave the scaled render floating low).
+    lv_image_set_scale(img, 142);                // 142 * 142/256 ~= 79px
+    lv_image_set_pivot(img, 71, 0);
+    lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 6);
 }
 
 // Handshake capture — signal rings with a captured packet dropping out (orange).
 static void draw_handshake_icon(lv_obj_t *tile)
 {
+    tile = icon_layer(tile);
+
     lv_color_t o = lv_color_make(0xff, 0x8c, 0x1a);
     const int d[3] = { 96, 66, 36 };
     for (int i = 0; i < 3; i++) {
@@ -1416,16 +1486,23 @@ void tools_screen_create()
     // lv_obj_create() creates objects with LV_OBJ_FLAG_CLICKABLE set by
     // default, so the icon shapes inside each tile would otherwise swallow
     // CLICKED events instead of letting them reach the tile. Walk every tile
-    // and add LV_OBJ_FLAG_EVENT_BUBBLE to each of its children so a tap
-    // anywhere inside the tile (icon shapes, label, or background) reaches
-    // the tile's CLICKED handler.
+    // and add LV_OBJ_FLAG_EVENT_BUBBLE to each descendant so a tap anywhere
+    // inside the tile (icon shapes, label, or background) reaches the tile's
+    // CLICKED handler. The walk is RECURSIVE because icon_layer() nests the
+    // procedural glyph primitives one level deeper (grandchildren of the tile).
+    struct BubbleWalk {
+        static void apply(lv_obj_t *obj) {
+            uint32_t n = lv_obj_get_child_count(obj);
+            for (uint32_t k = 0; k < n; k++) {
+                lv_obj_t *child = lv_obj_get_child(obj, k);
+                lv_obj_add_flag(child, LV_OBJ_FLAG_EVENT_BUBBLE);
+                apply(child);
+            }
+        }
+    };
     uint32_t tile_count = lv_obj_get_child_count(grid);
     for (uint32_t i = 0; i < tile_count; i++) {
-        lv_obj_t *tile = lv_obj_get_child(grid, i);
-        uint32_t kid_count = lv_obj_get_child_count(tile);
-        for (uint32_t j = 0; j < kid_count; j++) {
-            lv_obj_add_flag(lv_obj_get_child(tile, j), LV_OBJ_FLAG_EVENT_BUBBLE);
-        }
+        BubbleWalk::apply(lv_obj_get_child(grid, i));
     }
 
     // Restore the user's saved tile order now that every tile has its key.

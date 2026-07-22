@@ -19,7 +19,7 @@ Per-icon spec (user direction 2026-07-20):
   skimmer   card + mag-stripe (red) + a WiFi scan symbol
   eviltwin  two APs, one made to look EVIL (red + horns)
   flock     bird-of-prey silhouette (surveillance vendor)
-  pwn       creative: neon cyber-skull grabbing a handshake packet
+  pwn       evil chess pawn: dark waisted body, red neon rim, devil horns + glowing eyes
   mouse     ARGUS-ified computer mouse (BT HID)
   microsd   ARGUS-ified SD card
   flipper   KEEP existing flipper_logo_img (not generated here)
@@ -260,6 +260,79 @@ def g_pwn(a, hi):
     d.arc([cx-sc(10), sc(140), cx+sc(10), sc(166)], 180, 360, fill=A(hi), width=sc(4))     # lock shackle
     return l
 
+def g_worldclock(a, hi):
+    # wireframe globe (lat/long lines) doubling as a clock face — hands from centre.
+    l = new_canvas(); d = ImageDraw.Draw(l); cx, cy = CW // 2, CH // 2; R = sc(70)
+    d.ellipse([cx-R, cy-R, cx+R, cy+R], outline=A(a), width=sc(5))
+    for dy in (-sc(36), 0, sc(36)):                          # parallels
+        rw = R if dy == 0 else int((R * R - dy * dy) ** 0.5)
+        rh = sc(11)
+        d.ellipse([cx-rw, cy+dy-rh, cx+rw, cy+dy+rh], outline=A(STEEL_DK), width=sc(2))
+    for rw in (sc(26), sc(50)):                              # meridians
+        d.ellipse([cx-rw, cy-R, cx+rw, cy+R], outline=A(STEEL_DK), width=sc(2))
+    d.line([cx, cy-R, cx, cy+R], fill=A(STEEL_DK), width=sc(2))
+    d.line([cx, cy, cx, cy-sc(42)], fill=A(hi), width=sc(7))       # minute hand
+    d.line([cx, cy, cx+sc(30), cy+sc(16)], fill=A(hi), width=sc(7))  # hour hand
+    d.ellipse([cx-sc(7), cy-sc(7), cx+sc(7), cy+sc(7)], fill=A(hi))
+    return l
+
+def g_sunmoon(a, hi):
+    # amber sun with rays beside a cool crescent moon.
+    l = new_canvas(); d = ImageDraw.Draw(l); cx, cy = CW // 2, CH // 2
+    sx, sy, sr = cx - sc(30), cy + sc(10), sc(40)
+    for i in range(12):                                      # rays
+        ang = math.radians(i * 30)
+        x1 = sx + int((sr + sc(9)) * math.cos(ang)); y1 = sy + int((sr + sc(9)) * math.sin(ang))
+        x2 = sx + int((sr + sc(24)) * math.cos(ang)); y2 = sy + int((sr + sc(24)) * math.sin(ang))
+        d.line([x1, y1, x2, y2], fill=A(a), width=sc(5))
+    d.ellipse([sx-sr, sy-sr, sx+sr, sy+sr], fill=A(a))
+    d.ellipse([sx-sr, sy-sr, sx+sr, sy+sr], outline=A(AMBER_HI), width=sc(3))
+    mx, my, mr = cx + sc(42), cy - sc(24), sc(40)            # crescent moon
+    mask = Image.new("L", (CW, CH), 0); mk = ImageDraw.Draw(mask)
+    mk.ellipse([mx-mr, my-mr, mx+mr, my+mr], fill=255)
+    mk.ellipse([mx-mr+sc(24), my-mr-sc(3), mx+mr+sc(24), my+mr-sc(3)], fill=0)
+    solid = Image.new("RGBA", (CW, CH), (STEEL_HI[0], STEEL_HI[1], STEEL_HI[2], 255))
+    l.paste(solid, (0, 0), mask)
+    return l
+
+def g_evilpawn(a, hi):
+    # menacing chess pawn ("pwn"): dark waisted body, neon-red rim + glow, devil
+    # horns and glowing amber scowling eyes. A pawn that clearly means business,
+    # so the pun lands without reading as "weak/expendable".
+    l = new_canvas(); d = ImageDraw.Draw(l); cx = CW // 2
+    body = (24, 30, 40); edge = a
+    # base: two stacked tiers
+    d.rounded_rectangle([cx-sc(52), sc(156), cx+sc(52), sc(178)], radius=sc(8),
+                        fill=A(body), outline=A(edge), width=sc(4))
+    d.rounded_rectangle([cx-sc(40), sc(140), cx+sc(40), sc(158)], radius=sc(6),
+                        fill=A(body), outline=A(edge), width=sc(3))
+    # waisted body (lower flare + upper flare meeting a narrow waist)
+    d.polygon([(cx-sc(34), sc(146)), (cx+sc(34), sc(146)),
+               (cx+sc(18), sc(114)), (cx-sc(18), sc(114))], fill=A(body))
+    d.polygon([(cx-sc(18), sc(114)), (cx+sc(18), sc(114)),
+               (cx+sc(30), sc(94)),  (cx-sc(30), sc(94))],  fill=A(body))
+    d.line([(cx-sc(34), sc(146)), (cx-sc(18), sc(114)), (cx-sc(30), sc(94))], fill=A(edge), width=sc(4), joint="curve")
+    d.line([(cx+sc(34), sc(146)), (cx+sc(18), sc(114)), (cx+sc(30), sc(94))], fill=A(edge), width=sc(4), joint="curve")
+    # neck collar under head
+    d.rounded_rectangle([cx-sc(34), sc(86), cx+sc(34), sc(102)], radius=sc(8),
+                        fill=A(body), outline=A(edge), width=sc(3))
+    # head
+    hy = sc(58); hr = sc(30)
+    d.ellipse([cx-hr, hy-hr, cx+hr, hy+hr], fill=A(body), outline=A(edge), width=sc(4))
+    # horns (spikes up-and-out)
+    d.polygon([(cx-sc(8), hy-sc(24)), (cx-sc(26), hy-sc(20)), (cx-sc(36), hy-sc(54))], fill=A(edge))
+    d.polygon([(cx+sc(8), hy-sc(24)), (cx+sc(26), hy-sc(20)), (cx+sc(36), hy-sc(54))], fill=A(edge))
+    # glowing angry eyes (angled inward-down)
+    eye = AMBER_HI
+    d.polygon([(cx-sc(21), hy-sc(3)), (cx-sc(5), hy+sc(4)),
+               (cx-sc(7), hy+sc(12)), (cx-sc(23), hy+sc(6))], fill=A(eye))
+    d.polygon([(cx+sc(21), hy-sc(3)), (cx+sc(5), hy+sc(4)),
+               (cx+sc(7), hy+sc(12)), (cx+sc(23), hy+sc(6))], fill=A(eye))
+    # brow ridge for a scowl
+    d.line([(cx-sc(24), hy-sc(10)), (cx-sc(4), hy-sc(2))], fill=A(edge), width=sc(3))
+    d.line([(cx+sc(24), hy-sc(10)), (cx+sc(4), hy-sc(2))], fill=A(edge), width=sc(3))
+    return l
+
 def g_mouse(a, hi):
     # ARGUS-ified computer mouse (BT HID) w/ a little BT rune
     l = new_canvas(); d = ImageDraw.Draw(l); cx = CW//2
@@ -356,9 +429,11 @@ ICONS = [
     ("skimmer",  g_skimmer,  RED,   RED_HI),
     ("eviltwin", g_eviltwin, STEEL, STEEL_HI),
     ("flock",    lambda a, hi: image_glyph(DL + "/flock safety 2.png", a, hi, target=150), RED, RED_HI),
-    ("pwn",      g_pwn,      STEEL, STEEL_HI),
+    ("pwn",      g_evilpawn, RED,   RED_HI),   # evil chess pawn (was g_pwn cyber-skull)
     ("mouse",    g_mouse,    STEEL, STEEL_HI),
     ("microsd",  g_microsd,  STEEL, STEEL_HI),
+    ("worldclock", g_worldclock, STEEL, STEEL_HI),
+    ("sunmoon",    g_sunmoon,    AMBER, AMBER_HI),
 ]
 
 
