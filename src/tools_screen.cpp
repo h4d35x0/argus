@@ -226,7 +226,7 @@ static void on_flock_clicked(lv_event_t *e)
 static lv_obj_t *make_tile(lv_obj_t *parent, const char *label_text)
 {
     lv_obj_t *tile = lv_obj_create(parent);
-    lv_obj_set_size(tile, 180, 180);
+    lv_obj_set_size(tile, 118, 118);   // 3-across grid (was 180 for 2-across)
     // ARGUS tile face: dark vertical gradient + steel-blue rounded rim, so the
     // premium look lives here (one place, every tile) and the HD glyph sprites stay
     // transparent (glyph + neon glow only). Matches tools/gen_icon_sprites.py.
@@ -243,9 +243,9 @@ static lv_obj_t *make_tile(lv_obj_t *parent, const char *label_text)
 
     lv_obj_t *lbl = lv_label_create(tile);
     lv_obj_set_style_text_color(lbl, ARGUS_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &font_argus_label_20, LV_PART_MAIN);   // Orbitron (brand label)
+    lv_obj_set_style_text_font(lbl, &font_argus_label_14, LV_PART_MAIN);   // Orbitron (fits 118px tile)
     lv_label_set_text(lbl, label_text);
-    lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -12);
+    lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -6);
 
     return tile;
 }
@@ -265,7 +265,10 @@ static void tile_icon(lv_obj_t *tile, const char *name, void (*fallback)(lv_obj_
         snprintf(lvpath, sizeof(lvpath), "A:/Icons/%s.png", name);
         lv_obj_t *img = lv_image_create(tile);
         lv_image_set_src(img, lvpath);
-        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 8);   // glyph area above the label
+        // Sprites are 140px (drawn for the old 180px tiles); scale to ~78px so
+        // the glyph sits above the label on the 118px 3-across tile.
+        lv_image_set_scale(img, 142);                // 140 * 142/256 ~= 78px
+        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 4);
     } else {
         fallback(tile);
     }

@@ -5,6 +5,8 @@
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <time.h>
+#include <Arduino.h>          // millis()
+#include <esp_heap_caps.h>    // heap_caps_get_free_size / _total_size
 
 // Defined in main.cpp
 void main_loop_request_lvgl_priority(int cycles);
@@ -32,6 +34,29 @@ void clock_screen_get_local_time(struct tm *out);
 static lv_obj_t *settings_screen;
 static lv_obj_t *brightness_slider;
 static lv_obj_t *brightness_val_label;
+static lv_obj_t *sysinfo_label = nullptr;   // System Info readout (bottom of screen)
+
+// Fill the System Info label with live heap / PSRAM / battery / uptime. Cheap;
+// called on settings_screen_show() so it snapshots each time the screen opens.
+static void settings_update_sysinfo()
+{
+    if (!sysinfo_label) return;
+    unsigned heap_kb  = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    unsigned ps_free  = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+    unsigned ps_total = (unsigned)(heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024);
+    int  batt = instance.pmu.getBatteryPercent();
+    bool chg  = instance.pmu.isCharging();
+    uint32_t up = millis() / 1000;
+    lv_label_set_text_fmt(sysinfo_label,
+        "Heap : %u KB free\n"
+        "PSRAM: %u / %u KB\n"
+        "Batt : %d%%%s\n"
+        "Up   : %luh %02lum %02lus",
+        heap_kb, ps_free, ps_total,
+        batt, chg ? " chg" : "",
+        (unsigned long)(up / 3600), (unsigned long)((up % 3600) / 60),
+        (unsigned long)(up % 60));
+}
 static int32_t   s_brightness = DEVICE_MAX_BRIGHTNESS_LEVEL;
 static lv_obj_t *face_switch;
 static lv_obj_t *face_val_label;
@@ -1168,6 +1193,31 @@ void settings_screen_create()
     lv_obj_align(boot_hint, LV_ALIGN_TOP_MID, 0, 1626);
     register_shiftable(boot_hint, 1626);
 
+    // --- System Info (read-only diagnostics; refreshed on screen show) --------
+    lv_obj_t *sep_sys = lv_obj_create(settings_screen);
+    lv_obj_set_size(sep_sys, 380, 1);
+    lv_obj_set_style_bg_color(sep_sys, lv_color_make(0x33, 0x33, 0x33), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sep_sys, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sep_sys, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(sep_sys, 0, LV_PART_MAIN);
+    lv_obj_align(sep_sys, LV_ALIGN_TOP_MID, 0, 1700);
+    register_shiftable(sep_sys, 1700);
+
+    lv_obj_t *sys_hdr = lv_label_create(settings_screen);
+    lv_obj_set_style_text_color(sys_hdr, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(sys_hdr, &font_argus_label_20, LV_PART_MAIN);
+    lv_label_set_text(sys_hdr, "System Info");
+    lv_obj_align(sys_hdr, LV_ALIGN_TOP_MID, 0, 1714);
+    register_shiftable(sys_hdr, 1714);
+
+    sysinfo_label = lv_label_create(settings_screen);
+    lv_obj_set_style_text_color(sysinfo_label, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(sysinfo_label, &font_argus_mono_16, LV_PART_MAIN);
+    lv_obj_set_width(sysinfo_label, 360);
+    lv_label_set_text(sysinfo_label, "");
+    lv_obj_align(sysinfo_label, LV_ALIGN_TOP_MID, 0, 1750);
+    register_shiftable(sysinfo_label, 1750);
+
     // Reflect the current SD state in the row's interactability + checked
     // state. Boot order matters here — instance.isCardReady() may flip
     // later, but settings_screen_apply_sd_state() is also called from
@@ -1183,6 +1233,7 @@ bool settings_screen_is_active()
 void settings_screen_show()
 {
     main_loop_request_lvgl_priority(12);
+    settings_update_sysinfo();   // snapshot heap/PSRAM/battery/uptime
     // Refresh percentage label to match current slider position
     int pct = (int)s_brightness * 100 / (int)DEVICE_MAX_BRIGHTNESS_LEVEL;
     lv_label_set_text_fmt(brightness_val_label, "%d%%", pct);

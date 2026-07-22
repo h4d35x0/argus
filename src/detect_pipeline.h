@@ -1,6 +1,10 @@
 #pragma once
 #include <stdint.h>
 
+// Forward-declare the pure follow-verdict flag so the BLE side can feed the
+// shared aggregator without this header pulling in the whole detect library.
+namespace detect { enum class TailFlag : uint8_t; }
+
 // detect_pipeline - firmware glue that wires the PURE, host-tested WiFi-side
 // detectors into the live promiscuous beacon stream, folds their verdicts into
 // the shared ThreatState aggregator, records forensic edges to the ThreatLog,
@@ -24,3 +28,11 @@
 // (the sliding windows + decay in the pure detectors assume a forward clock);
 // millis()/1000 is ideal.
 void detect_pipeline_tick(uint32_t now_sec);
+
+// Feed an unwanted-tracker follow verdict into the SHARED ThreatState (Airtag
+// domain), thread-safe against the WiFi beacon callback and the 1Hz tick. The
+// BLE detect pipeline calls this so BLE + WiFi threat signals drive ONE unified
+// posture / forensic log / HADES accent (driven by detect_pipeline_tick), rather
+// than two pipelines stomping argus_set_threat() on each other. No-op-safe to
+// call even before the first detect_pipeline_tick().
+void detect_pipeline_feed_tracker(detect::TailFlag flag, uint32_t t_sec);

@@ -124,6 +124,17 @@ static void beacon_cb(const WifiBeacon *b)
     portEXIT_CRITICAL(&s_mux);
 }
 
+// --- Shared feed point for the BLE detect pipeline --------------------------
+// The BLE side owns its own TailDetector but reports its follow verdict here so
+// the Airtag domain lands in the SAME s_threat the WiFi tick ages and drives the
+// UI/log from. Guarded by the same spinlock as the WiFi callback.
+void detect_pipeline_feed_tracker(detect::TailFlag flag, uint32_t t_sec)
+{
+    portENTER_CRITICAL(&s_mux);
+    detect::feed_tracker(s_threat, flag, t_sec);
+    portEXIT_CRITICAL(&s_mux);
+}
+
 // --- 1Hz pipeline tick (main/LVGL task context) -----------------------------
 void detect_pipeline_tick(uint32_t now_sec)
 {

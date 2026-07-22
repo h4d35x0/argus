@@ -69,6 +69,7 @@
 #include "background.h"
 #include "nfc_icon.h"
 #include "detect_pipeline.h"
+#include "ble_detect_pipeline.h"
 // WiFi threat-detection pipeline (evil-twin + beacon-flood -> HADES-red + log).
 // ON, using PIGGYBACK activation (detect_pipeline.cpp): the pipeline attaches its
 // beacon consumer ONLY while another WiFi scan (Evil Twin / Flock / Pwn /
@@ -77,6 +78,11 @@
 // adds nothing to the boot path - it just enriches scans the user already started
 // with threat posture (HADES-red accent + HexHound) and a forensic log.
 #define ARGUS_WIFI_THREAT_PIPELINE 1
+// BLE anti-stalking pipeline (tracker_ident + tail_detect, piggyback on the BLE
+// scan manager). Starts OFF: flip to 1 only after an on-device battery test that
+// it piggybacks cleanly (toggle AirTag/Flipper ON to bring BLE up) with no
+// boot-loop. See ble_detect_pipeline.h.
+#define ARGUS_BLE_THREAT_PIPELINE  1
 
 // Modal dialog helper; defined lower down (near the low-mem section) but called
 // from setup()'s boot-radio block above it, so it needs an early prototype.
@@ -2236,6 +2242,9 @@ void loop()
         // which the detectors' sliding windows + decay require.
 #if ARGUS_WIFI_THREAT_PIPELINE
         detect_pipeline_tick(millis() / 1000);
+#endif
+#if ARGUS_BLE_THREAT_PIPELINE
+        ble_detect_pipeline_tick(millis() / 1000);
 #endif
     }
     // Multiple LVGL passes per loop iteration. Each lv_task_handler call
