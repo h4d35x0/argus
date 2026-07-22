@@ -32,3 +32,10 @@ bool background_is_enabled();
 
 // Wallpaper opacity, 0 (invisible) .. 255 (opaque). Default 75 (faint).
 void background_set_opacity(uint8_t opa);
+
+// Re-pick + re-render the wallpaper for the CURRENT ARGUS mode. In Offense it
+// forces the operator wallpaper /backgrounds/offense.jpg (skull), rendered more
+// opaque as part of the mode identity, and shows it regardless of the user's
+// day-to-day wallpaper toggle. In Daily/Defense it reverts to the user's chosen
+// wallpaper + faint opacity + their on/off toggle. Registered on mode change.
+void background_apply_mode();

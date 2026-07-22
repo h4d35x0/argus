@@ -1,10 +1,17 @@
 #include "background.h"
 #include "image_dims.h"
+#include "argus_mode.h"
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
+
+// Opacity of the Offense operator wallpaper (skull). Much more present than the
+// faint day-to-day wallpaper (75) since it IS the Offense identity, not a subtle
+// backdrop. The clock digits stay readable over the near-black art.
+static constexpr uint8_t kOffenseWallpaperOpa = 190;
+static constexpr uint8_t kDailyWallpaperOpa   = 75;
 
 // LVGL image object for the wallpaper plus a persistent path buffer LVGL
 // keeps referencing as the image source (must outlive the set_src call).
@@ -142,6 +149,13 @@ static bool find_wallpaper()
     if (!instance.isCardReady()) return false;
     if (!SD.exists(kBgDir))      return false;
 
+    // 0) In Offense, the operator wallpaper (skull) overrides everything else.
+    if (argus_mode_current() == ArgusMode::Offense &&
+        SD.exists("/backgrounds/offense.jpg")) {
+        snprintf(bg_lv_path, sizeof(bg_lv_path), "A:/backgrounds/offense.jpg");
+        return true;
+    }
+
     // 1) Predictable default names first, so a user who drops exactly
     //    /backgrounds/wallpaper.png gets deterministic behaviour.
     static const char *kPreferred[] = {
@@ -247,6 +261,9 @@ lv_obj_t *background_create(lv_obj_t *parent)
     lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_SCROLLABLE);
     // Lowest z-order on the parent so the clock + matrix rain render on top.
     lv_obj_move_background(bg_img);
+
+    // Swap to the Offense operator wallpaper (and back) whenever the mode changes.
+    argus_mode_on_change([](ArgusMode) { background_apply_mode(); });
     return bg_img;
 }
 
@@ -269,6 +286,25 @@ void background_set_enabled(bool en)
 }
 
 bool background_is_enabled() { return bg_enabled; }
+
+void background_apply_mode()
+{
+    if (!bg_img) return;
+    bool offense = (argus_mode_current() == ArgusMode::Offense);
+
+    // Offense always shows its wallpaper (identity), regardless of the user's
+    // wallpaper toggle; other modes respect the toggle.
+    bool show = offense || bg_enabled;
+    bg_opa    = offense ? kOffenseWallpaperOpa : kDailyWallpaperOpa;
+    bg_loaded = false;   // force find_wallpaper() to re-pick for the new mode
+
+    if (show && load_source()) {
+        lv_obj_move_background(bg_img);
+        lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
+    }
+}
 
 void background_set_opacity(uint8_t opa)
 {
