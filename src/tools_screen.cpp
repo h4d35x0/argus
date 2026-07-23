@@ -17,6 +17,7 @@
 #include "nfc_field_screen.h"
 #include "loot_screen.h"
 #include "deauth_screen.h"
+#include "tracker_timeline_screen.h"
 #include <string.h>
 #include "mouse_screen.h"
 #include "usb_sd_screen.h"
@@ -521,6 +522,43 @@ static void draw_spycam_icon(lv_obj_t *tile)
     lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(dot, LV_ALIGN_TOP_MID, 32, 79);
+}
+
+// Timeline -- a vertical rail with dots (one red), for the tail-timeline screen.
+static void draw_timeline_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t steel = ARGUS_ACCENT;
+
+    lv_obj_t *rail = lv_obj_create(tile);        // the vertical connector
+    lv_obj_set_size(rail, 6, 110);
+    lv_obj_set_style_radius(rail, 3, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(rail, ARGUS_ACCENT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(rail, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(rail, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(rail, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(rail, LV_ALIGN_TOP_MID, -34, 44);
+
+    const int ys[3] = { 44, 90, 136 };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *dot = lv_obj_create(tile);
+        lv_obj_set_size(dot, 26, 26);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(dot, i == 1 ? HADES_RED : steel, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(dot, LV_ALIGN_TOP_MID, -34, ys[i]);
+
+        lv_obj_t *bar = lv_obj_create(tile);     // a "card" stub next to each dot
+        lv_obj_set_size(bar, 74, 14);
+        lv_obj_set_style_radius(bar, 3, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(bar, ARGUS_ACCENT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(bar, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(bar, LV_ALIGN_TOP_MID, 24, ys[i] + 6);
+    }
 }
 
 // Deauth watch -- WiFi arcs with a red diagonal strike-through ("connection
@@ -1586,6 +1624,7 @@ void tools_screen_create()
     // screen (swipe up from the clock face), not here.
     lv_obj_t *t_radar   = make_tile(grid, "Radar");
     lv_obj_t *t_deauth  = make_tile(grid, "Deauth");
+    lv_obj_t *t_timeline= make_tile(grid, "Timeline");
     t_airtag            = make_tile(grid, "AirTag");
     t_trackers          = make_tile(grid, "Trackers");
     lv_obj_t *t_spycam  = make_tile(grid, "Spycam");
@@ -1628,6 +1667,7 @@ void tools_screen_create()
     tile_icon(t_flock,    "flock",    draw_flock_icon);
     tile_icon(t_radar,    "radar",    draw_radar_icon);
     tile_icon(t_deauth,   "deauth",   draw_deauth_icon);
+    tile_icon(t_timeline, "timeline", draw_timeline_icon);
     draw_pet_icon(t_pet);                                       // keep HexHound HD sprite
     tile_icon(t_handshake, "pwn",     draw_handshake_icon);
     tile_icon(t_loot,     "loot",     draw_loot_icon);
@@ -1659,6 +1699,7 @@ void tools_screen_create()
         { t_flock,    "flock"     },
         { t_radar,    "radar"     },
         { t_deauth,   "deauth"    },
+        { t_timeline, "timeline"  },
         { t_pet,      "pet"       },
         { t_handshake,"handshake" },
         { t_loot,     "loot"      },
@@ -1707,6 +1748,7 @@ void tools_screen_create()
     // Radar tile opens the Threat Radar spatio-temporal correlation screen.
     lv_obj_add_event_cb(t_radar, [](lv_event_t *) { threat_radar_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_deauth, [](lv_event_t *) { deauth_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_timeline, [](lv_event_t *) { tracker_timeline_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_pet, [](lv_event_t *) { pet_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_handshake, on_handshake_clicked, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_loot, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; loot_screen_show(); }, LV_EVENT_CLICKED, NULL);

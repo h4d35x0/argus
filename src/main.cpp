@@ -60,6 +60,7 @@
 #include "pin_pad_screen.h"
 #include "loot_screen.h"
 #include "deauth_screen.h"
+#include "tracker_timeline_screen.h"
 #include "offense_wipe.h"
 #include "airtag.h"
 #include "flipper.h"
@@ -1724,6 +1725,7 @@ void setup()
     pin_pad_screen_create();
     loot_screen_create();
     deauth_screen_create();
+    tracker_timeline_screen_create();
     offense_wipe_register();   // arm the duress-shred Tier-1 wipe hook
     time_screen_create();
     wardriver_screen_create();
@@ -2097,6 +2099,8 @@ static void do_boot_back_action()
     } else if (loot_screen_is_active()) {
         tools_screen_show();          // back to the Offense grid
     } else if (deauth_screen_is_active()) {
+        tools_screen_show();          // back to the Defense grid
+    } else if (tracker_timeline_screen_is_active()) {
         tools_screen_show();          // back to the Defense grid
     } else if (spycam_screen_is_active()) {
         tools_screen_show();          // back to the Defense grid
