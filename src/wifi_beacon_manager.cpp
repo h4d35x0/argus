@@ -117,9 +117,12 @@ static void dispatch_mgmt(const uint8_t *frame, int len, int8_t rssi, uint8_t ch
     if ((frame[0] & 0x0C) != 0x00) return;    // FC type bits: keep MANAGEMENT only
     WifiMgmtFrame m;
     memcpy(m.bssid, frame + 16, 6);           // addr3 = transmitter / AP
-    m.subtype  = (uint8_t)(frame[0] >> 4);    // 0xC deauth, 0xA disassoc, 0x8 beacon...
+    memcpy(m.src,   frame + 10, 6);           // addr2 = the transmitting station
+    m.subtype  = (uint8_t)(frame[0] >> 4);    // 0x4 probe-req, 0xC deauth, 0x8 beacon...
     m.rssi     = rssi;
     m.channel  = ch;
+    m.frame    = frame;
+    m.len      = len;
     for (int i = 0; i < WBM_MAX_MGMT; i++)
         if (s_mgmt[i]) s_mgmt[i](&m);
 }

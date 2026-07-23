@@ -49,10 +49,13 @@ void wifi_beacon_set_data_capture(bool on);
 // already delivers. This is a SEPARATE, additive fanout: with no mgmt consumer
 // registered it is a no-op and the beacon path is completely unchanged.
 struct WifiMgmtFrame {
-    uint8_t bssid[6];   // addr3 of the MAC header (the transmitter / AP)
-    uint8_t subtype;    // FC subtype nibble: 0xC deauth, 0xA disassoc, 0x8 beacon...
+    uint8_t bssid[6];       // addr3 of the MAC header (the transmitter / AP)
+    uint8_t src[6];         // addr2 (the transmitting station - e.g. a probing device)
+    uint8_t subtype;        // FC subtype nibble: 0x4 probe-req, 0xC deauth, 0xA disassoc...
     int8_t  rssi;
     uint8_t channel;
+    const uint8_t *frame;   // raw 802.11 frame (valid only during the callback)
+    int     len;            // frame length, so a consumer can parse tagged params (SSID)
 };
 typedef void (*wifi_mgmt_cb_t)(const WifiMgmtFrame *m);
 

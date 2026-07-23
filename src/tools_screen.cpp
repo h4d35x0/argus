@@ -21,6 +21,7 @@
 #include "beacon_spam.h"
 #include "deauth_attack.h"
 #include "rogue_ap.h"
+#include "probe_sniffer.h"
 #include <string.h>
 #include "mouse_screen.h"
 #include "usb_sd_screen.h"
@@ -610,6 +611,50 @@ static void draw_deauth_icon(lv_obj_t *tile)
     lv_obj_set_style_text_color(x, lv_color_white(), LV_PART_MAIN);
     lv_label_set_text(x, "X");
     lv_obj_center(x);
+}
+
+// Probes -- an amber magnifying glass (recon) over a few device dots, for the
+// probe-request sniffer. Procedural fallback.
+static void draw_probes_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t amber = ARGUS_OFFENSE_ACCENT;
+
+    lv_obj_t *lens = lv_obj_create(tile);        // lens ring
+    lv_obj_set_size(lens, 80, 80);
+    lv_obj_set_style_radius(lens, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(lens, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_color(lens, amber, LV_PART_MAIN);
+    lv_obj_set_style_border_width(lens, 7, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(lens, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(lens, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(lens, LV_ALIGN_TOP_MID, -12, 24);
+
+    // device dots inside the lens
+    const int dx[3] = { -26, 0, 20 };
+    const int dy[3] = { 44, 56, 40 };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *dot = lv_obj_create(tile);
+        lv_obj_set_size(dot, 12, 12);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(dot, i == 1 ? HADES_RED : amber, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(dot, LV_ALIGN_TOP_MID, dx[i], dy[i]);
+    }
+
+    lv_obj_t *handle = lv_obj_create(tile);      // magnifier handle
+    lv_obj_set_size(handle, 10, 40);
+    lv_obj_set_style_radius(handle, 4, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(handle, amber, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(handle, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(handle, 0, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_x(handle, 5, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(handle, 0, LV_PART_MAIN);
+    lv_obj_set_style_transform_rotation(handle, -450, LV_PART_MAIN);   // -45 deg
+    lv_obj_clear_flag(handle, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(handle, LV_ALIGN_TOP_MID, 30, 96);
 }
 
 // Rogue AP -- an amber broadcast source with arcs, luring a red client device up
@@ -1739,6 +1784,7 @@ void tools_screen_create()
     lv_obj_t *t_beacon  = make_tile(grid, "Beacon");
     lv_obj_t *t_deauthatk = make_tile(grid, "Deauther");
     lv_obj_t *t_rogueap = make_tile(grid, "Rogue AP");
+    lv_obj_t *t_probes  = make_tile(grid, "Probes");
     lv_obj_t *t_notify  = make_tile(grid, "Notify");
     lv_obj_t *t_pager   = make_tile(grid, "Pager");
     lv_obj_t *t_aprs    = make_tile(grid, "LoRa APRS");
@@ -1776,6 +1822,7 @@ void tools_screen_create()
     tile_icon(t_beacon,   "beaconspam", draw_beaconspam_icon);
     tile_icon(t_deauthatk, "deauthatk", draw_deauth_icon);
     tile_icon(t_rogueap,  "rogueap",  draw_rogueap_icon);
+    tile_icon(t_probes,   "probes",   draw_probes_icon);
     tile_icon(t_notify,   "notify",   draw_notify_icon);
 
     // --- Rearrangeable-grid wiring ---------------------------------------
@@ -1811,6 +1858,7 @@ void tools_screen_create()
         { t_beacon,   "beaconspam" },
         { t_deauthatk,"deauthatk" },
         { t_rogueap,  "rogueap"   },
+        { t_probes,   "probes"    },
         { t_notify,   "notify"    },
     };
     for (auto &tk : tile_keys) {
@@ -1863,6 +1911,7 @@ void tools_screen_create()
     lv_obj_add_event_cb(t_beacon, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; beacon_spam_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_deauthatk, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; deauth_attack_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_rogueap, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; rogue_ap_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_probes, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; probe_sniffer_screen_show(); }, LV_EVENT_CLICKED, NULL);
     set_flock_tile_running(flock_is_running());
 
     // TPMS tile opens the TPMS monitor screen.
@@ -1937,7 +1986,7 @@ static ArgusMode tile_mode(const char *key)
     if (!strcmp(key, "handshake") || !strcmp(key, "mouse") ||
         !strcmp(key, "tesla") || !strcmp(key, "loot") ||
         !strcmp(key, "beaconspam") || !strcmp(key, "deauthatk") ||
-        !strcmp(key, "rogueap"))
+        !strcmp(key, "rogueap") || !strcmp(key, "probes"))
         return ArgusMode::Offense;
     if (!strcmp(key, "notify") || !strcmp(key, "aprs") || !strcmp(key, "usbsd"))
         return ArgusMode::Daily;
