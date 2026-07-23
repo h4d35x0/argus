@@ -129,7 +129,10 @@ static void bs_on_toggle(lv_event_t *)
 static void bs_on_gesture(lv_event_t *e)
 {
     lv_indev_t *indev = lv_event_get_indev(e);
-    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) tools_screen_show();
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) {
+        beacon_spam_stop();   // leaving the tool stops it (frees the radio)
+        tools_screen_show();
+    }
 }
 
 void beacon_spam_screen_create()

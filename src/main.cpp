@@ -2107,8 +2107,10 @@ static void do_boot_back_action()
     } else if (tracker_timeline_screen_is_active()) {
         tools_screen_show();          // back to the Defense grid
     } else if (beacon_spam_screen_is_active()) {
+        beacon_spam_stop();           // leaving stops the tool (frees the radio)
         tools_screen_show();          // back to the Offense grid
     } else if (deauth_attack_screen_is_active()) {
+        deauth_attack_stop();
         tools_screen_show();          // back to the Offense grid
     } else if (spycam_screen_is_active()) {
         tools_screen_show();          // back to the Defense grid

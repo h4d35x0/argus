@@ -15,7 +15,10 @@ static bool s_held = false;
 
 bool offense_wifi_claim(uint8_t channel)
 {
-    if (s_held) return true;                 // already ours (idempotent)
+    // Single-owner: if some offense tool already holds WiFi, REFUSE (return false)
+    // rather than let a second tool drive the same radio - two injectors on one
+    // interface collide and, on a low battery, can brownout-reset the watch.
+    if (s_held) return false;
     if (ble_is_active())     return false;   // would hang the watch
     if (wifi_beacon_active()) return false;  // a detector scan owns WiFi (hopping)
 

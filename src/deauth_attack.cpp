@@ -169,7 +169,10 @@ static void da_on_toggle(lv_event_t *)
 static void da_on_gesture(lv_event_t *e)
 {
     lv_indev_t *indev = lv_event_get_indev(e);
-    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) tools_screen_show();
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) {
+        deauth_attack_stop();   // leaving the tool stops it (frees the radio)
+        tools_screen_show();
+    }
 }
 
 void deauth_attack_screen_create()
