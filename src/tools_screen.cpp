@@ -592,9 +592,10 @@ static void draw_deauth_icon(lv_obj_t *tile)
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(dot, LV_ALIGN_TOP_MID, 0, 64);
 
-    // Red "kick" badge top-right (circle + X).
+    // Red "kick" badge (circle + X), inset into the top-right like the Skimmer
+    // warning badge so it sits ON the glyph, not off the edge.
     lv_obj_t *badge = lv_obj_create(tile);
-    lv_obj_set_size(badge, 40, 40);
+    lv_obj_set_size(badge, 34, 34);
     lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_bg_color(badge, HADES_RED, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, LV_PART_MAIN);
@@ -602,7 +603,7 @@ static void draw_deauth_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(badge, 3, LV_PART_MAIN);
     lv_obj_set_style_pad_all(badge, 0, LV_PART_MAIN);
     lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(badge, LV_ALIGN_TOP_RIGHT, 6, 18);
+    lv_obj_align(badge, LV_ALIGN_TOP_RIGHT, -18, 24);
     lv_obj_t *x = lv_label_create(badge);
     lv_obj_set_style_text_font(x, &font_argus_label_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(x, lv_color_white(), LV_PART_MAIN);
