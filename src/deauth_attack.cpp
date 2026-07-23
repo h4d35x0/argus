@@ -74,15 +74,36 @@ static void inject_tick(lv_timer_t *)
         if (offense_wifi_tx(frame, (size_t)len)) s_frames++;
 }
 
+static lv_timer_t *s_arm = nullptr;   // "arming" retry timer between survey + inject
+static int         s_arm_tries = 0;
+
+// After the survey ends, WiFi may still be held for ~1s by the detect_pipeline's
+// PASSIVE beacon piggyback (it rides any scan and detaches on its next 1Hz tick
+// now that our survey consumer is gone). offense_wifi_claim refuses while a beacon
+// consumer is up, so retry the claim until WiFi is actually free, THEN inject.
+static void arm_inject(lv_timer_t *t)
+{
+    if (offense_wifi_claim(1)) {
+        lv_timer_del(t); s_arm = nullptr;
+        s_surveying = false;
+        s_inject_i  = 0;
+        s_inject = lv_timer_create(inject_tick, 25, nullptr);
+        return;
+    }
+    if (++s_arm_tries > 10) {          // ~5s and WiFi never freed - give up cleanly
+        lv_timer_del(t); s_arm = nullptr;
+        s_running = false; s_surveying = false;
+    }
+}
+
 static void end_survey(lv_timer_t *t)
 {
     lv_timer_del(t);
     s_survey_end = nullptr;
     wifi_beacon_remove(survey_cb);
-    s_surveying = false;
-    if (!offense_wifi_claim(1)) { s_running = false; return; }  // couldn't take radio
-    s_inject_i = 0;
-    s_inject = lv_timer_create(inject_tick, 25, nullptr);
+    // Keep s_surveying true (UI shows "arming...") until the claim actually succeeds.
+    s_arm_tries = 0;
+    s_arm = lv_timer_create(arm_inject, 500, nullptr);   // repeats; arm_inject deletes it
 }
 
 bool deauth_attack_start()
@@ -101,8 +122,9 @@ bool deauth_attack_start()
 void deauth_attack_stop()
 {
     if (s_survey_end) { lv_timer_del(s_survey_end); s_survey_end = nullptr; }
+    if (s_arm)        { lv_timer_del(s_arm);        s_arm = nullptr; }
     if (s_inject)     { lv_timer_del(s_inject);     s_inject = nullptr; }
-    if (s_surveying)  wifi_beacon_remove(survey_cb);
+    wifi_beacon_remove(survey_cb);   // no-op if already removed
     offense_wifi_release();
     s_running = false; s_surveying = false;
 }
@@ -129,7 +151,8 @@ static void da_refresh(lv_timer_t *)
     if (!run) { lv_label_set_text(da_status, "idle"); return; }
     char b[64];
     if (deauth_attack_surveying())
-        snprintf(b, sizeof(b), "surveying... %d APs", deauth_attack_target_count());
+        snprintf(b, sizeof(b), "%s %d APs", s_arm ? "arming..." : "surveying...",
+                 deauth_attack_target_count());
     else
         snprintf(b, sizeof(b), "%d targets   %lu frames",
                  deauth_attack_target_count(), (unsigned long)deauth_attack_frames());
