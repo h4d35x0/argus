@@ -533,15 +533,15 @@ static void draw_timeline_icon(lv_obj_t *tile)
     lv_color_t steel = ARGUS_ACCENT;
 
     lv_obj_t *rail = lv_obj_create(tile);        // the vertical connector
-    lv_obj_set_size(rail, 6, 110);
+    lv_obj_set_size(rail, 6, 84);
     lv_obj_set_style_radius(rail, 3, LV_PART_MAIN);
     lv_obj_set_style_bg_color(rail, ARGUS_ACCENT_DIM, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(rail, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(rail, 0, LV_PART_MAIN);
     lv_obj_clear_flag(rail, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(rail, LV_ALIGN_TOP_MID, -34, 44);
+    lv_obj_align(rail, LV_ALIGN_TOP_MID, -34, 26);
 
-    const int ys[3] = { 44, 90, 136 };
+    const int ys[3] = { 26, 60, 94 };
     for (int i = 0; i < 3; i++) {
         lv_obj_t *dot = lv_obj_create(tile);
         lv_obj_set_size(dot, 26, 26);
@@ -563,16 +563,15 @@ static void draw_timeline_icon(lv_obj_t *tile)
     }
 }
 
-// Deauth watch -- WiFi arcs with a red diagonal strike-through ("connection
-// killed"), for the passive deauth-flood detector. Procedural fallback.
+// Deauth -- concentric WiFi/broadcast rings with a red "kick" badge (a circle
+// with an X) in the corner, meaning "clients knocked off". No strike-through
+// (that read as "disabled"). Shared by the Defense detector + Offense Deauther.
 static void draw_deauth_icon(lv_obj_t *tile)
 {
     tile = icon_layer(tile);
     lv_color_t steel = ARGUS_ACCENT;
-    lv_color_t red   = HADES_RED;
 
-    // Three broadcast arcs (a WiFi wave) in steel.
-    const int d[3] = { 44, 74, 104 };
+    const int d[3] = { 100, 68, 36 };            // WiFi wave rings (nfcfield band)
     for (int i = 0; i < 3; i++) {
         lv_obj_t *r = lv_obj_create(tile);
         lv_obj_set_size(r, d[i], d[i]);
@@ -582,29 +581,33 @@ static void draw_deauth_icon(lv_obj_t *tile)
         lv_obj_set_style_border_width(r, 5, LV_PART_MAIN);
         lv_obj_set_style_pad_all(r, 0, LV_PART_MAIN);
         lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(r, LV_ALIGN_TOP_MID, 0, 40 + (104 - d[i]) / 2);
+        lv_obj_align(r, LV_ALIGN_TOP_MID, 0, 24 + (100 - d[i]) / 2);
     }
     lv_obj_t *dot = lv_obj_create(tile);
-    lv_obj_set_size(dot, 18, 18);
+    lv_obj_set_size(dot, 20, 20);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_bg_color(dot, steel, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(dot, LV_ALIGN_TOP_MID, 0, 92);
+    lv_obj_align(dot, LV_ALIGN_TOP_MID, 0, 64);
 
-    // Red diagonal strike bar across the wave.
-    lv_obj_t *strike = lv_obj_create(tile);
-    lv_obj_set_size(strike, 130, 12);
-    lv_obj_set_style_radius(strike, 4, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(strike, red, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(strike, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(strike, 0, LV_PART_MAIN);
-    lv_obj_set_style_transform_pivot_x(strike, 65, LV_PART_MAIN);
-    lv_obj_set_style_transform_pivot_y(strike, 6, LV_PART_MAIN);
-    lv_obj_set_style_transform_rotation(strike, 450, LV_PART_MAIN);   // 45 deg
-    lv_obj_clear_flag(strike, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(strike, LV_ALIGN_TOP_MID, 0, 76);
+    // Red "kick" badge top-right (circle + X).
+    lv_obj_t *badge = lv_obj_create(tile);
+    lv_obj_set_size(badge, 40, 40);
+    lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(badge, HADES_RED, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(badge, lv_color_make(0x14, 0x14, 0x14), LV_PART_MAIN);
+    lv_obj_set_style_border_width(badge, 3, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(badge, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(badge, LV_ALIGN_TOP_RIGHT, 6, 18);
+    lv_obj_t *x = lv_label_create(badge);
+    lv_obj_set_style_text_font(x, &font_argus_label_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(x, lv_color_white(), LV_PART_MAIN);
+    lv_label_set_text(x, "X");
+    lv_obj_center(x);
 }
 
 // Beacon flood -- an amber broadcast mast with arcs and scattered SSID "ghost"
@@ -616,15 +619,15 @@ static void draw_beaconspam_icon(lv_obj_t *tile)
     lv_color_t red   = HADES_RED;
 
     lv_obj_t *mast = lv_obj_create(tile);        // vertical mast
-    lv_obj_set_size(mast, 8, 90);
+    lv_obj_set_size(mast, 8, 60);
     lv_obj_set_style_radius(mast, 2, LV_PART_MAIN);
     lv_obj_set_style_bg_color(mast, amber, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(mast, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(mast, 0, LV_PART_MAIN);
     lv_obj_clear_flag(mast, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(mast, LV_ALIGN_TOP_MID, 0, 66);
+    lv_obj_align(mast, LV_ALIGN_TOP_MID, 0, 52);
 
-    const int d[2] = { 48, 78 };                 // broadcast arcs at the top
+    const int d[2] = { 44, 72 };                 // broadcast arcs at the top
     for (int i = 0; i < 2; i++) {
         lv_obj_t *a = lv_obj_create(tile);
         lv_obj_set_size(a, d[i], d[i]);
@@ -634,11 +637,11 @@ static void draw_beaconspam_icon(lv_obj_t *tile)
         lv_obj_set_style_border_width(a, 5, LV_PART_MAIN);
         lv_obj_set_style_pad_all(a, 0, LV_PART_MAIN);
         lv_obj_clear_flag(a, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(a, LV_ALIGN_TOP_MID, 0, 40 + (78 - d[i]) / 2);
+        lv_obj_align(a, LV_ALIGN_TOP_MID, 0, 22 + (72 - d[i]) / 2);
     }
-    // Scattered ghost SSID squares.
-    const int gx[4] = { -60, 54, -44, 62 };
-    const int gy[4] = { 96, 104, 140, 138 };
+    // Scattered ghost SSID squares (kept up in the glyph band, clear of the label).
+    const int gx[4] = { -58, 52, -46, 58 };
+    const int gy[4] = { 70, 78, 100, 96 };
     for (int i = 0; i < 4; i++) {
         lv_obj_t *g = lv_obj_create(tile);
         lv_obj_set_size(g, 22, 14);
@@ -667,7 +670,7 @@ static void draw_loot_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(tab, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(tab, 0, LV_PART_MAIN);
     lv_obj_clear_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(tab, LV_ALIGN_TOP_MID, -26, 40);
+    lv_obj_align(tab, LV_ALIGN_TOP_MID, -26, 28);
 
     lv_obj_t *body = lv_obj_create(tile);         // folder body
     lv_obj_set_size(body, 100, 70);
@@ -678,13 +681,13 @@ static void draw_loot_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(body, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_all(body, 0, LV_PART_MAIN);
     lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 52);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 40);
 
     lv_obj_t *dl = lv_label_create(tile);         // download/offload glyph
     lv_obj_set_style_text_color(dl, HADES_RED, LV_PART_MAIN);
     lv_obj_set_style_text_font(dl, &lv_font_montserrat_48, LV_PART_MAIN);
     lv_label_set_text(dl, LV_SYMBOL_DOWNLOAD);
-    lv_obj_align(dl, LV_ALIGN_TOP_MID, 0, 60);
+    lv_obj_align(dl, LV_ALIGN_TOP_MID, 0, 48);
 }
 
 // Upper-right: AirTag — round disc with a small dot in the centre
