@@ -3,15 +3,26 @@
 #include "argus_mode.h"
 #include <LilyGoLib.h>
 #include <SD.h>
+#include <esp_heap_caps.h>   // heap_caps_get_largest_free_block
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
 
-// Opacity of the Offense operator wallpaper (skull). Much more present than the
-// faint day-to-day wallpaper (75) since it IS the Offense identity, not a subtle
-// backdrop. The clock digits stay readable over the near-black art.
-static constexpr uint8_t kOffenseWallpaperOpa = 190;
+// Opacity of the Offense operator wallpaper (skull). More present than the faint
+// day-to-day wallpaper (75) since it IS the Offense identity, but kept moderate
+// so the clock digits stay readable over the near-black art.
+static constexpr uint8_t kOffenseWallpaperOpa = 150;
 static constexpr uint8_t kDailyWallpaperOpa   = 75;
+
+// A JPEG/PNG wallpaper buffers its WHOLE compressed file in scarce INTERNAL SRAM
+// while decoding. The boot-time load is safe (~100-130 KB free then), but the
+// Offense wallpaper is (re)decoded at RUNTIME on the mode swap, where the heap is
+// fragmented and low (esp. after radios) - a decode there OOMs and panics /
+// boot-loops (this bit us: entering Offense with offense.jpg crashed). So before
+// any runtime wallpaper (re)decode, require a contiguous internal block well
+// above the small offense.jpg (~25 KB); if it isn't there, SKIP the swap (keep
+// the current wallpaper) rather than risk the crash. Graceful, never fatal.
+static constexpr uint32_t kWallpaperDecodeMinFreeBytes = 80u * 1024u;
 
 // LVGL image object for the wallpaper plus a persistent path buffer LVGL
 // keeps referencing as the image source (must outlive the set_src call).
@@ -292,13 +303,30 @@ void background_apply_mode()
     if (!bg_img) return;
     bool offense = (argus_mode_current() == ArgusMode::Offense);
 
-    // Offense always shows its wallpaper (identity), regardless of the user's
-    // wallpaper toggle; other modes respect the toggle.
-    bool show = offense || bg_enabled;
-    bg_opa    = offense ? kOffenseWallpaperOpa : kDailyWallpaperOpa;
-    bg_loaded = false;   // force find_wallpaper() to re-pick for the new mode
+    // CRASH GUARD: this runs at RUNTIME where a fresh wallpaper decode can OOM the
+    // internal SRAM and panic (see kWallpaperDecodeMinFreeBytes). Never (re)decode
+    // without a safe contiguous block.
+    bool sram_ok =
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) >= kWallpaperDecodeMinFreeBytes;
 
-    if (show && load_source()) {
+    if (offense) {
+        // Show the skull only if there is safe SRAM to decode it; otherwise leave
+        // whatever wallpaper is already up (no skull this entry, but never a crash).
+        if (!sram_ok) return;
+        bg_opa = kOffenseWallpaperOpa;
+    } else {
+        // Leaving Offense: NEVER leave the skull up in an innocent mode (opsec). If
+        // SRAM is too low to safely reload the normal wallpaper, HIDE rather than
+        // decode; also hide when the user's wallpaper toggle is off.
+        if (!sram_ok || !bg_enabled) {
+            lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
+            return;
+        }
+        bg_opa = kDailyWallpaperOpa;
+    }
+
+    bg_loaded = false;   // force find_wallpaper() to re-pick for the new mode
+    if (load_source()) {
         lv_obj_move_background(bg_img);
         lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
     } else {
