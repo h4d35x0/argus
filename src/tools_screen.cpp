@@ -18,6 +18,7 @@
 #include "loot_screen.h"
 #include "deauth_screen.h"
 #include "tracker_timeline_screen.h"
+#include "beacon_spam.h"
 #include <string.h>
 #include "mouse_screen.h"
 #include "usb_sd_screen.h"
@@ -603,6 +604,50 @@ static void draw_deauth_icon(lv_obj_t *tile)
     lv_obj_set_style_transform_rotation(strike, 450, LV_PART_MAIN);   // 45 deg
     lv_obj_clear_flag(strike, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(strike, LV_ALIGN_TOP_MID, 0, 76);
+}
+
+// Beacon flood -- an amber broadcast mast with arcs and scattered SSID "ghost"
+// squares spraying out, for the Offense beacon/SSID flood. Procedural fallback.
+static void draw_beaconspam_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t amber = ARGUS_OFFENSE_ACCENT;
+    lv_color_t red   = HADES_RED;
+
+    lv_obj_t *mast = lv_obj_create(tile);        // vertical mast
+    lv_obj_set_size(mast, 8, 90);
+    lv_obj_set_style_radius(mast, 2, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(mast, amber, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(mast, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(mast, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(mast, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(mast, LV_ALIGN_TOP_MID, 0, 66);
+
+    const int d[2] = { 48, 78 };                 // broadcast arcs at the top
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *a = lv_obj_create(tile);
+        lv_obj_set_size(a, d[i], d[i]);
+        lv_obj_set_style_radius(a, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_color(a, amber, LV_PART_MAIN);
+        lv_obj_set_style_border_width(a, 5, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(a, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(a, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(a, LV_ALIGN_TOP_MID, 0, 40 + (78 - d[i]) / 2);
+    }
+    // Scattered ghost SSID squares.
+    const int gx[4] = { -60, 54, -44, 62 };
+    const int gy[4] = { 96, 104, 140, 138 };
+    for (int i = 0; i < 4; i++) {
+        lv_obj_t *g = lv_obj_create(tile);
+        lv_obj_set_size(g, 22, 14);
+        lv_obj_set_style_radius(g, 2, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(g, i & 1 ? red : amber, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(g, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(g, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(g, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(g, LV_ALIGN_TOP_MID, gx[i], gy[i]);
+    }
 }
 
 // Loot -- an amber folder with a red download/offload glyph, for the Offense-only
@@ -1637,6 +1682,7 @@ void tools_screen_create()
     t_eviltwin          = make_tile(grid, "Evil Twin");
     t_handshake         = make_tile(grid, "Pwn");
     lv_obj_t *t_loot    = make_tile(grid, "Loot");
+    lv_obj_t *t_beacon  = make_tile(grid, "Beacon");
     lv_obj_t *t_notify  = make_tile(grid, "Notify");
     lv_obj_t *t_pager   = make_tile(grid, "Pager");
     lv_obj_t *t_aprs    = make_tile(grid, "LoRa APRS");
@@ -1671,6 +1717,7 @@ void tools_screen_create()
     draw_pet_icon(t_pet);                                       // keep HexHound HD sprite
     tile_icon(t_handshake, "pwn",     draw_handshake_icon);
     tile_icon(t_loot,     "loot",     draw_loot_icon);
+    tile_icon(t_beacon,   "beaconspam", draw_beaconspam_icon);
     tile_icon(t_notify,   "notify",   draw_notify_icon);
 
     // --- Rearrangeable-grid wiring ---------------------------------------
@@ -1703,6 +1750,7 @@ void tools_screen_create()
         { t_pet,      "pet"       },
         { t_handshake,"handshake" },
         { t_loot,     "loot"      },
+        { t_beacon,   "beaconspam" },
         { t_notify,   "notify"    },
     };
     for (auto &tk : tile_keys) {
@@ -1752,6 +1800,7 @@ void tools_screen_create()
     lv_obj_add_event_cb(t_pet, [](lv_event_t *) { pet_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_handshake, on_handshake_clicked, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_loot, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; loot_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_beacon, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; beacon_spam_screen_show(); }, LV_EVENT_CLICKED, NULL);
     set_flock_tile_running(flock_is_running());
 
     // TPMS tile opens the TPMS monitor screen.
@@ -1824,7 +1873,8 @@ static ArgusMode tile_mode(const char *key)
 {
     if (!key) return ArgusMode::Defense;
     if (!strcmp(key, "handshake") || !strcmp(key, "mouse") ||
-        !strcmp(key, "tesla") || !strcmp(key, "loot"))
+        !strcmp(key, "tesla") || !strcmp(key, "loot") ||
+        !strcmp(key, "beaconspam"))
         return ArgusMode::Offense;
     if (!strcmp(key, "notify") || !strcmp(key, "aprs") || !strcmp(key, "usbsd"))
         return ArgusMode::Daily;
