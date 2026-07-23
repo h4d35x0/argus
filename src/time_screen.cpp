@@ -7,6 +7,10 @@
 #include "calendar_screen.h"
 #include "world_clock_screen.h"
 #include "sun_moon_screen.h"
+#include "flashlight_screen.h"
+#include "meshtastic_screen.h"
+#include "settings_screen.h"
+#include <math.h>
 #include <LilyGoLib.h>
 
 // Defined in main.cpp
@@ -510,6 +514,135 @@ static void draw_sunmoon_icon(lv_obj_t *tile)
     lv_obj_align(carve, LV_ALIGN_TOP_MID, 18, 52);
 }
 
+// Flashlight — a chrome torch with an amber lens and a three-ray beam.
+// Procedural fallback for /Icons/flashlight.png.
+static void draw_flashlight_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t body  = lv_color_make(0xB0, 0xB8, 0xC0);
+    lv_color_t amber = lv_color_make(0xFF, 0xC8, 0x30);
+
+    lv_obj_t *handle = lv_obj_create(tile);
+    lv_obj_set_size(handle, 28, 52);
+    lv_obj_set_style_radius(handle, 6, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(handle, body, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(handle, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(handle, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(handle, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(handle, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(handle, LV_ALIGN_TOP_MID, 0, 74);
+
+    lv_obj_t *head = lv_obj_create(tile);
+    lv_obj_set_size(head, 42, 20);
+    lv_obj_set_style_radius(head, 4, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(head, body, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(head, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(head, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(head, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(head, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(head, LV_ALIGN_TOP_MID, 0, 58);
+
+    lv_obj_t *lens = lv_obj_create(tile);
+    lv_obj_set_size(lens, 34, 16);
+    lv_obj_set_style_radius(lens, 8, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(lens, amber, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(lens, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(lens, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(lens, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(lens, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(lens, LV_ALIGN_TOP_MID, 0, 50);
+
+    static lv_point_precise_t fl_r1[] = { {78, 44}, {66, 30} };
+    static lv_point_precise_t fl_r2[] = { {90, 42}, {90, 26} };
+    static lv_point_precise_t fl_r3[] = { {102, 44}, {114, 30} };
+    lv_point_precise_t *rays[] = { fl_r1, fl_r2, fl_r3 };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *ray = lv_line_create(tile);
+        lv_line_set_points(ray, rays[i], 2);
+        lv_obj_set_style_line_color(ray, amber, 0);
+        lv_obj_set_style_line_width(ray, 3, 0);
+        lv_obj_set_style_line_rounded(ray, true, 0);
+    }
+}
+
+// Meshtastic — three mesh nodes (one lit green) joined by links.
+// Procedural fallback for /Icons/meshtastic.png.
+static void draw_meshtastic_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t steel = lv_color_make(0x9B, 0xBC, 0xD6);
+    lv_color_t green = lv_color_make(0x3C, 0xDC, 0x78);
+
+    static lv_point_precise_t ms_l1[] = { {60, 58}, {120, 58} };
+    static lv_point_precise_t ms_l2[] = { {60, 58}, {90, 112} };
+    static lv_point_precise_t ms_l3[] = { {120, 58}, {90, 112} };
+    lv_point_precise_t *links[] = { ms_l1, ms_l2, ms_l3 };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *ln = lv_line_create(tile);
+        lv_line_set_points(ln, links[i], 2);
+        lv_obj_set_style_line_color(ln, steel, 0);
+        lv_obj_set_style_line_width(ln, 3, 0);
+        lv_obj_set_style_line_rounded(ln, true, 0);
+    }
+    const struct { int x, y; } node[] = { {60, 58}, {120, 58}, {90, 112} };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *n = lv_obj_create(tile);
+        lv_obj_set_size(n, 26, 26);
+        lv_obj_set_style_radius(n, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(n, i == 2 ? green : steel, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(n, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(n, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(n, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(n, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_pos(n, node[i].x - 13, node[i].y - 13);
+    }
+}
+
+// Settings — a steel cog: eight teeth around a disc with a dark hub.
+// Procedural fallback for /Icons/settings.png.
+static void draw_settings_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t steel = lv_color_make(0x9B, 0xBC, 0xD6);
+    lv_color_t dark  = lv_color_make(0x12, 0x18, 0x20);
+    int cx = 90, cy = 76;
+
+    for (int i = 0; i < 8; i++) {
+        float rad = i * 3.14159f / 4.0f;
+        int tx = cx + (int)(40.0f * sinf(rad));
+        int ty = cy - (int)(40.0f * cosf(rad));
+        lv_obj_t *t = lv_obj_create(tile);
+        lv_obj_set_size(t, 14, 14);
+        lv_obj_set_style_radius(t, 3, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(t, steel, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(t, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(t, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(t, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(t, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_pos(t, tx - 7, ty - 7);
+    }
+
+    lv_obj_t *disc = lv_obj_create(tile);
+    lv_obj_set_size(disc, 68, 68);
+    lv_obj_set_style_radius(disc, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(disc, steel, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(disc, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(disc, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(disc, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(disc, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(disc, cx - 34, cy - 34);
+
+    lv_obj_t *hub = lv_obj_create(tile);
+    lv_obj_set_size(hub, 28, 28);
+    lv_obj_set_style_radius(hub, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(hub, dark, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(hub, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(hub, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(hub, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(hub, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(hub, cx - 14, cy - 14);
+}
+
 // ---- Public API ------------------------------------------------------------
 
 void time_screen_create()
@@ -568,6 +701,21 @@ void time_screen_create()
     lv_obj_add_event_cb(t_calendar,  [](lv_event_t *) { calendar_screen_show();  }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_world,     [](lv_event_t *) { world_clock_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_sunmoon,   [](lv_event_t *) { sun_moon_screen_show();  }, LV_EVENT_CLICKED, NULL);
+
+    // Daily-wear utilities: Flashlight (torch), Meshtastic (comms) and Settings.
+    // The Time hub is the one app grid reachable in Daily mode (Tools is gated),
+    // so these benign apps live here alongside the clock tools.
+    lv_obj_t *t_flash = make_tile(grid, "Flashlight");
+    lv_obj_t *t_mesh  = make_tile(grid, "Meshtastic");
+    lv_obj_t *t_set   = make_tile(grid, "Settings");
+
+    tile_icon(t_flash, "flashlight", draw_flashlight_icon);
+    tile_icon(t_mesh,  "meshtastic", draw_meshtastic_icon);
+    tile_icon(t_set,   "settings",   draw_settings_icon);
+
+    lv_obj_add_event_cb(t_flash, [](lv_event_t *) { flashlight_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_mesh,  [](lv_event_t *) { meshtastic_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_set,   [](lv_event_t *) { settings_screen_show();   }, LV_EVENT_CLICKED, NULL);
 
     // lv_obj_create() children are CLICKABLE by default and would otherwise
     // swallow taps on the icon shapes. EVENT_BUBBLE on every descendant sends

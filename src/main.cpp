@@ -54,6 +54,7 @@
 #include "world_clock_screen.h"
 #include "sun_moon_screen.h"
 #include "time_screen.h"
+#include "flashlight_screen.h"
 #include "argus_mode.h"
 #include "spycam_screen.h"
 #include "nfc_field_screen.h"
@@ -930,6 +931,10 @@ static void dim_reset_activity()
     }
 }
 
+// Public hook so full-screen utility screens (e.g. the Flashlight) can keep the
+// display awake at active brightness for as long as they are shown.
+void ui_reset_dim_activity() { dim_reset_activity(); }
+
 // ---- Motion-wake ----------------------------------------------------------
 //
 // When enabled, the BHI260AP accelerometer is streamed at a low rate and any
@@ -1736,6 +1741,7 @@ void setup()
     probe_sniffer_screen_create();
     offense_wipe_register();   // arm the duress-shred Tier-1 wipe hook
     time_screen_create();
+    flashlight_screen_create();
     wardriver_screen_create();
     lv_obj_add_event_cb(clock_screen, on_clock_gesture, LV_EVENT_GESTURE, NULL);
     // Hold the boot splash to a minimum ~1.5 s, then reveal the clock.
