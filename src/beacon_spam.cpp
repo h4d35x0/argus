@@ -52,27 +52,34 @@ static int build_beacon(uint8_t *buf, const char *ssid, const uint8_t *bssid, ui
     return i;
 }
 
+// How many distinct SSIDs to spray per tick. Sending a BATCH each tick means a
+// scanning phone sees several junk networks at once (a beacon roughly every
+// ~100ms per SSID) instead of one trickling in.
+#define BS_PER_TICK 6
+
 static void on_tx(lv_timer_t *)
 {
     // Hop channel round-robin so the junk SSIDs appear on every band.
     s_ch = (uint8_t)((s_ch % 13) + 1);
     offense_wifi_set_channel(s_ch);
 
-    uint8_t bssid[6];
-    uint32_t r1 = esp_random(), r2 = esp_random();
-    bssid[0] = 0x02;                    // locally-administered, unicast
-    bssid[1] = (uint8_t)(r1 >> 8);
-    bssid[2] = (uint8_t)(r1 >> 16);
-    bssid[3] = (uint8_t)(r1 >> 24);
-    bssid[4] = (uint8_t)(r2);
-    bssid[5] = (uint8_t)(r2 >> 8);
+    for (int n = 0; n < BS_PER_TICK; n++) {
+        uint8_t bssid[6];
+        uint32_t r1 = esp_random(), r2 = esp_random();
+        bssid[0] = 0x02;                    // locally-administered, unicast
+        bssid[1] = (uint8_t)(r1 >> 8);
+        bssid[2] = (uint8_t)(r1 >> 16);
+        bssid[3] = (uint8_t)(r1 >> 24);
+        bssid[4] = (uint8_t)(r2);
+        bssid[5] = (uint8_t)(r2 >> 8);
 
-    const char *ssid = SSIDS[s_ssid_i];
-    s_ssid_i = (s_ssid_i + 1) % SSID_COUNT;
+        const char *ssid = SSIDS[s_ssid_i];
+        s_ssid_i = (s_ssid_i + 1) % SSID_COUNT;
 
-    uint8_t frame[128];
-    int len = build_beacon(frame, ssid, bssid, s_ch);
-    if (offense_wifi_tx(frame, (size_t)len)) s_count++;
+        uint8_t frame[128];
+        int len = build_beacon(frame, ssid, bssid, s_ch);
+        if (offense_wifi_tx(frame, (size_t)len)) s_count++;
+    }
 }
 
 bool beacon_spam_start()
