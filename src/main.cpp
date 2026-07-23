@@ -62,6 +62,7 @@
 #include "deauth_screen.h"
 #include "tracker_timeline_screen.h"
 #include "beacon_spam.h"
+#include "deauth_attack.h"
 #include "offense_wipe.h"
 #include "airtag.h"
 #include "flipper.h"
@@ -1728,6 +1729,7 @@ void setup()
     deauth_screen_create();
     tracker_timeline_screen_create();
     beacon_spam_screen_create();
+    deauth_attack_screen_create();
     offense_wipe_register();   // arm the duress-shred Tier-1 wipe hook
     time_screen_create();
     wardriver_screen_create();
@@ -2105,6 +2107,8 @@ static void do_boot_back_action()
     } else if (tracker_timeline_screen_is_active()) {
         tools_screen_show();          // back to the Defense grid
     } else if (beacon_spam_screen_is_active()) {
+        tools_screen_show();          // back to the Offense grid
+    } else if (deauth_attack_screen_is_active()) {
         tools_screen_show();          // back to the Offense grid
     } else if (spycam_screen_is_active()) {
         tools_screen_show();          // back to the Defense grid

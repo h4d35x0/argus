@@ -19,6 +19,7 @@
 #include "deauth_screen.h"
 #include "tracker_timeline_screen.h"
 #include "beacon_spam.h"
+#include "deauth_attack.h"
 #include <string.h>
 #include "mouse_screen.h"
 #include "usb_sd_screen.h"
@@ -1683,6 +1684,7 @@ void tools_screen_create()
     t_handshake         = make_tile(grid, "Pwn");
     lv_obj_t *t_loot    = make_tile(grid, "Loot");
     lv_obj_t *t_beacon  = make_tile(grid, "Beacon");
+    lv_obj_t *t_deauthatk = make_tile(grid, "Deauther");
     lv_obj_t *t_notify  = make_tile(grid, "Notify");
     lv_obj_t *t_pager   = make_tile(grid, "Pager");
     lv_obj_t *t_aprs    = make_tile(grid, "LoRa APRS");
@@ -1718,6 +1720,7 @@ void tools_screen_create()
     tile_icon(t_handshake, "pwn",     draw_handshake_icon);
     tile_icon(t_loot,     "loot",     draw_loot_icon);
     tile_icon(t_beacon,   "beaconspam", draw_beaconspam_icon);
+    tile_icon(t_deauthatk, "deauthatk", draw_deauth_icon);
     tile_icon(t_notify,   "notify",   draw_notify_icon);
 
     // --- Rearrangeable-grid wiring ---------------------------------------
@@ -1751,6 +1754,7 @@ void tools_screen_create()
         { t_handshake,"handshake" },
         { t_loot,     "loot"      },
         { t_beacon,   "beaconspam" },
+        { t_deauthatk,"deauthatk" },
         { t_notify,   "notify"    },
     };
     for (auto &tk : tile_keys) {
@@ -1801,6 +1805,7 @@ void tools_screen_create()
     lv_obj_add_event_cb(t_handshake, on_handshake_clicked, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_loot, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; loot_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_beacon, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; beacon_spam_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_deauthatk, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; deauth_attack_screen_show(); }, LV_EVENT_CLICKED, NULL);
     set_flock_tile_running(flock_is_running());
 
     // TPMS tile opens the TPMS monitor screen.
@@ -1874,7 +1879,7 @@ static ArgusMode tile_mode(const char *key)
     if (!key) return ArgusMode::Defense;
     if (!strcmp(key, "handshake") || !strcmp(key, "mouse") ||
         !strcmp(key, "tesla") || !strcmp(key, "loot") ||
-        !strcmp(key, "beaconspam"))
+        !strcmp(key, "beaconspam") || !strcmp(key, "deauthatk"))
         return ArgusMode::Offense;
     if (!strcmp(key, "notify") || !strcmp(key, "aprs") || !strcmp(key, "usbsd"))
         return ArgusMode::Daily;
