@@ -1,28 +1,10 @@
 #include "background.h"
 #include "image_dims.h"
-#include "argus_mode.h"
 #include <LilyGoLib.h>
 #include <SD.h>
-#include <esp_heap_caps.h>   // heap_caps_get_largest_free_block
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
-
-// Opacity of the Offense operator wallpaper (skull). More present than the faint
-// day-to-day wallpaper (75) since it IS the Offense identity, but kept moderate
-// so the clock digits stay readable over the near-black art.
-static constexpr uint8_t kOffenseWallpaperOpa = 150;
-static constexpr uint8_t kDailyWallpaperOpa   = 75;
-
-// A JPEG/PNG wallpaper buffers its WHOLE compressed file in scarce INTERNAL SRAM
-// while decoding. The boot-time load is safe (~100-130 KB free then), but the
-// Offense wallpaper is (re)decoded at RUNTIME on the mode swap, where the heap is
-// fragmented and low (esp. after radios) - a decode there OOMs and panics /
-// boot-loops (this bit us: entering Offense with offense.jpg crashed). So before
-// any runtime wallpaper (re)decode, require a contiguous internal block well
-// above the small offense.jpg (~25 KB); if it isn't there, SKIP the swap (keep
-// the current wallpaper) rather than risk the crash. Graceful, never fatal.
-static constexpr uint32_t kWallpaperDecodeMinFreeBytes = 80u * 1024u;
 
 // LVGL image object for the wallpaper plus a persistent path buffer LVGL
 // keeps referencing as the image source (must outlive the set_src call).
@@ -160,13 +142,6 @@ static bool find_wallpaper()
     if (!instance.isCardReady()) return false;
     if (!SD.exists(kBgDir))      return false;
 
-    // 0) In Offense, the operator wallpaper (skull) overrides everything else.
-    if (argus_mode_current() == ArgusMode::Offense &&
-        SD.exists("/backgrounds/offense.jpg")) {
-        snprintf(bg_lv_path, sizeof(bg_lv_path), "A:/backgrounds/offense.jpg");
-        return true;
-    }
-
     // 1) Predictable default names first, so a user who drops exactly
     //    /backgrounds/wallpaper.png gets deterministic behaviour.
     static const char *kPreferred[] = {
@@ -272,9 +247,6 @@ lv_obj_t *background_create(lv_obj_t *parent)
     lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_SCROLLABLE);
     // Lowest z-order on the parent so the clock + matrix rain render on top.
     lv_obj_move_background(bg_img);
-
-    // Swap to the Offense operator wallpaper (and back) whenever the mode changes.
-    argus_mode_on_change([](ArgusMode) { background_apply_mode(); });
     return bg_img;
 }
 
@@ -297,42 +269,6 @@ void background_set_enabled(bool en)
 }
 
 bool background_is_enabled() { return bg_enabled; }
-
-void background_apply_mode()
-{
-    if (!bg_img) return;
-    bool offense = (argus_mode_current() == ArgusMode::Offense);
-
-    // CRASH GUARD: this runs at RUNTIME where a fresh wallpaper decode can OOM the
-    // internal SRAM and panic (see kWallpaperDecodeMinFreeBytes). Never (re)decode
-    // without a safe contiguous block.
-    bool sram_ok =
-        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) >= kWallpaperDecodeMinFreeBytes;
-
-    if (offense) {
-        // Show the skull only if there is safe SRAM to decode it; otherwise leave
-        // whatever wallpaper is already up (no skull this entry, but never a crash).
-        if (!sram_ok) return;
-        bg_opa = kOffenseWallpaperOpa;
-    } else {
-        // Leaving Offense: NEVER leave the skull up in an innocent mode (opsec). If
-        // SRAM is too low to safely reload the normal wallpaper, HIDE rather than
-        // decode; also hide when the user's wallpaper toggle is off.
-        if (!sram_ok || !bg_enabled) {
-            lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
-            return;
-        }
-        bg_opa = kDailyWallpaperOpa;
-    }
-
-    bg_loaded = false;   // force find_wallpaper() to re-pick for the new mode
-    if (load_source()) {
-        lv_obj_move_background(bg_img);
-        lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
-    }
-}
 
 void background_set_opacity(uint8_t opa)
 {

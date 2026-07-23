@@ -58,6 +58,7 @@
 #include "spycam_screen.h"
 #include "nfc_field_screen.h"
 #include "pin_pad_screen.h"
+#include "loot_screen.h"
 #include "offense_wipe.h"
 #include "airtag.h"
 #include "flipper.h"
@@ -1720,6 +1721,7 @@ void setup()
     spycam_screen_create();
     nfc_field_screen_create();
     pin_pad_screen_create();
+    loot_screen_create();
     offense_wipe_register();   // arm the duress-shred Tier-1 wipe hook
     time_screen_create();
     wardriver_screen_create();
@@ -2090,6 +2092,8 @@ static void do_boot_back_action()
         meshtastic_screen_show();
     } else if (meshtastic_screen_is_active()) {
         clock_screen_show();
+    } else if (loot_screen_is_active()) {
+        tools_screen_show();          // back to the Offense grid
     } else if (spycam_screen_is_active()) {
         tools_screen_show();          // back to the Defense grid
     } else if (nfc_field_screen_is_active()) {

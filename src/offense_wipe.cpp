@@ -86,16 +86,51 @@ static void wipe_tree(const char *dirpath)
     SD.rmdir(dirpath);
 }
 
+// Shared guard: the host owns the card while USB-MSC is exposing it, and there is
+// nothing to wipe without a mounted card. Both the duress hook and the operator
+// Loot screen refuse to run unless this holds.
+static bool wipe_allowed(void)
+{
+    return instance.isCardReady() && !usb_sd_is_running();
+}
+
+// Is dirpath one of the canonical Tier-1 loot dirs? Scope guard so an operator
+// call can never shred a directory outside the signed-off set.
+static bool is_loot_dir(const char *dirpath)
+{
+    if (!dirpath) return false;
+    for (size_t i = 0; i < sizeof(TIER1_DIRS) / sizeof(TIER1_DIRS[0]); i++)
+        if (!strcmp(dirpath, TIER1_DIRS[i])) return true;
+    return false;
+}
+
+const char *const *offense_loot_dirs(size_t *count)
+{
+    if (count) *count = sizeof(TIER1_DIRS) / sizeof(TIER1_DIRS[0]);
+    return TIER1_DIRS;
+}
+
+bool offense_wipe_dir(const char *dirpath)
+{
+    if (!wipe_allowed())       return false;
+    if (!is_loot_dir(dirpath)) return false;   // scope guard
+    if (SD.exists(dirpath)) wipe_tree(dirpath);
+    return true;
+}
+
+bool offense_wipe_loot_all(void)
+{
+    if (!wipe_allowed()) return false;
+    for (size_t i = 0; i < sizeof(TIER1_DIRS) / sizeof(TIER1_DIRS[0]); i++)
+        if (SD.exists(TIER1_DIRS[i])) wipe_tree(TIER1_DIRS[i]);
+    return true;
+}
+
+// The duress-PIN wipe hook, run after offense_shred() burns the lockout. Now
+// shares the exact all-dirs path the operator Loot screen uses.
 static void offense_tier1_wipe(void)
 {
-    // The host owns the card while USB-MSC is exposing it; and there is nothing
-    // to wipe without a mounted card. Either way skip - the lockout, already
-    // burned by offense_shred(), still holds.
-    if (!instance.isCardReady() || usb_sd_is_running()) return;
-
-    for (size_t i = 0; i < sizeof(TIER1_DIRS) / sizeof(TIER1_DIRS[0]); i++) {
-        if (SD.exists(TIER1_DIRS[i])) wipe_tree(TIER1_DIRS[i]);
-    }
+    offense_wipe_loot_all();
 }
 
 void offense_wipe_register(void)

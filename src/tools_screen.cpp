@@ -15,6 +15,7 @@
 #include "tracker_sweep.h"
 #include "spycam_screen.h"
 #include "nfc_field_screen.h"
+#include "loot_screen.h"
 #include <string.h>
 #include "mouse_screen.h"
 #include "usb_sd_screen.h"
@@ -519,6 +520,42 @@ static void draw_spycam_icon(lv_obj_t *tile)
     lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(dot, LV_ALIGN_TOP_MID, 32, 79);
+}
+
+// Loot -- an amber folder with a red download/offload glyph, for the Offense-only
+// captured-artifact manager. Procedural fallback for /Icons/loot.png.
+static void draw_loot_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t amber = ARGUS_OFFENSE_ACCENT;
+    lv_color_t dark  = lv_color_make(0x1A, 0x24, 0x30);
+
+    lv_obj_t *tab = lv_obj_create(tile);          // folder tab
+    lv_obj_set_size(tab, 40, 16);
+    lv_obj_set_style_radius(tab, 4, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(tab, amber, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(tab, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(tab, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(tab, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(tab, LV_ALIGN_TOP_MID, -26, 40);
+
+    lv_obj_t *body = lv_obj_create(tile);         // folder body
+    lv_obj_set_size(body, 100, 70);
+    lv_obj_set_style_radius(body, 8, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(body, dark, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(body, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(body, amber, LV_PART_MAIN);
+    lv_obj_set_style_border_width(body, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(body, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 52);
+
+    lv_obj_t *dl = lv_label_create(tile);         // download/offload glyph
+    lv_obj_set_style_text_color(dl, HADES_RED, LV_PART_MAIN);
+    lv_obj_set_style_text_font(dl, &lv_font_montserrat_48, LV_PART_MAIN);
+    lv_label_set_text(dl, LV_SYMBOL_DOWNLOAD);
+    lv_obj_align(dl, LV_ALIGN_TOP_MID, 0, 60);
 }
 
 // Upper-right: AirTag — round disc with a small dot in the centre
@@ -1514,6 +1551,7 @@ void tools_screen_create()
     lv_obj_t *t_analyze = make_tile(grid, "Analyze");
     t_eviltwin          = make_tile(grid, "Evil Twin");
     t_handshake         = make_tile(grid, "Pwn");
+    lv_obj_t *t_loot    = make_tile(grid, "Loot");
     lv_obj_t *t_notify  = make_tile(grid, "Notify");
     lv_obj_t *t_pager   = make_tile(grid, "Pager");
     lv_obj_t *t_aprs    = make_tile(grid, "LoRa APRS");
@@ -1545,6 +1583,7 @@ void tools_screen_create()
     tile_icon(t_radar,    "radar",    draw_radar_icon);
     draw_pet_icon(t_pet);                                       // keep HexHound HD sprite
     tile_icon(t_handshake, "pwn",     draw_handshake_icon);
+    tile_icon(t_loot,     "loot",     draw_loot_icon);
     tile_icon(t_notify,   "notify",   draw_notify_icon);
 
     // --- Rearrangeable-grid wiring ---------------------------------------
@@ -1574,6 +1613,7 @@ void tools_screen_create()
         { t_radar,    "radar"     },
         { t_pet,      "pet"       },
         { t_handshake,"handshake" },
+        { t_loot,     "loot"      },
         { t_notify,   "notify"    },
     };
     for (auto &tk : tile_keys) {
@@ -1620,6 +1660,7 @@ void tools_screen_create()
     lv_obj_add_event_cb(t_radar, [](lv_event_t *) { threat_radar_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_pet, [](lv_event_t *) { pet_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_handshake, on_handshake_clicked, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_loot, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; loot_screen_show(); }, LV_EVENT_CLICKED, NULL);
     set_flock_tile_running(flock_is_running());
 
     // TPMS tile opens the TPMS monitor screen.
@@ -1691,7 +1732,8 @@ void tools_screen_create()
 static ArgusMode tile_mode(const char *key)
 {
     if (!key) return ArgusMode::Defense;
-    if (!strcmp(key, "handshake") || !strcmp(key, "mouse") || !strcmp(key, "tesla"))
+    if (!strcmp(key, "handshake") || !strcmp(key, "mouse") ||
+        !strcmp(key, "tesla") || !strcmp(key, "loot"))
         return ArgusMode::Offense;
     if (!strcmp(key, "notify") || !strcmp(key, "aprs") || !strcmp(key, "usbsd"))
         return ArgusMode::Daily;
