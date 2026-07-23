@@ -14,6 +14,7 @@ static bool ble_is_active()
 }
 
 static bool s_held = false;
+static bool s_ap   = false;   // held in AP (rogue-AP) mode vs STA-injection mode
 static const char *s_owner = nullptr;
 
 bool offense_wifi_claim(uint8_t channel, const char *owner)
@@ -31,6 +32,27 @@ bool offense_wifi_claim(uint8_t channel, const char *owner)
     s_held  = true;
     s_owner = owner;
     return true;
+}
+
+bool offense_wifi_claim_ap(const char *ssid, const char *owner)
+{
+    if (s_held) return false;
+    if (ble_is_active())      return false;   // would hang the watch
+    if (wifi_beacon_active()) return false;   // a detector scan owns WiFi
+
+    WiFi.mode(WIFI_AP);
+    // Open AP (no password) so target devices set to auto-join these SSIDs
+    // associate without a prompt.
+    WiFi.softAP(ssid && ssid[0] ? ssid : "Free WiFi");
+    s_held  = true;
+    s_ap    = true;
+    s_owner = owner;
+    return true;
+}
+
+int offense_wifi_ap_clients()
+{
+    return s_ap ? (int)WiFi.softAPgetStationNum() : 0;
 }
 
 const char *offense_wifi_busy_reason()
@@ -64,8 +86,10 @@ void offense_wifi_set_channel(uint8_t channel)
 void offense_wifi_release()
 {
     if (!s_held) return;
+    if (s_ap) WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
     s_held  = false;
+    s_ap    = false;
     s_owner = nullptr;
 }
 

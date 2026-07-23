@@ -20,6 +20,7 @@
 #include "tracker_timeline_screen.h"
 #include "beacon_spam.h"
 #include "deauth_attack.h"
+#include "rogue_ap.h"
 #include <string.h>
 #include "mouse_screen.h"
 #include "usb_sd_screen.h"
@@ -609,6 +610,54 @@ static void draw_deauth_icon(lv_obj_t *tile)
     lv_obj_set_style_text_color(x, lv_color_white(), LV_PART_MAIN);
     lv_label_set_text(x, "X");
     lv_obj_center(x);
+}
+
+// Rogue AP -- an amber broadcast source with arcs, luring a red client device up
+// toward it, for the Offense evil-twin AP. Procedural fallback.
+static void draw_rogueap_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t amber = ARGUS_OFFENSE_ACCENT;
+    lv_color_t red   = HADES_RED;
+
+    // Amber AP source dot + two broadcast arcs (top).
+    lv_obj_t *src = lv_obj_create(tile);
+    lv_obj_set_size(src, 20, 20);
+    lv_obj_set_style_radius(src, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(src, amber, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(src, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(src, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(src, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(src, LV_ALIGN_TOP_MID, 0, 34);
+    const int d[2] = { 52, 84 };
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *a = lv_obj_create(tile);
+        lv_obj_set_size(a, d[i], d[i]);
+        lv_obj_set_style_radius(a, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_color(a, amber, LV_PART_MAIN);
+        lv_obj_set_style_border_width(a, 5, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(a, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(a, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(a, LV_ALIGN_TOP_MID, 0, 20 + (84 - d[i]) / 2);
+    }
+    // Red lured client (a phone) below, with a connecting line.
+    lv_obj_t *line = lv_obj_create(tile);
+    lv_obj_set_size(line, 4, 26);
+    lv_obj_set_style_bg_color(line, red, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(line, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(line, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(line, LV_ALIGN_TOP_MID, 0, 96);
+    lv_obj_t *dev = lv_obj_create(tile);
+    lv_obj_set_size(dev, 34, 52);
+    lv_obj_set_style_radius(dev, 6, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(dev, lv_color_make(0x1A, 0x24, 0x30), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dev, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(dev, red, LV_PART_MAIN);
+    lv_obj_set_style_border_width(dev, 4, LV_PART_MAIN);
+    lv_obj_clear_flag(dev, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(dev, LV_ALIGN_TOP_MID, 0, 122);
 }
 
 // Beacon flood -- an amber broadcast mast with arcs and scattered SSID "ghost"
@@ -1689,6 +1738,7 @@ void tools_screen_create()
     lv_obj_t *t_loot    = make_tile(grid, "Loot");
     lv_obj_t *t_beacon  = make_tile(grid, "Beacon");
     lv_obj_t *t_deauthatk = make_tile(grid, "Deauther");
+    lv_obj_t *t_rogueap = make_tile(grid, "Rogue AP");
     lv_obj_t *t_notify  = make_tile(grid, "Notify");
     lv_obj_t *t_pager   = make_tile(grid, "Pager");
     lv_obj_t *t_aprs    = make_tile(grid, "LoRa APRS");
@@ -1725,6 +1775,7 @@ void tools_screen_create()
     tile_icon(t_loot,     "loot",     draw_loot_icon);
     tile_icon(t_beacon,   "beaconspam", draw_beaconspam_icon);
     tile_icon(t_deauthatk, "deauthatk", draw_deauth_icon);
+    tile_icon(t_rogueap,  "rogueap",  draw_rogueap_icon);
     tile_icon(t_notify,   "notify",   draw_notify_icon);
 
     // --- Rearrangeable-grid wiring ---------------------------------------
@@ -1759,6 +1810,7 @@ void tools_screen_create()
         { t_loot,     "loot"      },
         { t_beacon,   "beaconspam" },
         { t_deauthatk,"deauthatk" },
+        { t_rogueap,  "rogueap"   },
         { t_notify,   "notify"    },
     };
     for (auto &tk : tile_keys) {
@@ -1810,6 +1862,7 @@ void tools_screen_create()
     lv_obj_add_event_cb(t_loot, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; loot_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_beacon, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; beacon_spam_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_deauthatk, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; deauth_attack_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_rogueap, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; rogue_ap_screen_show(); }, LV_EVENT_CLICKED, NULL);
     set_flock_tile_running(flock_is_running());
 
     // TPMS tile opens the TPMS monitor screen.
@@ -1883,7 +1936,8 @@ static ArgusMode tile_mode(const char *key)
     if (!key) return ArgusMode::Defense;
     if (!strcmp(key, "handshake") || !strcmp(key, "mouse") ||
         !strcmp(key, "tesla") || !strcmp(key, "loot") ||
-        !strcmp(key, "beaconspam") || !strcmp(key, "deauthatk"))
+        !strcmp(key, "beaconspam") || !strcmp(key, "deauthatk") ||
+        !strcmp(key, "rogueap"))
         return ArgusMode::Offense;
     if (!strcmp(key, "notify") || !strcmp(key, "aprs") || !strcmp(key, "usbsd"))
         return ArgusMode::Daily;

@@ -18,6 +18,14 @@
 // BLE is up, a beacon scan already owns WiFi, or another offense tool holds it.
 bool offense_wifi_claim(uint8_t channel, const char *owner);
 
+// Take WiFi for an ACCESS POINT (rogue-AP / evil-twin) broadcasting an open
+// network named `ssid`. Same single-owner + BLE/detector guards as the injector,
+// so an AP tool and an injection tool can never drive the radio at once.
+bool offense_wifi_claim_ap(const char *ssid, const char *owner);
+
+// Number of stations currently associated to the rogue AP (0 if not in AP mode).
+int offense_wifi_ap_clients();
+
 // Human-readable reason a claim would fail RIGHT NOW (for a dialog), or nullptr
 // if the radio is free. Points at a static buffer.
 const char *offense_wifi_busy_reason();
