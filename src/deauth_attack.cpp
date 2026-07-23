@@ -7,8 +7,9 @@
 #include <string.h>
 #include <stdio.h>
 
-// Defined in tools_screen.cpp
+// Defined in tools_screen.cpp / main.cpp
 void tools_screen_show();
+void low_mem_show_dialog(const char *msg);
 
 // Raw-frame sanity-check override: stock ESP-IDF rejects deauth/disassoc via
 // esp_wifi_80211_tx (returns ESP_ERR_INVALID_ARG). This weak-symbol override
@@ -83,7 +84,7 @@ static int         s_arm_tries = 0;
 // consumer is up, so retry the claim until WiFi is actually free, THEN inject.
 static void arm_inject(lv_timer_t *t)
 {
-    if (offense_wifi_claim(1)) {
+    if (offense_wifi_claim(1, "Deauther")) {
         lv_timer_del(t); s_arm = nullptr;
         s_surveying = false;
         s_inject_i  = 0;
@@ -109,6 +110,7 @@ static void end_survey(lv_timer_t *t)
 bool deauth_attack_start()
 {
     if (s_running) return true;
+    if (offense_wifi_held()) return false;           // another offense tool holds WiFi
     s_target_n = 0; s_frames = 0; s_inject_i = 0;
     // Phase 1: survey. wifi_beacon_add brings WiFi up in hopping survey mode.
     if (!wifi_beacon_add(survey_cb)) return false;   // e.g. BLE up
@@ -162,17 +164,20 @@ static void da_refresh(lv_timer_t *)
 static void da_on_toggle(lv_event_t *)
 {
     if (deauth_attack_is_running()) deauth_attack_stop();
-    else if (!deauth_attack_start()) { lv_label_set_text(da_status, "WiFi busy - turn BT off"); return; }
+    else if (!deauth_attack_start()) {
+        const char *why = offense_wifi_busy_reason();
+        low_mem_show_dialog(why ? why : "Can't start. Turn Bluetooth off\nand stop other WiFi tools, then retry.");
+        return;
+    }
     da_refresh(nullptr);
 }
 
+// Leaving the screen does NOT stop the attack - it keeps injecting so you can
+// navigate; the single-owner guard + the busy dialog handle a second tool.
 static void da_on_gesture(lv_event_t *e)
 {
     lv_indev_t *indev = lv_event_get_indev(e);
-    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) {
-        deauth_attack_stop();   // leaving the tool stops it (frees the radio)
-        tools_screen_show();
-    }
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) tools_screen_show();
 }
 
 void deauth_attack_screen_create()
@@ -200,7 +205,8 @@ void deauth_attack_screen_create()
 
     da_status = lv_label_create(da_screen);
     lv_obj_set_style_text_color(da_status, lv_color_make(0x3C, 0xDC, 0x78), LV_PART_MAIN);
-    lv_obj_set_style_text_font(da_status, &font_argus_mono_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(da_status, &font_argus_label_20, LV_PART_MAIN);   // bigger, readable
+    lv_obj_set_style_text_align(da_status, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_text(da_status, "idle");
     lv_obj_align(da_status, LV_ALIGN_CENTER, 0, 20);
 

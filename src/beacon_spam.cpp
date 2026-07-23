@@ -7,8 +7,9 @@
 #include <stdio.h>
 #include "esp_random.h"
 
-// Defined in tools_screen.cpp
+// Defined in tools_screen.cpp / main.cpp
 void tools_screen_show();
+void low_mem_show_dialog(const char *msg);
 
 // ---- engine ----------------------------------------------------------------
 
@@ -77,7 +78,7 @@ static void on_tx(lv_timer_t *)
 bool beacon_spam_start()
 {
     if (s_tx_timer) return true;
-    if (!offense_wifi_claim(1)) return false;
+    if (!offense_wifi_claim(1, "Beacon flood")) return false;
     s_count  = 0;
     s_ssid_i = 0;
     s_ch     = 1;
@@ -117,22 +118,20 @@ static void bs_on_toggle(lv_event_t *)
 {
     if (beacon_spam_is_running()) {
         beacon_spam_stop();
-    } else {
-        if (!beacon_spam_start()) {
-            lv_label_set_text(bs_count_lbl, "WiFi busy - turn BT/detectors off");
-            return;
-        }
+    } else if (!beacon_spam_start()) {
+        const char *why = offense_wifi_busy_reason();
+        low_mem_show_dialog(why ? why : "Can't start the radio right now.");
+        return;
     }
     bs_refresh(nullptr);
 }
 
+// Leaving the screen does NOT stop the flood - it keeps running so you can
+// navigate; the single-owner guard + the busy dialog handle a second tool.
 static void bs_on_gesture(lv_event_t *e)
 {
     lv_indev_t *indev = lv_event_get_indev(e);
-    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) {
-        beacon_spam_stop();   // leaving the tool stops it (frees the radio)
-        tools_screen_show();
-    }
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT) tools_screen_show();
 }
 
 void beacon_spam_screen_create()
@@ -159,7 +158,7 @@ void beacon_spam_screen_create()
 
     bs_count_lbl = lv_label_create(bs_screen);
     lv_obj_set_style_text_color(bs_count_lbl, lv_color_make(0x3C, 0xDC, 0x78), LV_PART_MAIN);
-    lv_obj_set_style_text_font(bs_count_lbl, &font_argus_mono_16, LV_PART_MAIN);
+    lv_obj_set_style_text_font(bs_count_lbl, &font_argus_label_20, LV_PART_MAIN);
     lv_label_set_text(bs_count_lbl, "idle");
     lv_obj_align(bs_count_lbl, LV_ALIGN_CENTER, 0, 20);
 

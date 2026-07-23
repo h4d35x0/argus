@@ -13,9 +13,14 @@
 // so an injection tool never fights the detectors for the radio. Single-owner:
 // only one offense TX tool holds WiFi at a time.
 
-// Attempt to take WiFi for raw injection on `channel` (1-13). Returns false if
+// Attempt to take WiFi for raw injection on `channel` (1-13). `owner` is a short
+// display name (e.g. "Beacon flood") used in the busy dialog. Returns false if
 // BLE is up, a beacon scan already owns WiFi, or another offense tool holds it.
-bool offense_wifi_claim(uint8_t channel);
+bool offense_wifi_claim(uint8_t channel, const char *owner);
+
+// Human-readable reason a claim would fail RIGHT NOW (for a dialog), or nullptr
+// if the radio is free. Points at a static buffer.
+const char *offense_wifi_busy_reason();
 
 // Transmit one raw 802.11 frame. Returns true on ESP_OK. No-op if not claimed.
 bool offense_wifi_tx(const uint8_t *frame, size_t len);
