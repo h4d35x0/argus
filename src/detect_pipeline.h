@@ -36,3 +36,18 @@ void detect_pipeline_tick(uint32_t now_sec);
 // than two pipelines stomping argus_set_threat() on each other. No-op-safe to
 // call even before the first detect_pipeline_tick().
 void detect_pipeline_feed_tracker(detect::TailFlag flag, uint32_t t_sec);
+
+// --- Deauth-flood detector snapshot (for the Deauth status screen) -----------
+// A live read of the passive deauth/disassoc detector, safe to call every UI
+// refresh (main/LVGL task). The detector rides the existing WiFi promiscuous scan
+// (piggyback-only, no new radio bring-up), so it only sees frames while some WiFi
+// scan is running. flag: 0 None, 1 Elevated, 2 Flood (worst of per-AP / global).
+struct DeauthSnapshot {
+    uint8_t  flag;
+    uint16_t global_rate;   // deauth+disassoc per minute, all APs, in-window
+    uint8_t  tracked;       // distinct APs currently emitting disconnects
+    uint8_t  top_bssid[6];  // the worst offender's BSSID (0s if none)
+    uint16_t top_rate;      // that AP's per-minute rate
+    int8_t   top_rssi;      // strongest RSSI seen for it (proximity hint)
+};
+void detect_pipeline_deauth_snapshot(DeauthSnapshot *out);

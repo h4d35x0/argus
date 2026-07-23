@@ -102,10 +102,34 @@ static void parse_and_dispatch(const uint8_t *frame, int len,
     }
 }
 
+// --- Raw management-frame fanout (deauth / disassoc) ------------------------
+#define WBM_MAX_MGMT 2
+static wifi_mgmt_cb_t s_mgmt[WBM_MAX_MGMT] = {};
+static int            s_mgmt_count = 0;
+
+// Fan every management frame out to the raw mgmt consumers, IN ADDITION to the
+// beacon parse. No-op (early return) when no mgmt consumer is registered, so the
+// beacon-only path is unchanged. Cheap: a type check + one memcpy + the fanout.
+static void dispatch_mgmt(const uint8_t *frame, int len, int8_t rssi, uint8_t ch)
+{
+    if (s_mgmt_count == 0) return;
+    if (len < 24) return;                     // need the full MAC header (addr3)
+    if ((frame[0] & 0x0C) != 0x00) return;    // FC type bits: keep MANAGEMENT only
+    WifiMgmtFrame m;
+    memcpy(m.bssid, frame + 16, 6);           // addr3 = transmitter / AP
+    m.subtype  = (uint8_t)(frame[0] >> 4);    // 0xC deauth, 0xA disassoc, 0x8 beacon...
+    m.rssi     = rssi;
+    m.channel  = ch;
+    for (int i = 0; i < WBM_MAX_MGMT; i++)
+        if (s_mgmt[i]) s_mgmt[i](&m);
+}
+
 static void promisc_cb(void *buf, wifi_promiscuous_pkt_type_t type)
 {
     const wifi_promiscuous_pkt_t *pkt = (const wifi_promiscuous_pkt_t *)buf;
     if (type == WIFI_PKT_MGMT) {
+        dispatch_mgmt(pkt->payload, (int)pkt->rx_ctrl.sig_len,
+                      (int8_t)pkt->rx_ctrl.rssi, (uint8_t)pkt->rx_ctrl.channel);
         parse_and_dispatch(pkt->payload, (int)pkt->rx_ctrl.sig_len,
                            (int8_t)pkt->rx_ctrl.rssi, (uint8_t)pkt->rx_ctrl.channel);
     } else if (type == WIFI_PKT_DATA && s_data_capture) {
@@ -201,3 +225,24 @@ void wifi_beacon_set_data_capture(bool on)
         esp_wifi_set_promiscuous_filter(&f);
     }
 }
+
+bool wifi_mgmt_add(wifi_mgmt_cb_t cb)
+{
+    if (!cb) return false;
+    if (!wifi_beacon_active()) return false;   // PIGGYBACK-ONLY: never bring WiFi up
+    for (int i = 0; i < WBM_MAX_MGMT; i++)
+        if (s_mgmt[i] == cb) return true;      // idempotent
+    for (int i = 0; i < WBM_MAX_MGMT; i++) {
+        if (!s_mgmt[i]) { s_mgmt[i] = cb; s_mgmt_count++; return true; }
+    }
+    return false;                              // table full
+}
+
+void wifi_mgmt_remove(wifi_mgmt_cb_t cb)
+{
+    if (!cb) return;
+    for (int i = 0; i < WBM_MAX_MGMT; i++)
+        if (s_mgmt[i] == cb) { s_mgmt[i] = nullptr; s_mgmt_count--; return; }
+}
+
+int wifi_mgmt_consumer_count() { return s_mgmt_count; }

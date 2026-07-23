@@ -42,3 +42,24 @@ int wifi_beacon_consumer_count();
 // Also receive 802.11 DATA frames (routed to handshake_rx_data) for handshake /
 // PMKID capture. Off by default — the survey path is untouched unless enabled.
 void wifi_beacon_set_data_capture(bool on);
+
+// --- Raw management-frame fanout (deauth / disassoc detection) ----------------
+// The beacon fanout above only forwards beacons; a deauth-flood DETECTOR needs
+// the raw deauth (mgmt subtype 0xC) / disassoc (0xA) frames the promiscuous mask
+// already delivers. This is a SEPARATE, additive fanout: with no mgmt consumer
+// registered it is a no-op and the beacon path is completely unchanged.
+struct WifiMgmtFrame {
+    uint8_t bssid[6];   // addr3 of the MAC header (the transmitter / AP)
+    uint8_t subtype;    // FC subtype nibble: 0xC deauth, 0xA disassoc, 0x8 beacon...
+    int8_t  rssi;
+    uint8_t channel;
+};
+typedef void (*wifi_mgmt_cb_t)(const WifiMgmtFrame *m);
+
+// Register/unregister a RAW management-frame consumer. PIGGYBACK-ONLY: never
+// powers WiFi on - wifi_mgmt_add() refuses (returns false) unless a beacon scan
+// is already running, so a mgmt consumer can only ride an existing scan and the
+// beacon consumers keep owning the WiFi lifecycle. Idempotent.
+bool wifi_mgmt_add(wifi_mgmt_cb_t cb);
+void wifi_mgmt_remove(wifi_mgmt_cb_t cb);
+int  wifi_mgmt_consumer_count();

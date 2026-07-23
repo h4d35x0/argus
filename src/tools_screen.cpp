@@ -16,6 +16,7 @@
 #include "spycam_screen.h"
 #include "nfc_field_screen.h"
 #include "loot_screen.h"
+#include "deauth_screen.h"
 #include <string.h>
 #include "mouse_screen.h"
 #include "usb_sd_screen.h"
@@ -520,6 +521,50 @@ static void draw_spycam_icon(lv_obj_t *tile)
     lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(dot, LV_ALIGN_TOP_MID, 32, 79);
+}
+
+// Deauth watch -- WiFi arcs with a red diagonal strike-through ("connection
+// killed"), for the passive deauth-flood detector. Procedural fallback.
+static void draw_deauth_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t steel = ARGUS_ACCENT;
+    lv_color_t red   = HADES_RED;
+
+    // Three broadcast arcs (a WiFi wave) in steel.
+    const int d[3] = { 44, 74, 104 };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *r = lv_obj_create(tile);
+        lv_obj_set_size(r, d[i], d[i]);
+        lv_obj_set_style_radius(r, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_color(r, steel, LV_PART_MAIN);
+        lv_obj_set_style_border_width(r, 5, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(r, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(r, LV_ALIGN_TOP_MID, 0, 40 + (104 - d[i]) / 2);
+    }
+    lv_obj_t *dot = lv_obj_create(tile);
+    lv_obj_set_size(dot, 18, 18);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(dot, steel, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(dot, LV_ALIGN_TOP_MID, 0, 92);
+
+    // Red diagonal strike bar across the wave.
+    lv_obj_t *strike = lv_obj_create(tile);
+    lv_obj_set_size(strike, 130, 12);
+    lv_obj_set_style_radius(strike, 4, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(strike, red, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(strike, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(strike, 0, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_x(strike, 65, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(strike, 6, LV_PART_MAIN);
+    lv_obj_set_style_transform_rotation(strike, 450, LV_PART_MAIN);   // 45 deg
+    lv_obj_clear_flag(strike, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(strike, LV_ALIGN_TOP_MID, 0, 76);
 }
 
 // Loot -- an amber folder with a red download/offload glyph, for the Offense-only
@@ -1540,6 +1585,7 @@ void tools_screen_create()
     // The timepiece tiles (Alarm / Stopwatch / Timer / Calendar) live on the TIME
     // screen (swipe up from the clock face), not here.
     lv_obj_t *t_radar   = make_tile(grid, "Radar");
+    lv_obj_t *t_deauth  = make_tile(grid, "Deauth");
     t_airtag            = make_tile(grid, "AirTag");
     t_trackers          = make_tile(grid, "Trackers");
     lv_obj_t *t_spycam  = make_tile(grid, "Spycam");
@@ -1581,6 +1627,7 @@ void tools_screen_create()
     tile_icon(t_eviltwin, "eviltwin", draw_eviltwin_icon);
     tile_icon(t_flock,    "flock",    draw_flock_icon);
     tile_icon(t_radar,    "radar",    draw_radar_icon);
+    tile_icon(t_deauth,   "deauth",   draw_deauth_icon);
     draw_pet_icon(t_pet);                                       // keep HexHound HD sprite
     tile_icon(t_handshake, "pwn",     draw_handshake_icon);
     tile_icon(t_loot,     "loot",     draw_loot_icon);
@@ -1611,6 +1658,7 @@ void tools_screen_create()
         { t_eviltwin, "eviltwin"  },
         { t_flock,    "flock"     },
         { t_radar,    "radar"     },
+        { t_deauth,   "deauth"    },
         { t_pet,      "pet"       },
         { t_handshake,"handshake" },
         { t_loot,     "loot"      },
@@ -1658,6 +1706,7 @@ void tools_screen_create()
     // HexHound tile opens the cyber-recon pet; Pwn tile toggles passive handshake capture.
     // Radar tile opens the Threat Radar spatio-temporal correlation screen.
     lv_obj_add_event_cb(t_radar, [](lv_event_t *) { threat_radar_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_deauth, [](lv_event_t *) { deauth_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_pet, [](lv_event_t *) { pet_screen_show(); }, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_handshake, on_handshake_clicked, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(t_loot, [](lv_event_t *) { if (argus_mode_current() != ArgusMode::Offense) return; loot_screen_show(); }, LV_EVENT_CLICKED, NULL);

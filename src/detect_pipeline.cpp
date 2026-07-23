@@ -12,6 +12,7 @@
 
 #include "detect/evil_twin.h"      // RogueApDetector, ApObservation, AuthMode
 #include "detect/beacon_flood.h"   // BeaconFloodDetector, BeaconObservation
+#include "detect/deauth_flood.h"   // DeauthFloodDetector, MgmtFrameEvent, MgmtType
 #include "detect/threat_state.h"   // ThreatState, ThreatDomain, Severity, ThreatLevel
 #include "detect/threat_map.h"     // detect::feed() verdict -> aggregator
 #include "detect/surveillance_device.h"  // classify_wifi() spy-cam fingerprint (#9)
@@ -23,8 +24,18 @@
 // file only composes them - it never modifies them.
 static detect::RogueApDetector     s_rogue;
 static detect::BeaconFloodDetector s_beacon_flood;
+static detect::DeauthFloodDetector s_deauth;
 static detect::ThreatState         s_threat;
 static detect::ThreatLog           s_threat_log;
+
+// Device-side "worst offender" for the Deauth screen (guarded by s_mux). The
+// headline flag is the max of the per-AP and global verdicts, i.e. exactly what
+// gets fed to the DeauthFlood domain; it clears when the global window relaxes.
+static uint8_t  s_deauth_headline = 0;
+static uint8_t  s_deauth_top_bssid[6] = {0};
+static uint16_t s_deauth_top_rate = 0;
+static int8_t   s_deauth_top_rssi = 0;
+static bool     s_mgmt_registered = false;
 
 // The beacon callback runs in the WiFi driver task and has no clock of its own,
 // so the 1Hz tick stashes the latest monotonic seconds here for it to read.
@@ -144,6 +155,54 @@ static void beacon_cb(const WifiBeacon *b)
         spycam_note(b->bssid, b->ssid, (uint8_t)spycam.cls, (uint8_t)spycam.conf, b->rssi);
 }
 
+// --- Raw management-frame callback (WiFi task context) ----------------------
+// Reduce a deauth/disassoc frame to a MgmtFrameEvent, ingest, and fold the
+// STRONGER of the per-BSSID and global verdict into the DeauthFlood domain of the
+// SAME shared aggregator. Non-disconnect frames are ignored. Piggyback-only, so
+// this only fires while some WiFi scan is already running.
+static void mgmt_cb(const WifiMgmtFrame *m)
+{
+    if (!m) return;
+    detect::MgmtType t;
+    if      (m->subtype == 0x0C) t = detect::MgmtType::Deauth;
+    else if (m->subtype == 0x0A) t = detect::MgmtType::Disassoc;
+    else return;
+
+    detect::MgmtFrameEvent e;
+    memset(&e, 0, sizeof(e));
+    memcpy(e.bssid, m->bssid, 6);
+    e.type  = t;
+    e.t_sec = s_now_sec;
+    e.rssi  = m->rssi;
+
+    portENTER_CRITICAL(&s_mux);
+    detect::DeauthVerdict dv = s_deauth.ingest(e);
+    detect::DeauthFlag f = dv.flag;
+    detect::DeauthFlag g = s_deauth.global_flag();
+    if ((uint8_t)g > (uint8_t)f) f = g;        // report the stronger of per-AP / aggregate
+    detect::feed(s_threat, f, s_now_sec);      // -> DeauthFlood domain
+    s_deauth_headline = (uint8_t)f;
+    if (dv.rate_per_min >= s_deauth_top_rate) {
+        memcpy(s_deauth_top_bssid, m->bssid, 6);
+        s_deauth_top_rate = dv.rate_per_min;
+        s_deauth_top_rssi = m->rssi;
+    }
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void detect_pipeline_deauth_snapshot(DeauthSnapshot *out)
+{
+    if (!out) return;
+    portENTER_CRITICAL(&s_mux);
+    out->flag        = s_deauth_headline;
+    out->global_rate = s_deauth.global_rate_per_min();
+    out->tracked     = (uint8_t)s_deauth.tracked();
+    memcpy(out->top_bssid, s_deauth_top_bssid, 6);
+    out->top_rate    = s_deauth_top_rate;
+    out->top_rssi    = s_deauth_top_rssi;
+    portEXIT_CRITICAL(&s_mux);
+}
+
 // --- Shared feed point for the BLE detect pipeline --------------------------
 // The BLE side owns its own TailDetector but reports its follow verdict here so
 // the Airtag domain lands in the SAME s_threat the WiFi tick ages and drives the
@@ -175,6 +234,15 @@ void detect_pipeline_tick(uint32_t now_sec)
         s_registered = false;
     }
 
+    // Same piggyback for the raw deauth/disassoc consumer (rides the live scan;
+    // wifi_mgmt_add refuses unless a beacon scan is up, so it never powers WiFi).
+    if (others > 0 && !s_mgmt_registered) {
+        s_mgmt_registered = wifi_mgmt_add(mgmt_cb);
+    } else if (others <= 0 && s_mgmt_registered) {
+        wifi_mgmt_remove(mgmt_cb);
+        s_mgmt_registered = false;
+    }
+
     // Age the sliding window + aggregator and snapshot the per-domain severities
     // and overall level under the SAME lock the callback uses, so the log/UI see
     // a consistent read. Keep all IO (SD) OUT of the critical section.
@@ -182,7 +250,16 @@ void detect_pipeline_tick(uint32_t now_sec)
     detect::ThreatLevel level;
     portENTER_CRITICAL(&s_mux);
     s_beacon_flood.tick(now_sec);
+    s_deauth.tick(now_sec);
     s_threat.tick(now_sec);
+    // Relax the device-side deauth headline/top when the aggregate window clears,
+    // so the screen returns to "Clear" on its own once a flood stops.
+    if (s_deauth.global_flag() == detect::DeauthFlag::None) {
+        s_deauth_headline = 0;
+        s_deauth_top_rate = 0;
+        s_deauth_top_rssi = 0;
+        memset(s_deauth_top_bssid, 0, sizeof(s_deauth_top_bssid));
+    }
     for (size_t i = 0; i < detect::ThreatState::kDomainCount; ++i)
         sev[i] = s_threat.domain_severity((detect::ThreatDomain)i);
     level = s_threat.level();
