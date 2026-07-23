@@ -13,12 +13,11 @@
 // the watch). Deauth frames need the raw-frame sanity-check override (below),
 // which must be VERIFIED ON-HARDWARE against the pinned core version.
 
-bool deauth_attack_start();   // false if WiFi can't be surveyed/claimed
+bool deauth_attack_start();   // begin the survey; false if WiFi can't be surveyed
 void deauth_attack_stop();
 bool deauth_attack_is_running();
 int  deauth_attack_target_count();
 uint32_t deauth_attack_frames();
-bool deauth_attack_surveying();   // true during the initial survey phase
 
 void deauth_attack_screen_create();
 void deauth_attack_screen_show();
