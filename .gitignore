@@ -10,3 +10,6 @@ __pycache__/
 
 # Session handoff prompt - scratch working file, not part of the repo
 argusprompt.txt
+
+# Device crash captures are local diagnostic artifacts.
+artifacts/coredump/

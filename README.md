@@ -444,6 +444,23 @@ That's it — no manual library edits. LilyGoLib and its NFC forks are **vendore
 
 If the board isn't auto-detected, pass the port: `pio run -t upload --upload-port /dev/ttyACM0` (Linux) / `COMx` (Windows) / `/dev/cu.usbmodemXXXX` (macOS).
 
+### Crash forensics
+
+The ESP32-S3 build layout already reserves a flash `coredump` partition, so after a panic you can pull the saved dump against the exact firmware ELF from this tree instead of depending on live serial panic text.
+
+On this watch, use the flashing/download port, not the app CDC port. On Windows in this workspace that is typically `COM19` (USB VID:PID `303A:1001`). Put the watch in download mode first with **BOOT + RESET**, then run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\read_coredump.ps1 -Port COM19
+```
+
+That script reads the fixed `0xFF0000`/64 KB coredump partition with PlatformIO's
+bundled esptool, saves both the raw partition image and embedded core ELF under
+`artifacts/coredump/`, verifies the flashed application against
+`.pio/build/twatch_ultra/firmware.bin`, and only then decodes it with the matching
+`firmware.elf`. It stops instead of emitting misleading source lines when the
+local build does not match the crashed firmware.
+
 ### Installing a prebuilt binary
 
 **Easiest — flash from your browser** (no toolchain): open **<https://r3dfish.github.io/13-37/>** in desktop **Chrome** or **Edge**, plug the watch in over USB-C, and click **Install**. (Uses [ESP Web Tools](https://esphome.github.io/esp-web-tools/) over WebSerial.)

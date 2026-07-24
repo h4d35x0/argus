@@ -4,7 +4,6 @@
 #include <SD.h>
 #include <Arduino.h>          // millis()
 #include <esp_heap_caps.h>
-#include <esp_system.h>       // esp_reset_reason (boot-loop diagnostics)
 
 // Mode-aware wallpaper - each mode gets its own vibe:
 //   Daily   -> /backgrounds/daily.rgb565    (ARGUS logo)
@@ -50,33 +49,30 @@ static Raster s_rasters[3] = {
     { "/backgrounds/offense.rgb565", nullptr, {}, false },
 };
 
-// Defer the first wallpaper load until this long after boot. Loading + rendering
-// the full-screen image while the display and radios are still initialising
-// stacks onto the cold-boot current peak and browns out the BATTERY rail ->
-// boot-loop (USB's stiff rail is unaffected; steady-state draw is fine). A mode
-// swap (post-boot, deliberate) is already past this window.
+// Defer the first wallpaper load until the rest of boot has settled. The exact
+// panic was in the BHI260 callback rather than this SD/PSRAM path, but keeping
+// the raster load outside early initialization avoids unnecessary overlap.
 static const uint32_t kBootSettleMs = 10000;
 static lv_timer_t    *s_defer_timer = nullptr;
 
-// Fade-in ramp: instead of the full-screen wallpaper appearing at full opacity
-// in one frame (a hard AMOLED current spike that browns out the battery rail,
-// worse for brighter wallpapers like the blue Defense image), ramp opacity
-// 0 -> bg_opa over ~1s so the current rises gradually. Uses a stepping lv_timer
-// (no lv_anim dependency).
-static lv_timer_t *s_fade_timer = nullptr;
-static uint8_t     s_fade_cur   = 0;
+// NOTE (2026-07-24): the fade-in ramp was REMOVED. It stepped opacity 0 -> bg_opa
+// over ~825ms, and every step invalidated the full-screen image -> ~15 full-screen
+// ALPHA-BLEND re-renders in under a second. On battery that sustained render burst
+// tripped the interrupt watchdog (bootlog reset=5 INT_WDT, NOT 9 brownout), which
+// is a BLOCKING problem, not a current-spike problem a gentle ramp would help. So
+// the wallpaper now renders ONCE, directly at bg_opa. See memory
+// bug-offense-wallpaper-runtime-decode-bootloop.
+
+// Only the CURRENT mode raster is loaded on demand. Pre-loading all 3 rasters in
+// setup() tripled the crash exposure window on battery and made the boot loop
+// worse, so we stay on the single-raster baseline until a real backtrace says
+// otherwise.
 
 static void ensure_backgrounds_dir()
 {
     if (!instance.isCardReady()) return;
     if (SD.exists("/backgrounds")) return;
     SD.mkdir("/backgrounds");
-}
-
-static bool any_loaded()
-{
-    for (int i = 0; i < 3; i++) if (s_rasters[i].loaded) return true;
-    return false;
 }
 
 // Load one raster from the SD into a PSRAM buffer, once. Returns false (never
@@ -112,40 +108,6 @@ static bool load_raster(Raster *r)
     return true;
 }
 
-// DIAGNOSTIC (temporary): append the reason for the PREVIOUS reset to
-// /Settings/bootlog.txt at boot. esp_reset_reason() codes: 1=POWERON 3=SW
-// 4=PANIC 5=INT_WDT 6=TASK_WDT 7=WDT 8=DEEPSLEEP 9=BROWNOUT 15=USB. A battery-only
-// boot-loop logging reset=9 confirms a power brownout. Pull the SD to read it.
-static void write_bootlog()
-{
-    if (!instance.isCardReady()) return;
-    File f = SD.open("/Settings/bootlog.txt", FILE_APPEND);
-    if (!f) return;
-    f.printf("boot ms=%lu reset=%d\n", (unsigned long)millis(), (int)esp_reset_reason());
-    f.close();
-}
-
-// Ramp opacity toward bg_opa, then self-delete.
-static void fade_step_cb(lv_timer_t *t)
-{
-    int next = (int)s_fade_cur + 5;
-    s_fade_cur = (next >= bg_opa) ? bg_opa : (uint8_t)next;
-    if (bg_img) lv_obj_set_style_image_opa(bg_img, s_fade_cur, LV_PART_MAIN);
-    if (s_fade_cur >= bg_opa) { lv_timer_delete(t); s_fade_timer = nullptr; }
-}
-
-static void start_fade_in()
-{
-    s_fade_cur = 0;
-    if (bg_img) lv_obj_set_style_image_opa(bg_img, 0, LV_PART_MAIN);
-    if (!s_fade_timer) s_fade_timer = lv_timer_create(fade_step_cb, 55, NULL);  // ~825ms
-}
-
-static void stop_fade()
-{
-    if (s_fade_timer) { lv_timer_delete(s_fade_timer); s_fade_timer = nullptr; }
-}
-
 // Show the wallpaper for the CURRENT mode; fall back to Daily if that mode's
 // file is missing, or hide if even Daily is absent.
 static void apply_current()
@@ -159,7 +121,6 @@ static void apply_current()
     if (load_raster(&s_rasters[idx]))   r = &s_rasters[idx];
     else if (load_raster(&s_rasters[0])) r = &s_rasters[0];   // fall back to Daily
     if (!r) { lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN); return; }
-
     int32_t w = lv_display_get_horizontal_resolution(NULL);
     int32_t h = lv_display_get_vertical_resolution(NULL);
     lv_obj_set_size(bg_img, w, h);
@@ -170,7 +131,7 @@ static void apply_current()
     lv_image_set_inner_align(bg_img, LV_IMAGE_ALIGN_COVER);
     lv_obj_move_background(bg_img);
     lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
-    start_fade_in();   // ramp opacity up gently (avoids the AMOLED current spike)
+    lv_obj_set_style_image_opa(bg_img, bg_opa, LV_PART_MAIN);   // render ONCE at target opacity (no fade)
 }
 
 // One-shot: fires ~kBootSettleMs after boot, once the current surge has passed.
@@ -181,9 +142,8 @@ static void defer_cb(lv_timer_t *t)
     if (bg_enabled) apply_current();
 }
 
-// Mode changed: swap to that mode's wallpaper (instant PSRAM blit). Before the
-// boot-settle window the deferred timer applies the by-then-current mode, so do
-// nothing early.
+// Mode changed: swap to that mode's wallpaper. Before the boot-settle window the
+// deferred timer applies the by-then-current mode, so do nothing early.
 static void on_mode_change(ArgusMode)
 {
     if (bg_enabled && bg_img && millis() >= kBootSettleMs) apply_current();
@@ -192,7 +152,6 @@ static void on_mode_change(ArgusMode)
 lv_obj_t *background_create(lv_obj_t *parent)
 {
     ensure_backgrounds_dir();
-    write_bootlog();
 
     bg_img = lv_image_create(parent);
     lv_obj_remove_style_all(bg_img);
@@ -210,9 +169,10 @@ void background_set_enabled(bool en)
     bg_enabled = en;
     if (!bg_img) return;
     if (en) {
-        // First load during the cold-boot window -> defer past the current surge
-        // to avoid a battery brownout (see kBootSettleMs). Stay hidden until then.
-        if (millis() < kBootSettleMs && !any_loaded()) {
+        // Defer the first wallpaper work past the cold-boot current surge. The
+        // current-raster-only baseline is the least-bad known behavior on battery;
+        // loading all 3 rasters in setup() made the panic much more frequent.
+        if (millis() < kBootSettleMs) {
             if (!s_defer_timer)
                 s_defer_timer = lv_timer_create(defer_cb, kBootSettleMs - millis(), NULL);
             lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
@@ -221,7 +181,6 @@ void background_set_enabled(bool en)
         apply_current();
     } else {
         if (s_defer_timer) { lv_timer_delete(s_defer_timer); s_defer_timer = nullptr; }
-        stop_fade();
         lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -231,7 +190,6 @@ bool background_is_enabled() { return bg_enabled; }
 void background_set_opacity(uint8_t opa)
 {
     bg_opa = opa;
-    stop_fade();   // a manual opacity change overrides any in-progress fade-in
     if (bg_img && bg_enabled && !lv_obj_has_flag(bg_img, LV_OBJ_FLAG_HIDDEN))
         lv_obj_set_style_image_opa(bg_img, bg_opa, LV_PART_MAIN);
 }

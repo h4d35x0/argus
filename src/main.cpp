@@ -946,7 +946,14 @@ void ui_reset_dim_activity() { dim_reset_activity(); }
 static SensorXYZ s_motion_accel(SensorBHI260AP::ACCEL_PASSTHROUGH, instance.sensor);
 static bool      s_motion_wake_enabled    = true;
 static bool      s_motion_accel_started   = false;
+static bool      s_motion_accel_pending   = false;
 static float     s_motion_last_mag        = 0.0f;
+// Exact core dumps showed the intermittent boot panic in the first BHI260 FIFO
+// callback: BoschParseStatic::parseData() made an indirect call through a
+// corrupted target while the boot and wallpaper current/PSRAM activity were
+// still settling. Keep the persisted feature enabled, but do not start its
+// 10 Hz sensor stream until after that boot window.
+static const uint32_t MOTION_BOOT_DEFER_MS = 15000;
 // 10 Hz is enough to catch a wrist tilt without burning power; the BHI260
 // fuses its own samples internally and only fires its interrupt when a
 // sample is ready.
@@ -960,17 +967,25 @@ void clock_screen_set_motion_wake(bool enabled)
 {
     s_motion_wake_enabled = enabled;
     if (enabled && !s_motion_accel_started) {
+        if (millis() < MOTION_BOOT_DEFER_MS) {
+            s_motion_accel_pending = true;
+            return;
+        }
         // The BHI260AP firmware needs to be up before configuring virtual
         // sensors; this setter is called from the settings load + the UI
         // toggle, both of which run after instance.begin().
         s_motion_accel.enable(MOTION_SAMPLE_RATE_HZ, 0);
         s_motion_accel_started = true;
+        s_motion_accel_pending = false;
         // Drop the cached previous-magnitude so the first sample after a
         // restart isn't compared against a stale baseline.
         s_motion_last_mag = 0.0f;
-    } else if (!enabled && s_motion_accel_started) {
-        s_motion_accel.disable();
-        s_motion_accel_started = false;
+    } else if (!enabled) {
+        s_motion_accel_pending = false;
+        if (s_motion_accel_started) {
+            s_motion_accel.disable();
+            s_motion_accel_started = false;
+        }
     }
 }
 
@@ -978,6 +993,13 @@ void clock_screen_set_motion_wake(bool enabled)
 // sample queue. No-op when motion-wake is off or no new sample is in.
 static void motion_wake_poll()
 {
+    if (s_motion_wake_enabled && s_motion_accel_pending
+        && !s_motion_accel_started && millis() >= MOTION_BOOT_DEFER_MS) {
+        s_motion_accel.enable(MOTION_SAMPLE_RATE_HZ, 0);
+        s_motion_accel_started = true;
+        s_motion_accel_pending = false;
+        s_motion_last_mag = 0.0f;
+    }
     if (!s_motion_wake_enabled || !s_motion_accel_started) return;
     if (!s_motion_accel.hasUpdated()) return;
 
