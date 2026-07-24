@@ -7,7 +7,8 @@
 #include "mbedtls/pkcs5.h"
 
 static const char *NS    = "argussec";
-static const int   ITERS = 50000;
+static const int   ITERS        = 4096;    // new-hash count (~0.5s); UI no longer 6s-frozen
+static const int   ITERS_LEGACY = 50000;   // pre-migration count (stored per slot as iu/is)
 static const int   HLEN  = 32;
 static const int   SLEN  = 16;
 
@@ -34,14 +35,14 @@ static void ensure_salt(uint8_t salt[SLEN])
     if (p.begin(NS, false)) { p.putBytes("salt", salt, SLEN); p.end(); }
 }
 
-static void pbkdf2(const char *pin, const uint8_t *salt, uint8_t out[HLEN])
+static void pbkdf2(const char *pin, const uint8_t *salt, uint8_t out[HLEN], int iters)
 {
     const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_md_context_t ctx;
     mbedtls_md_init(&ctx);
     mbedtls_md_setup(&ctx, info, 1);   // 1 = HMAC
     mbedtls_pkcs5_pbkdf2_hmac(&ctx, (const unsigned char *)pin, strlen(pin),
-                              salt, SLEN, ITERS, HLEN, out);
+                              salt, SLEN, iters, HLEN, out);
     mbedtls_md_free(&ctx);
 }
 
@@ -82,13 +83,15 @@ const char *security_set_pins(const char *unlock_pin, const char *shred_pin)
 
     uint8_t salt[SLEN]; ensure_salt(salt);
     uint8_t hu[HLEN], hs[HLEN];
-    pbkdf2(unlock_pin, salt, hu);
-    pbkdf2(shred_pin,  salt, hs);
+    pbkdf2(unlock_pin, salt, hu, ITERS);
+    pbkdf2(shred_pin,  salt, hs, ITERS);
 
     Preferences p;
     if (!p.begin(NS, false)) return "storage error";
     p.putBytes("hu", hu, HLEN);
     p.putBytes("hs", hs, HLEN);
+    p.putInt("iu", ITERS);   // iteration count per slot (for transparent migration)
+    p.putInt("is", ITERS);
     p.putBool("set", true);
     p.end();
     return nullptr;
@@ -107,17 +110,43 @@ PinResult security_check(const char *pin)
 
     uint8_t salt[SLEN];
     if (!load_salt(salt)) return PinResult::None;
-    uint8_t h[HLEN]; pbkdf2(pin, salt, h);
 
     uint8_t hu[HLEN], hs[HLEN];
-    Preferences p;
-    if (!p.begin(NS, true)) return PinResult::None;
-    p.getBytes("hu", hu, HLEN);
-    p.getBytes("hs", hs, HLEN);
-    p.end();
+    int iu, is;
+    {
+        Preferences p;
+        if (!p.begin(NS, true)) return PinResult::None;
+        p.getBytes("hu", hu, HLEN);
+        p.getBytes("hs", hs, HLEN);
+        iu = p.getInt("iu", ITERS_LEGACY);   // legacy installs stored no count -> 50k
+        is = p.getInt("is", ITERS_LEGACY);
+        p.end();
+    }
 
-    if (ct_eq(h, hu, HLEN)) { s_fails = 0; return PinResult::Unlock; }
-    if (ct_eq(h, hs, HLEN)) { s_fails = 0; return PinResult::Shred; }
+    // Verify each slot at its stored iteration count. On a match at a legacy (slow)
+    // count, transparently re-hash at the fast ITERS and store it, so only the
+    // FIRST correct entry after an upgrade pays the old ~6s cost; wrong guesses
+    // keep paying it (anti-brute-force), and the correct PIN is snappy thereafter.
+    uint8_t h[HLEN]; pbkdf2(pin, salt, h, iu);
+    if (ct_eq(h, hu, HLEN)) {
+        if (iu != ITERS) {
+            pbkdf2(pin, salt, hu, ITERS);
+            Preferences p;
+            if (p.begin(NS, false)) { p.putBytes("hu", hu, HLEN); p.putInt("iu", ITERS); p.end(); }
+        }
+        s_fails = 0; return PinResult::Unlock;
+    }
+    uint8_t h2[HLEN];
+    if (is == iu) memcpy(h2, h, HLEN);
+    else          pbkdf2(pin, salt, h2, is);
+    if (ct_eq(h2, hs, HLEN)) {
+        if (is != ITERS) {
+            pbkdf2(pin, salt, hs, ITERS);
+            Preferences p;
+            if (p.begin(NS, false)) { p.putBytes("hs", hs, HLEN); p.putInt("is", ITERS); p.end(); }
+        }
+        s_fails = 0; return PinResult::Shred;
+    }
 
     s_fails++;                              // wrong: escalating backoff
     uint32_t delay = 0;

@@ -78,7 +78,11 @@ static void on_ok(void)
         return;
     }
 
-    // PAD_CHECK
+    // PAD_CHECK. The PBKDF2 verify blocks the UI (up to ~6s on the first, legacy
+    // hash; ~0.5s once migrated). Show feedback and paint it BEFORE the stall so
+    // the check never feels dead / like it needs a second press.
+    set_msg("Checking...");
+    lv_refr_now(NULL);
     PinResult r = security_check(s_entry);
     if (r == PinResult::Unlock) {
         enter_offense();          // tiles auto-reveal via the gating callback
