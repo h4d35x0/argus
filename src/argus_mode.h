@@ -65,4 +65,8 @@ void argus_mode_on_change(ArgusModeCb cb);
 // out-of-the-box behaviour keeps the "a reboot always shows Daily" opsec
 // guarantee; enabling it lets the watch boot back into Defense for convenience.
 bool argus_mode_defense_persist();
+
+// Whether the Daily/Defense toggle should read as "Defense": the live mode in
+// Daily/Defense, or the Offense exit target while inside Offense.
+bool argus_mode_defense_selected();
 void argus_mode_set_defense_persist(bool on);

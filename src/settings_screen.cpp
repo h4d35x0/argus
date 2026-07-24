@@ -1268,7 +1268,7 @@ void settings_screen_create()
     register_shiftable(mode_hdr, 1914);
 
     defense_switch = make_boot_row("Defense", 1954,
-        argus_mode_current() == ArgusMode::Defense,
+        argus_mode_defense_selected(),
         on_defense_mode_changed, &defense_val_label);
 
     defpersist_switch = make_boot_row("Keep on boot", 2002,
@@ -1326,6 +1326,15 @@ void settings_screen_show()
     // Heading follows the mode: red-team red in Offense, steel-blue otherwise.
     if (s_settings_title)
         lv_obj_set_style_text_color(s_settings_title, argus_accent(), LV_PART_MAIN);
+
+    // Keep the Defense toggle showing the Offense EXIT target - it can be flipped
+    // while inside Offense to choose whether Exit Offense lands in Defense or Daily.
+    if (defense_switch) {
+        bool ds = argus_mode_defense_selected();
+        if (ds) lv_obj_add_state(defense_switch, LV_STATE_CHECKED);
+        else    lv_obj_clear_state(defense_switch, LV_STATE_CHECKED);
+        if (defense_val_label) lv_label_set_text(defense_val_label, ds ? "On" : "Off");
+    }
 
     // Offense button label follows the mode: exit when in Offense, enter otherwise.
     if (s_ofs_lbl) {

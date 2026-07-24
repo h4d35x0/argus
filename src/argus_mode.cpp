@@ -59,10 +59,24 @@ void argus_mode_init()
 
 ArgusMode argus_mode_current() { return s_mode; }
 
+// Whether the Daily/Defense toggle should read as "Defense": the live mode in
+// Daily/Defense, or the Offense EXIT target (s_prev_mode) while inside Offense.
+bool argus_mode_defense_selected()
+{
+    ArgusMode m = (s_mode == ArgusMode::Offense) ? s_prev_mode : s_mode;
+    return m == ArgusMode::Defense;
+}
+
 bool argus_mode_set(ArgusMode m)
 {
     if (m == ArgusMode::Offense) return false;   // must go through enter_offense()
-    if (s_mode == ArgusMode::Offense) return false;  // leave Offense via lock_offense()
+    if (s_mode == ArgusMode::Offense) {
+        // Can't change the LIVE mode from inside Offense, but the Daily/Defense
+        // toggle DOES choose where exiting Offense returns to (lock_offense reads
+        // s_prev_mode). So record the exit target here.
+        s_prev_mode = m;
+        return true;
+    }
     if (m == s_mode) return false;               // no change
     s_mode      = m;
     s_prev_mode = m;
@@ -86,13 +100,10 @@ bool enter_offense()
 void lock_offense()
 {
     s_unlocked = false;
-    // Exit target: if Defense-persist is on, land in Defense (the user chose it as
-    // their base mode, even if they toggled it on while inside Offense). Otherwise
-    // return to whatever mode we came from (Daily as the safe fallback).
-    if (s_def_persist)
-        s_mode = ArgusMode::Defense;
-    else
-        s_mode = (s_prev_mode == ArgusMode::Offense) ? ArgusMode::Daily : s_prev_mode;
+    // Return to whatever the Defense toggle selected: Defense if it's on, Daily if
+    // it's off. That choice lives in s_prev_mode, which the Daily/Defense toggle
+    // updates even while inside Offense (see argus_mode_set).
+    s_mode = (s_prev_mode == ArgusMode::Offense) ? ArgusMode::Daily : s_prev_mode;
     broadcast();
 }
 
