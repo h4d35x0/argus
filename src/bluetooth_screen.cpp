@@ -1,4 +1,5 @@
 #include "bluetooth_screen.h"
+#include "tools_screen.h"
 #include "theme.h"
 #include "ble_scan_manager.h"
 #include <LilyGoLib.h>
@@ -202,6 +203,7 @@ static void on_toggle(lv_event_t *)
 void bluetooth_screen_create()
 {
     bt_screen_root = lv_obj_create(NULL);
+    tools_attach_jump_gesture(bt_screen_root);   // swipe-down -> Tools grid
     lv_obj_set_style_bg_color(bt_screen_root, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_border_width(bt_screen_root, 0, LV_PART_MAIN);
 

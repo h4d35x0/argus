@@ -29,10 +29,11 @@
 // HADES threat-red (#DB615A) — the "red eyes" alert state.
 #define HADES_RED            lv_color_make(0xDB, 0x61, 0x5A)
 
-// Offense-mode base accent — amber "teeth" (#F0A030). Distinct from the calm
-// steel-blue (Daily/Defense) and from HADES_RED (which still overlays as the
-// threat/alert state on top of this). Drives the Offense border + "OFF" chip.
-#define ARGUS_OFFENSE_ACCENT lv_color_make(0xF0, 0xA0, 0x30)
+// Offense-mode base accent — aggressive red-team red (#F02E2E). Distinct from
+// the calm steel-blue (Daily/Defense). Drives the Offense border + "OFF" chip
+// and the offense tool icons, so Offense reads unmistakably "red team". HADES_RED
+// (a softer coral) still overlays as the live threat/alert state on top of this.
+#define ARGUS_OFFENSE_ACCENT lv_color_make(0xF0, 0x2E, 0x2E)
 
 // Runtime, state-aware accent. Returns ARGUS_ACCENT (steel-blue) at rest and
 // HADES_RED when Threat Radar is flagging a tail (top level >= TR_LVL_LIKELY).

@@ -1,4 +1,5 @@
 #include "lora_screen.h"
+#include "tools_screen.h"
 #include "theme.h"
 #include "meshtastic.h"
 #include "pager.h"
@@ -153,6 +154,7 @@ static void on_boosted_changed(lv_event_t *e)
 void lora_screen_create()
 {
     lora_screen = lv_obj_create(NULL);
+    tools_attach_jump_gesture(lora_screen);   // swipe-down -> Tools grid
     lv_obj_set_style_bg_color(lora_screen, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_border_width(lora_screen, 0, LV_PART_MAIN);
 

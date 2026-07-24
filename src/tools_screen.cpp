@@ -568,10 +568,10 @@ static void draw_timeline_icon(lv_obj_t *tile)
 // Deauth -- concentric WiFi/broadcast rings with a red "kick" badge (a circle
 // with an X) in the corner, meaning "clients knocked off". No strike-through
 // (that read as "disabled"). Shared by the Defense detector + Offense Deauther.
-static void draw_deauth_icon(lv_obj_t *tile)
+static void draw_deauth_impl(lv_obj_t *tile, lv_color_t ringc)
 {
     tile = icon_layer(tile);
-    lv_color_t steel = ARGUS_ACCENT;
+    lv_color_t steel = ringc;
 
     const int d[3] = { 100, 68, 36 };            // WiFi wave rings (nfcfield band)
     for (int i = 0; i < 3; i++) {
@@ -612,6 +612,11 @@ static void draw_deauth_icon(lv_obj_t *tile)
     lv_label_set_text(x, "X");
     lv_obj_center(x);
 }
+
+// Two flavours sharing the geometry above: steel-blue for the Defense deauth
+// DETECTOR tile, red for the Offense deauth ATTACK tile.
+static void draw_deauth_icon(lv_obj_t *tile)     { draw_deauth_impl(tile, ARGUS_ACCENT); }
+static void draw_deauth_atk_icon(lv_obj_t *tile) { draw_deauth_impl(tile, ARGUS_OFFENSE_ACCENT); }
 
 // Probes -- an amber magnifying glass (recon) over a few device dots, for the
 // probe-request sniffer. Procedural fallback.
@@ -657,52 +662,50 @@ static void draw_probes_icon(lv_obj_t *tile)
     lv_obj_align(handle, LV_ALIGN_TOP_MID, 30, 96);
 }
 
-// Rogue AP -- an amber broadcast source with arcs, luring a red client device up
-// toward it, for the Offense evil-twin AP. Procedural fallback.
+// Rogue AP -- a red access-point "router" with two horn-tipped antennas (the
+// rogue/evil-twin tell) and status LEDs. Compact in the glyph band so it never
+// runs into the tile label. Procedural fallback.
 static void draw_rogueap_icon(lv_obj_t *tile)
 {
     tile = icon_layer(tile);
-    lv_color_t amber = ARGUS_OFFENSE_ACCENT;
-    lv_color_t red   = HADES_RED;
+    lv_color_t red  = ARGUS_OFFENSE_ACCENT;
+    lv_color_t dark = lv_color_make(0x1E, 0x12, 0x12);
 
-    // Amber AP source dot + two broadcast arcs (top).
-    lv_obj_t *src = lv_obj_create(tile);
-    lv_obj_set_size(src, 20, 20);
-    lv_obj_set_style_radius(src, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(src, amber, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(src, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(src, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(src, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(src, LV_ALIGN_TOP_MID, 0, 34);
-    const int d[2] = { 52, 84 };
+    // Two horn-tipped antennas rising and splaying outward from the router.
+    static lv_point_precise_t ant_l[] = { {74, 66}, {56, 38} };
+    static lv_point_precise_t ant_r[] = { {106, 66}, {124, 38} };
+    lv_point_precise_t *ant[] = { ant_l, ant_r };
     for (int i = 0; i < 2; i++) {
-        lv_obj_t *a = lv_obj_create(tile);
-        lv_obj_set_size(a, d[i], d[i]);
-        lv_obj_set_style_radius(a, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_set_style_border_color(a, amber, LV_PART_MAIN);
-        lv_obj_set_style_border_width(a, 5, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(a, 0, LV_PART_MAIN);
-        lv_obj_clear_flag(a, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(a, LV_ALIGN_TOP_MID, 0, 20 + (84 - d[i]) / 2);
+        lv_obj_t *a = lv_line_create(tile);
+        lv_line_set_points(a, ant[i], 2);
+        lv_obj_set_style_line_color(a, red, 0);
+        lv_obj_set_style_line_width(a, 8, 0);
+        lv_obj_set_style_line_rounded(a, true, 0);
     }
-    // Red lured client (a phone) below, with a connecting line.
-    lv_obj_t *line = lv_obj_create(tile);
-    lv_obj_set_size(line, 4, 26);
-    lv_obj_set_style_bg_color(line, red, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(line, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(line, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(line, LV_ALIGN_TOP_MID, 0, 96);
-    lv_obj_t *dev = lv_obj_create(tile);
-    lv_obj_set_size(dev, 34, 52);
-    lv_obj_set_style_radius(dev, 6, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(dev, lv_color_make(0x1A, 0x24, 0x30), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(dev, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(dev, red, LV_PART_MAIN);
-    lv_obj_set_style_border_width(dev, 4, LV_PART_MAIN);
-    lv_obj_clear_flag(dev, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(dev, LV_ALIGN_TOP_MID, 0, 122);
+
+    // Router / AP body.
+    lv_obj_t *body = lv_obj_create(tile);
+    lv_obj_set_size(body, 96, 42);
+    lv_obj_set_style_radius(body, 10, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(body, dark, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(body, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(body, red, LV_PART_MAIN);
+    lv_obj_set_style_border_width(body, 5, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(body, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 62);
+
+    // Three status LEDs across the front.
+    for (int i = -1; i <= 1; i++) {
+        lv_obj_t *led = lv_obj_create(tile);
+        lv_obj_set_size(led, 12, 12);
+        lv_obj_set_style_radius(led, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(led, red, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(led, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(led, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(led, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(led, LV_ALIGN_TOP_MID, i * 28, 77);
+    }
 }
 
 // Beacon flood -- an amber broadcast mast with arcs and scattered SSID "ghost"
@@ -1820,7 +1823,7 @@ void tools_screen_create()
     tile_icon(t_handshake, "pwn",     draw_handshake_icon);
     tile_icon(t_loot,     "loot",     draw_loot_icon);
     tile_icon(t_beacon,   "beaconspam", draw_beaconspam_icon);
-    tile_icon(t_deauthatk, "deauthatk", draw_deauth_icon);
+    tile_icon(t_deauthatk, "deauthatk", draw_deauth_atk_icon);
     tile_icon(t_rogueap,  "rogueap",  draw_rogueap_icon);
     tile_icon(t_probes,   "probes",   draw_probes_icon);
     tile_icon(t_notify,   "notify",   draw_notify_icon);
@@ -2015,6 +2018,24 @@ void tools_apply_mode()
         if (visible) lv_obj_clear_flag(tile, LV_OBJ_FLAG_HIDDEN);
         else         lv_obj_add_flag(tile, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+// Attach a "swipe-DOWN -> Tools grid" shortcut to any tool/radio sub-screen so
+// the grid is reachable from anywhere (not only by back-chaining to the clock).
+// Mirrors the clock's swipe-down->Tools and is gated to Defense/Offense (Daily
+// hides Tools). Screens with vertically-scrolling content still scroll; the
+// gesture only fires when the scroll doesn't consume the swipe.
+static void tools_jump_gesture_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_event_get_indev(e);
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_BOTTOM &&
+        argus_mode_current() != ArgusMode::Daily)
+        tools_screen_show();
+}
+
+void tools_attach_jump_gesture(lv_obj_t *screen)
+{
+    if (screen) lv_obj_add_event_cb(screen, tools_jump_gesture_cb, LV_EVENT_GESTURE, NULL);
 }
 
 void tools_screen_show()

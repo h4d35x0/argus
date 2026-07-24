@@ -1,4 +1,5 @@
 #include "nfc_screen.h"
+#include "tools_screen.h"
 #include "theme.h"
 #include "nfc_write_screen.h"
 #include "hexhound.h"      // an NFC read is a "treat" for the pet
@@ -267,6 +268,7 @@ static lv_obj_t *make_btn(lv_obj_t *parent, const char *text, int x_ofs, int y_o
 void nfc_screen_create()
 {
     nfc_screen = lv_obj_create(NULL);
+    tools_attach_jump_gesture(nfc_screen);   // swipe-down -> Tools grid
     lv_obj_set_style_bg_color(nfc_screen, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_border_width(nfc_screen, 0, LV_PART_MAIN);
 

@@ -1,4 +1,5 @@
 #include "wifi_radio_screen.h"
+#include "tools_screen.h"
 #include "theme.h"
 #include <LilyGoLib.h>
 #include <WiFi.h>
@@ -242,6 +243,7 @@ static void on_toggle(lv_event_t *)
 void wifi_radio_screen_create()
 {
     wifi_screen_root = lv_obj_create(NULL);
+    tools_attach_jump_gesture(wifi_screen_root);   // swipe-down -> Tools grid
     lv_obj_set_style_bg_color(wifi_screen_root, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_border_width(wifi_screen_root, 0, LV_PART_MAIN);
 

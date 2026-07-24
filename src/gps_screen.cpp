@@ -1,4 +1,5 @@
 #include "gps_screen.h"
+#include "tools_screen.h"
 #include "theme.h"
 #include <LilyGoLib.h>
 #include <SD.h>
@@ -322,6 +323,7 @@ static void on_gps_update(lv_timer_t *timer)
 void gps_screen_create()
 {
     gps_screen = lv_obj_create(NULL);
+    tools_attach_jump_gesture(gps_screen);   // swipe-down -> Tools grid
     lv_obj_set_style_bg_color(gps_screen, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_border_width(gps_screen, 0, LV_PART_MAIN);
 
