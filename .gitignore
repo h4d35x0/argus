@@ -7,3 +7,6 @@ test/build/
 .claude/
 __pycache__/
 *.pyc
+
+# Session handoff prompt - scratch working file, not part of the repo
+argusprompt.txt
