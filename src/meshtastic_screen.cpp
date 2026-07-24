@@ -12,6 +12,7 @@ void clock_screen_show();
 void main_loop_request_lvgl_priority(int cycles);
 
 static lv_obj_t *mesh_screen;
+static lv_obj_t *s_mesh_title = nullptr;   // heading; repainted per mode on show
 static lv_obj_t *msg_list;
 
 // "Clear All" link at the bottom of the screen. Hidden when there
@@ -267,6 +268,7 @@ void meshtastic_screen_create()
     // Title — font_montserrat_48 (~60 px tall) at y=21 (5 px lower
     // than the previous y=16 for a touch more bezel clearance).
     lv_obj_t *title = lv_label_create(mesh_screen);
+    s_mesh_title = title;
     lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "MESHTASTIC");
@@ -381,6 +383,7 @@ void meshtastic_screen_create()
 void meshtastic_screen_show()
 {
     main_loop_request_lvgl_priority(12);
+    if (s_mesh_title) lv_obj_set_style_text_color(s_mesh_title, argus_accent(), LV_PART_MAIN);
     rebuild_list();
     lv_scr_load(mesh_screen);
 }

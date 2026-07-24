@@ -167,7 +167,7 @@ static void update_title()
             lv_color_make(0xB8, 0xA4, 0xFF), LV_PART_MAIN);
     } else {
         lv_label_set_text(title_label, "SEND MESSAGE");
-        lv_obj_set_style_text_color(title_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(title_label, argus_accent(), LV_PART_MAIN);
     }
 }
 
@@ -430,7 +430,7 @@ void send_message_screen_create()
     // Title + list + hint geometry mirrors the Meshtastic + Nodes
     // screens so all three feel visually identical when swiping.
     title_label = lv_label_create(send_screen);
-    lv_obj_set_style_text_color(title_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title_label, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title_label, &font_argus_ui, LV_PART_MAIN);   // Bank Gothic heading, matches other screens
     lv_label_set_text(title_label, "SEND MESSAGE");
     lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 21);
@@ -561,6 +561,10 @@ void send_message_screen_create()
 void send_message_screen_show()
 {
     main_loop_request_lvgl_priority(12);
+    if (title_label) {
+        lv_label_set_text(title_label, "SEND MESSAGE");
+        lv_obj_set_style_text_color(title_label, argus_accent(), LV_PART_MAIN);
+    }
     s_dest_node = 0xFFFFFFFFu;
     update_title();
     lv_label_set_text(status_label, "");

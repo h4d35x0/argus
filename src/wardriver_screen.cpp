@@ -89,6 +89,7 @@ static uint32_t      last_flush_ms = 0;
 
 // ─── UI objects ────────────────────────────────────────────────
 static lv_obj_t *wardriver_screen;
+static lv_obj_t *s_ward_title = nullptr;   // heading; repainted per mode on show
 static lv_obj_t *gps_status_icon;
 static lv_obj_t *sd_status_icon;
 static lv_obj_t *wifi_toggle_sw;
@@ -582,6 +583,7 @@ void wardriver_screen_create()
     lv_obj_add_event_cb(wardriver_screen, on_gesture, LV_EVENT_GESTURE, NULL);
 
     lv_obj_t *title = lv_label_create(wardriver_screen);
+    s_ward_title = title;
     lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "WARDRIVER");
@@ -623,6 +625,7 @@ void wardriver_screen_create()
 
 void wardriver_screen_show()
 {
+    if (s_ward_title) lv_obj_set_style_text_color(s_ward_title, argus_accent(), LV_PART_MAIN);
     wardriver_screen_update();
     lv_scr_load(wardriver_screen);
 }

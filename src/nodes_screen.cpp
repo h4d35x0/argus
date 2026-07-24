@@ -10,6 +10,7 @@ void meshtastic_screen_show();
 void main_loop_request_lvgl_priority(int cycles);
 
 static lv_obj_t *nodes_screen;
+static lv_obj_t *s_nodes_title = nullptr;   // heading; repainted per mode on show
 static lv_obj_t *nodes_box;
 
 // Floating traceroute result panel + 500 ms tick that drives the
@@ -382,6 +383,7 @@ void nodes_screen_create()
     // Title + list + hint geometry mirrors the Meshtastic screen so
     // the two feel visually identical when swiping between them.
     lv_obj_t *title = lv_label_create(nodes_screen);
+    s_nodes_title = title;
     lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "NODES");
@@ -532,6 +534,7 @@ void nodes_screen_create()
 void nodes_screen_show()
 {
     main_loop_request_lvgl_priority(12);
+    if (s_nodes_title) lv_obj_set_style_text_color(s_nodes_title, argus_accent(), LV_PART_MAIN);
     rebuild_list();
     lv_scr_load(nodes_screen);
 }

@@ -40,6 +40,7 @@ static lv_obj_t *s_ofs_lbl = nullptr;
 static lv_obj_t *brightness_slider;
 static lv_obj_t *brightness_val_label;
 static lv_obj_t *sysinfo_label = nullptr;   // System Info readout (bottom of screen)
+static lv_obj_t *s_settings_title = nullptr;   // "SETTINGS" heading; repainted per mode on show
 
 // Fill the System Info label with live heap / PSRAM / battery / uptime. Cheap;
 // called on settings_screen_show() so it snapshots each time the screen opens.
@@ -568,6 +569,7 @@ void settings_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(settings_screen);
+    s_settings_title = title;   // repainted per mode in settings_screen_show()
     lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "SETTINGS");
@@ -1288,7 +1290,7 @@ void settings_screen_create()
     // by mode in settings_screen_show(); a single button avoids the overlapping-hit
     // bug two stacked buttons caused (the unlock click did nothing).
     s_ofs_btn = lv_button_create(settings_screen);
-    lv_obj_set_size(s_ofs_btn, 380, 44);
+    lv_obj_set_size(s_ofs_btn, 380, 64);   // taller = easier tap target (was 44)
     lv_obj_set_style_bg_color(s_ofs_btn, lv_color_make(0x2A, 0x1E, 0x10), LV_PART_MAIN);
     lv_obj_set_style_border_color(s_ofs_btn, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_border_width(s_ofs_btn, 1, LV_PART_MAIN);
@@ -1320,6 +1322,10 @@ void settings_screen_show()
 {
     main_loop_request_lvgl_priority(12);
     settings_update_sysinfo();   // snapshot heap/PSRAM/battery/uptime
+
+    // Heading follows the mode: red-team red in Offense, steel-blue otherwise.
+    if (s_settings_title)
+        lv_obj_set_style_text_color(s_settings_title, argus_accent(), LV_PART_MAIN);
 
     // Offense button label follows the mode: exit when in Offense, enter otherwise.
     if (s_ofs_lbl) {

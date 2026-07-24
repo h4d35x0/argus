@@ -15,6 +15,7 @@ void send_message_screen_show();
 void main_loop_request_lvgl_priority(int cycles);
 
 static lv_obj_t *cfg_screen;
+static lv_obj_t *s_cfg_title = nullptr;   // heading; repainted per mode on show
 static lv_obj_t *long_ta;
 static lv_obj_t *short_ta;
 static lv_obj_t *keyboard;
@@ -357,6 +358,7 @@ void configuration_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(cfg_screen);
+    s_cfg_title = title;
     lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "CONFIGURATION");
@@ -646,6 +648,7 @@ void configuration_screen_create()
 void configuration_screen_show()
 {
     main_loop_request_lvgl_priority(12);
+    if (s_cfg_title) lv_obj_set_style_text_color(s_cfg_title, argus_accent(), LV_PART_MAIN);
     // Sync fields with current meshtastic values
     lv_textarea_set_text(long_ta,  meshtastic_get_long_name());
     lv_textarea_set_text(short_ta, meshtastic_get_short_name());

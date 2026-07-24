@@ -1,5 +1,6 @@
 #include "time_screen.h"
 #include "theme.h"
+#include "argus_mode.h"
 #include <SD.h>
 #include "alarm_screen.h"
 #include "stopwatch_screen.h"
@@ -17,6 +18,8 @@
 void clock_screen_show();
 
 static lv_obj_t *time_screen;
+static lv_obj_t *s_time_title = nullptr;   // heading; repainted per mode on show
+static lv_obj_t *s_time_grid  = nullptr;   // tile grid; tile borders recolored per mode on show
 
 // Swipe DOWN to return to the clock face — mirrors the swipe-UP entry from
 // the clock. Other directions are no-ops so a sloppy left/right swipe inside
@@ -652,6 +655,7 @@ void time_screen_create()
     lv_obj_set_style_border_width(time_screen, 0, LV_PART_MAIN);
 
     lv_obj_t *title = lv_label_create(time_screen);
+    s_time_title = title;
     lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TIME");
@@ -661,6 +665,7 @@ void time_screen_create()
     // screens feel like siblings. Six tiles fit as 3x2; the dir stays vertical
     // so the grid scrolls if more Time tools are added later.
     lv_obj_t *grid = lv_obj_create(time_screen);
+    s_time_grid = grid;
     lv_obj_set_size(grid, 400, 432);
     lv_obj_align(grid, LV_ALIGN_TOP_MID, 0, 52);
     lv_obj_set_style_bg_color(grid, lv_color_black(), LV_PART_MAIN);
@@ -738,5 +743,17 @@ void time_screen_create()
     lv_obj_add_event_cb(time_screen, on_gesture, LV_EVENT_GESTURE, NULL);
 }
 
-void time_screen_show()       { lv_scr_load(time_screen); }
+void time_screen_show()
+{
+    if (s_time_title) lv_obj_set_style_text_color(s_time_title, argus_accent(), LV_PART_MAIN);
+    // Tile borders follow the mode: red-team red in Offense, steel-blue otherwise.
+    if (s_time_grid) {
+        lv_color_t bc = (argus_mode_current() == ArgusMode::Offense)
+                      ? ARGUS_OFFENSE_ACCENT : ARGUS_ACCENT_DIM;
+        uint32_t n = lv_obj_get_child_count(s_time_grid);
+        for (uint32_t i = 0; i < n; i++)
+            lv_obj_set_style_border_color(lv_obj_get_child(s_time_grid, i), bc, LV_PART_MAIN);
+    }
+    lv_scr_load(time_screen);
+}
 bool time_screen_is_active()  { return lv_screen_active() == time_screen; }
