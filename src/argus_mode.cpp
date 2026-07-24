@@ -86,7 +86,13 @@ bool enter_offense()
 void lock_offense()
 {
     s_unlocked = false;
-    s_mode = (s_prev_mode == ArgusMode::Offense) ? ArgusMode::Daily : s_prev_mode;
+    // Exit target: if Defense-persist is on, land in Defense (the user chose it as
+    // their base mode, even if they toggled it on while inside Offense). Otherwise
+    // return to whatever mode we came from (Daily as the safe fallback).
+    if (s_def_persist)
+        s_mode = ArgusMode::Defense;
+    else
+        s_mode = (s_prev_mode == ArgusMode::Offense) ? ArgusMode::Daily : s_prev_mode;
     broadcast();
 }
 
