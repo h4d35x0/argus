@@ -1339,6 +1339,12 @@ void setup()
     coex_log_heap("after-instance-begin");
     instance.powerControl(POWER_NFC, false); // ensure NFC is off on boot
     beginLvglHelper(instance);
+    // Raise the scroll threshold so a tap that drifts a few pixels still registers
+    // as a click, not a scroll. Fixes finicky buttons inside scrollable pages (e.g.
+    // Exit Offense at the bottom of Settings). LVGL default is ~10 px.
+    for (lv_indev_t *id = lv_indev_get_next(NULL); id; id = lv_indev_get_next(id))
+        if (lv_indev_get_type(id) == LV_INDEV_TYPE_POINTER)
+            lv_indev_set_scroll_limit(id, 20);
     // NOTE: bringing the BLE controller up here (ble_scan_boot_keepalive) crashed
     // boot — too early / unsafe at this point in init. Reverted. The keep-alive
     // approach is still right, but it must be invoked LATER (after full init) and
@@ -2304,6 +2310,28 @@ static void boot_knock_feed(BootPress p, uint32_t press_down_ms, uint32_t releas
     boot_run_action(BP_SHORT);                  // ...then this trailing SHORT now
 }
 
+// Dispatch one classified BOOT press. The Offense knock (L-S-L) is armed ONLY on
+// the clock screen - its natural, private entry point. Everywhere else a press
+// runs its ordinary back/home action IMMEDIATELY, so an accidental long-ish tap
+// can't buffer a stray [L] that then eats the next press (the "BOOT didn't go
+// back from the Time screen / had to press twice" bug). down_ms/up_ms carry the
+// real press timestamps for knock-gap timing (equal for a synthesized tap).
+static void boot_dispatch(BootPress p, uint32_t down_ms, uint32_t up_ms)
+{
+    dim_reset_activity();
+    main_loop_request_lvgl_priority(20);
+    bool armed = (argus_mode_current() != ArgusMode::Offense)
+              && (s_low_mem_dialog == nullptr)
+              && (lv_screen_active() == clock_screen);
+    if (armed) {
+        boot_knock_feed(p, down_ms, up_ms);     // buzzes each accepted beat
+    } else {
+        if (s_knock_len > 0) boot_flush_knock();
+        if (clock_vibrate) instance.vibrator();
+        boot_run_action(p);
+    }
+}
+
 void loop()
 {
     instance.loop(); // required for power button and PMU event dispatch
@@ -2336,6 +2364,10 @@ void loop()
     // buzzes each accepted beat so it is actually performable. The FALLING ISR flag
     // is not used for actions (we poll for press DURATION), but attachInterrupt is
     // kept as a possible wake source; clear the flag so it can't linger.
+    // Read the FALLING-edge ISR latch BEFORE clearing it: it catches a press the
+    // duration-poll below misses when a background tick stalls the loop long enough
+    // that the button is pressed AND released between two digitalRead() samples.
+    bool boot_isr = back_btn_pressed;
     back_btn_pressed = false;
     static const uint32_t BOOT_LONG_MS     = 600;   // >= this held = long press
     static const uint32_t BOOT_DEBOUNCE_MS = 40;    // shorter = contact bounce
@@ -2352,22 +2384,14 @@ void loop()
         s_boot_down     = false;
         s_boot_cooldown = boot_ms;
         uint32_t held   = boot_ms - s_boot_down_ms;
-        if (held >= BOOT_DEBOUNCE_MS) {                       // else: bounce, ignore
-            dim_reset_activity();
-            BootPress p = (held >= BOOT_LONG_MS) ? BP_LONG : BP_SHORT;
-            // The Offense knock (L-S-L) opens the PIN pad. Disarm it in Offense
-            // (already unlocked) or while a modal owns the screen; there a press
-            // just runs its ordinary back/home immediately.
-            bool armed = (argus_mode_current() != ArgusMode::Offense)
-                      && (s_low_mem_dialog == nullptr);
-            if (armed) {
-                boot_knock_feed(p, s_boot_down_ms, boot_ms);   // buzzes each accepted beat
-            } else {
-                if (s_knock_len > 0) boot_flush_knock();
-                if (clock_vibrate) instance.vibrator();
-                boot_run_action(p);
-            }
-        }
+        if (held >= BOOT_DEBOUNCE_MS)                          // else: bounce, ignore
+            boot_dispatch((held >= BOOT_LONG_MS) ? BP_LONG : BP_SHORT, s_boot_down_ms, boot_ms);
+    } else if (boot_isr && !boot_down && !s_boot_down && (boot_ms - s_boot_cooldown) > BOOT_COOLDOWN_MS) {
+        // ISR latched a falling edge the poll never registered (button already back
+        // HIGH, no press in flight) -> a fast tap was dropped to loop latency.
+        // Recover it as a SHORT press so quick taps aren't silently lost.
+        s_boot_cooldown = boot_ms;
+        boot_dispatch(BP_SHORT, boot_ms, boot_ms);
     }
     boot_knock_poll(boot_ms);   // fire a deferred beat once its gap goes quiet
 
@@ -2451,6 +2475,10 @@ void loop()
                 lv_indev_state_t state = lv_indev_get_state(indev);
                 if (state == LV_INDEV_STATE_PRESSED) {
                     dim_reset_activity();
+                    // Keep LVGL on its fast cadence while the user is interacting
+                    // so the next taps (buttons, Exit Offense, etc.) aren't starved
+                    // by the heavy per-iteration background work.
+                    main_loop_request_lvgl_priority(20);
                     if (clock_vibrate && prev_touch == LV_INDEV_STATE_RELEASED)
                         instance.vibrator();
                 }
