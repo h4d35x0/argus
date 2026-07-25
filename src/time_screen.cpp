@@ -11,6 +11,7 @@
 #include "flashlight_screen.h"
 #include "meshtastic_screen.h"
 #include "settings_screen.h"
+#include "notifications_screen.h"
 #include <math.h>
 #include <LilyGoLib.h>
 
@@ -20,6 +21,14 @@ void clock_screen_show();
 static lv_obj_t *time_screen;
 static lv_obj_t *s_time_title = nullptr;   // heading; repainted per mode on show
 static lv_obj_t *s_time_grid  = nullptr;   // tile grid; tile borders recolored per mode on show
+
+// Per-tile record so an icon can be REDRAWN on a mode change: Offense recolors it
+// red; Daily/Defense redraws it in its natural multi-colour.
+struct TimeTile { lv_obj_t *tile; const char *name; void (*draw)(lv_obj_t *); };
+static TimeTile s_ttiles[10];
+static int      s_ttile_n         = 0;
+static bool     s_ttile_recording = true;   // record only during the initial create pass
+static bool     s_ttiles_red      = false;  // last-rendered regime (true = Offense red)
 
 // Swipe DOWN to return to the clock face — mirrors the swipe-UP entry from
 // the clock. Other directions are no-ops so a sloppy left/right swipe inside
@@ -65,6 +74,7 @@ static lv_obj_t *make_tile(lv_obj_t *parent, const char *label_text)
 // else fall back to the procedural draw_*_icon(). Same pattern as tools_screen.
 static void tile_icon(lv_obj_t *tile, const char *name, void (*fallback)(lv_obj_t *))
 {
+    if (s_ttile_recording && s_ttile_n < 10) s_ttiles[s_ttile_n++] = { tile, name, fallback };
     char sdpath[40];
     snprintf(sdpath, sizeof(sdpath), "/Icons/%s.png", name);
     if (SD.exists(sdpath)) {
@@ -80,6 +90,48 @@ static void tile_icon(lv_obj_t *tile, const char *name, void (*fallback)(lv_obj_
         lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 6);
     } else {
         fallback(tile);
+    }
+}
+
+// Recursively tag descendants EVENT_BUBBLE so taps on a redrawn icon still reach
+// the tile's click handler.
+static void tt_bubble(lv_obj_t *o)
+{
+    uint32_t n = lv_obj_get_child_count(o);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_obj_add_flag(lv_obj_get_child(o, i), LV_OBJ_FLAG_EVENT_BUBBLE);
+        tt_bubble(lv_obj_get_child(o, i));
+    }
+}
+
+// Recursively paint every shape in the subtree the Offense red. Covers both
+// procedural icons (bg/border/line) AND SD PNG sprites: an lv_image ignores
+// bg/border/line entirely, so without image_recolor the clock sprites stayed
+// their natural colour in Offense while the Tools sprites (which DO set
+// image_recolor) went red. Recolor at full opacity tints the sprite to a solid
+// red silhouette, matching the Tools red-team look.
+static void tt_recolor_red(lv_obj_t *o)
+{
+    lv_obj_set_style_bg_color(o, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_color(o, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_line_color(o, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_image_recolor(o, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_image_recolor_opa(o, LV_OPA_COVER, LV_PART_MAIN);
+    uint32_t n = lv_obj_get_child_count(o);
+    for (uint32_t i = 0; i < n; i++) tt_recolor_red(lv_obj_get_child(o, i));
+}
+
+// Redraw one tile's icon for the current mode: a fresh natural (multi-colour)
+// draw, then recolor red for Offense. Label is child 0; icon is everything after.
+static void tt_redraw(TimeTile *t, bool offense)
+{
+    while (lv_obj_get_child_count(t->tile) > 1)
+        lv_obj_delete(lv_obj_get_child(t->tile, 1));
+    tile_icon(t->tile, t->name, t->draw);   // recording is off now -> no re-record
+    uint32_t n = lv_obj_get_child_count(t->tile);
+    for (uint32_t i = 1; i < n; i++) {
+        tt_bubble(lv_obj_get_child(t->tile, i));
+        if (offense) tt_recolor_red(lv_obj_get_child(t->tile, i));
     }
 }
 
@@ -646,6 +698,64 @@ static void draw_settings_icon(lv_obj_t *tile)
     lv_obj_set_pos(hub, cx - 14, cy - 14);
 }
 
+// Notification bell — gold dome + rim with a clapper, in the same procedural
+// style as the other Daily-app icons (Flashlight/Meshtastic/Settings), so no SD
+// sprite is needed. tt_recolor_red tints it solid red in Offense like the rest.
+static void draw_notify_icon(lv_obj_t *tile)
+{
+    tile = icon_layer(tile);
+    lv_color_t gold = lv_color_make(0xFF, 0xCC, 0x00);
+    lv_color_t dark = lv_color_make(0xAA, 0x88, 0x00);
+    int cx = 90;
+
+    // Top mount nub. Whole bell is sized + raised to sit clear of the label at the
+    // tile bottom (the first pass hung the rim/clapper down over the "Notify" text).
+    lv_obj_t *nub = lv_obj_create(tile);
+    lv_obj_set_size(nub, 12, 12);
+    lv_obj_set_style_radius(nub, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(nub, gold, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(nub, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(nub, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(nub, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(nub, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(nub, cx - 6, 26);
+
+    // Bell dome (rounded top).
+    lv_obj_t *dome = lv_obj_create(tile);
+    lv_obj_set_size(dome, 54, 54);
+    lv_obj_set_style_radius(dome, 27, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(dome, gold, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dome, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(dome, dark, LV_PART_MAIN);
+    lv_obj_set_style_border_width(dome, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(dome, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(dome, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(dome, cx - 27, 36);
+
+    // Rim (wider bar at the bell's mouth).
+    lv_obj_t *rim = lv_obj_create(tile);
+    lv_obj_set_size(rim, 72, 13);
+    lv_obj_set_style_radius(rim, 5, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(rim, gold, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(rim, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(rim, dark, LV_PART_MAIN);
+    lv_obj_set_style_border_width(rim, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(rim, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(rim, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(rim, cx - 36, 82);
+
+    // Clapper (small circle below the rim).
+    lv_obj_t *clap = lv_obj_create(tile);
+    lv_obj_set_size(clap, 13, 13);
+    lv_obj_set_style_radius(clap, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(clap, gold, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(clap, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(clap, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(clap, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(clap, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(clap, cx - 6, 94);
+}
+
 // ---- Public API ------------------------------------------------------------
 
 void time_screen_create()
@@ -710,17 +820,20 @@ void time_screen_create()
     // Daily-wear utilities: Flashlight (torch), Meshtastic (comms) and Settings.
     // The Time hub is the one app grid reachable in Daily mode (Tools is gated),
     // so these benign apps live here alongside the clock tools.
-    lv_obj_t *t_flash = make_tile(grid, "Flashlight");
-    lv_obj_t *t_mesh  = make_tile(grid, "Meshtastic");
-    lv_obj_t *t_set   = make_tile(grid, "Settings");
+    lv_obj_t *t_flash  = make_tile(grid, "Flashlight");
+    lv_obj_t *t_mesh   = make_tile(grid, "Meshtastic");
+    lv_obj_t *t_notify = make_tile(grid, "Notify");
+    lv_obj_t *t_set    = make_tile(grid, "Settings");
 
-    tile_icon(t_flash, "flashlight", draw_flashlight_icon);
-    tile_icon(t_mesh,  "meshtastic", draw_meshtastic_icon);
-    tile_icon(t_set,   "settings",   draw_settings_icon);
+    tile_icon(t_flash,  "flashlight", draw_flashlight_icon);
+    tile_icon(t_mesh,   "meshtastic", draw_meshtastic_icon);
+    tile_icon(t_notify, "notify",     draw_notify_icon);
+    tile_icon(t_set,    "settings",   draw_settings_icon);
 
-    lv_obj_add_event_cb(t_flash, [](lv_event_t *) { flashlight_screen_show(); }, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(t_mesh,  [](lv_event_t *) { meshtastic_screen_show(); }, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(t_set,   [](lv_event_t *) { settings_screen_show();   }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_flash,  [](lv_event_t *) { flashlight_screen_show();    }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_mesh,   [](lv_event_t *) { meshtastic_screen_show();    }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_notify, [](lv_event_t *) { notifications_screen_show(); }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(t_set,    [](lv_event_t *) { settings_screen_show();      }, LV_EVENT_CLICKED, NULL);
 
     // lv_obj_create() children are CLICKABLE by default and would otherwise
     // swallow taps on the icon shapes. EVENT_BUBBLE on every descendant sends
@@ -740,6 +853,8 @@ void time_screen_create()
     for (uint32_t i = 0; i < tile_count; i++)
         BubbleWalk::apply(lv_obj_get_child(grid, i));
 
+    s_ttile_recording = false;   // initial tiles recorded; later tile_icon() calls are redraws
+
     lv_obj_add_event_cb(time_screen, on_gesture, LV_EVENT_GESTURE, NULL);
 }
 
@@ -753,6 +868,14 @@ void time_screen_show()
         uint32_t n = lv_obj_get_child_count(s_time_grid);
         for (uint32_t i = 0; i < n; i++)
             lv_obj_set_style_border_color(lv_obj_get_child(s_time_grid, i), bc, LV_PART_MAIN);
+    }
+
+    // Icons follow the mode: red in Offense, natural multi-colour otherwise. Only
+    // redraw when the regime actually changes (a normal open is then cheap).
+    bool off = (argus_mode_current() == ArgusMode::Offense);
+    if (off != s_ttiles_red) {
+        for (int i = 0; i < s_ttile_n; i++) tt_redraw(&s_ttiles[i], off);
+        s_ttiles_red = off;
     }
     lv_scr_load(time_screen);
 }
