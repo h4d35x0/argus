@@ -1,5 +1,6 @@
 #include "offense_wifi.h"
 #include "wifi_beacon_manager.h"   // wifi_beacon_active()
+#include "radio_coexist.h"
 #include <WiFi.h>
 #include "esp_wifi.h"
 #include "esp_bt.h"
@@ -8,7 +9,7 @@
 
 // True while the BLE controller is up. Same guard wifi_beacon_manager uses:
 // WiFi.mode(WIFI_STA) HANGS if BLE holds the internal SRAM.
-static bool ble_is_active()
+[[maybe_unused]] static bool ble_is_active()
 {
     return esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED;
 }
@@ -22,7 +23,9 @@ bool offense_wifi_claim(uint8_t channel, const char *owner)
     // Single-owner: if some offense tool already holds WiFi, REFUSE rather than let
     // a second tool drive the same radio (two injectors on one interface collide).
     if (s_held) return false;
-    if (ble_is_active())     return false;   // would hang the watch
+#if !ARGUS_RADIO_COEXIST
+    if (ble_is_active())     return false;   // would hang the watch (fallback)
+#endif
     if (wifi_beacon_active()) return false;  // a detector scan owns WiFi (hopping)
 
     WiFi.mode(WIFI_STA);
@@ -37,7 +40,9 @@ bool offense_wifi_claim(uint8_t channel, const char *owner)
 bool offense_wifi_claim_ap(const char *ssid, const char *owner)
 {
     if (s_held) return false;
-    if (ble_is_active())      return false;   // would hang the watch
+#if !ARGUS_RADIO_COEXIST
+    if (ble_is_active())      return false;   // would hang the watch (fallback)
+#endif
     if (wifi_beacon_active()) return false;   // a detector scan owns WiFi
 
     WiFi.mode(WIFI_AP);
@@ -63,8 +68,10 @@ const char *offense_wifi_busy_reason()
                  s_owner ? s_owner : "Another tool");
         return buf;
     }
+#if !ARGUS_RADIO_COEXIST
     if (ble_is_active())
         return "Bluetooth is on.\nWiFi and BT can't run together -\nturn Bluetooth off, then try again.";
+#endif
     if (wifi_beacon_active())
         return "A detector is scanning WiFi.\nStop it first, then try again.";
     return nullptr;   // radio is free

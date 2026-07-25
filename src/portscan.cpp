@@ -6,6 +6,7 @@ void clock_screen_get_local_time(struct tm *out);
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <string.h>
 #include "lwip/sockets.h"
 #include "lwip/netdb.h"
@@ -46,7 +47,10 @@ static const int TOP_100_COUNT = (int)(sizeof(TOP_100) / sizeof(TOP_100[0]));
 
 // ---- State -----------------------------------------------------------------
 
-static PortScanResult s_results[PORTSCAN_MAX_RESULTS];
+// Results are only needed while using the port scanner. Keeping this 25.6 KB
+// table in internal .bss permanently starves the WiFi driver when BLE is
+// active, so allocate it from PSRAM on first use instead.
+static PortScanResult *s_results = nullptr;
 static volatile int   s_result_count   = 0;
 static volatile int   s_scanned        = 0;
 static int            s_total          = 0;
@@ -66,9 +70,20 @@ static TaskHandle_t   s_task           = nullptr;
 
 // ---- helpers ---------------------------------------------------------------
 
+static bool ensure_result_storage()
+{
+    if (s_results) return true;
+    s_results = static_cast<PortScanResult *>(heap_caps_calloc(
+        PORTSCAN_MAX_RESULTS, sizeof(PortScanResult),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!s_results)
+        Serial.println("[portscan] unable to allocate result storage in PSRAM");
+    return s_results != nullptr;
+}
+
 static void record(uint16_t port, uint8_t state, bool is_udp, const char *banner)
 {
-    if (s_result_count >= PORTSCAN_MAX_RESULTS) return;
+    if (!s_results || s_result_count >= PORTSCAN_MAX_RESULTS) return;
     PortScanResult &r = s_results[s_result_count++];
     r.port  = port;
     r.state = state;
@@ -330,6 +345,7 @@ bool portscan_start(uint32_t ip_host_order, PortScanTech tech,
     // the last button; this guard catches programmatic mis-calls too.
     if ((tech & (PSTECH_TCP_CONNECT | PSTECH_UDP | PSTECH_BANNER)) == 0)
         return false;
+    if (!ensure_result_storage()) return false;
 
     if (preset == PSPRE_CUSTOM) {
         if (lo == 0) lo = 1;
@@ -381,7 +397,7 @@ uint16_t       portscan_custom_hi()  { return s_custom_hi; }
 
 const PortScanResult *portscan_result(int idx)
 {
-    if (idx < 0 || idx >= s_result_count) return nullptr;
+    if (!s_results || idx < 0 || idx >= s_result_count) return nullptr;
     return &s_results[idx];
 }
 
@@ -406,6 +422,7 @@ void portscan_poll()
 {
     if (s_running || !s_done || s_logged) return;
     s_logged = true;
+    if (!s_results) return;
 
     if (usb_sd_is_running() || !instance.isCardReady()) return;
     if (!SD.exists("/PingSweeps")) SD.mkdir("/PingSweeps");

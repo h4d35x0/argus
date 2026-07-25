@@ -5,8 +5,10 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_bt.h>
+#include <esp_heap_caps.h>
 #include <SD.h>
 #include "usb_sd.h"
+#include "radio_coexist.h"
 
 // Modal low-memory dialog, defined in main.cpp. Shown when a radio fails to
 // start for lack of free internal SRAM.
@@ -196,6 +198,7 @@ static void on_toggle(lv_event_t *)
         // — when the BLE controller is already up. The low-mem fallback below
         // only helps when WiFi.mode() RETURNS false; a hang never reaches it. So
         // check the BLE controller first and refuse cleanly.
+#if !ARGUS_RADIO_COEXIST
         if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
             wifi_powered = false;
             lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
@@ -209,6 +212,7 @@ static void on_toggle(lv_event_t *)
             wifi_save_power(false);
             return;
         }
+#endif
         // STA is the default mode — scanning, evil twin, etc. transition
         // away from it as needed. WiFi.mode() is a no-op if already in
         // that mode, so this is safe to call repeatedly.
@@ -216,6 +220,30 @@ static void on_toggle(lv_event_t *)
         // CONTIGUOUS internal SRAM, so esp_wifi_init fails (returns false) when
         // Bluetooth is already up. Detect that, revert the switch, and tell the
         // user plainly rather than leaving a dead toggle stuck "on".
+#if ARGUS_RADIO_COEXIST
+        // COEXIST DIAGNOSTIC: WiFi.mode(WIFI_STA) below can HANG (never return)
+        // when base Bluedroid plus resident firmware exhaust contiguous internal
+        // DRAM. This reproduces without a phone or ANCS connection.
+        // Log the largest free CONTIGUOUS internal block to serial AND the SD card
+        // right before the call, and flush, so the value survives even if the very
+        // next line freezes the watch. This confirms (or rules out) DRAM exhaustion.
+        {
+            unsigned big  = (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            unsigned fint = (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            unsigned dma  = (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+            unsigned bten = (unsigned)esp_bt_controller_get_status();
+            Serial.printf("[COEX] pre-WiFi.mode: largest_internal=%u free_internal=%u largest_dma=%u bt_status=%u\n",
+                          big, fint, dma, bten);
+            Serial.flush();
+            File cf = SD.open("/Settings/coexlog.txt", FILE_APPEND);
+            if (cf) {
+                cf.printf("pre-WiFi.mode largest_internal=%u free_internal=%u largest_dma=%u bt_status=%u\n",
+                          big, fint, dma, bten);
+                cf.flush();
+                cf.close();
+            }
+        }
+#endif
         if (!WiFi.mode(WIFI_STA) || WiFi.getMode() != WIFI_MODE_STA) {
             wifi_powered = false;
             lv_obj_clear_state(toggle_sw, LV_STATE_CHECKED);
@@ -327,7 +355,9 @@ void wifi_radio_screen_restore_power()
     // COEXISTENCE GUARD: never bring WiFi up while the BLE controller is enabled
     // (WiFi.mode() would hang). At boot BLE is normally down so this is a no-op,
     // but keep it defensive in case restore runs after something started BLE.
+#if !ARGUS_RADIO_COEXIST
     if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) return;
+#endif
 
     // Power WiFi on the same way on_toggle does. STA is the default mode.
     WiFi.mode(WIFI_STA);

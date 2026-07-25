@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <string.h>
 #include "esp_bt.h"   // esp_bt_controller_get_status() for the coexistence guard
+#include "radio_coexist.h"
 
 // Defined in tools_screen.cpp
 void tools_screen_show();
@@ -392,6 +393,7 @@ static void start_scan()
     // ignored and barreled on into a null-deref crash. Fail gracefully instead.
 
     // (a) BLE up -> WiFi.mode(WIFI_STA) hangs. Refuse before calling it.
+#if !ARGUS_RADIO_COEXIST
     if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
         low_mem_show_dialog(
             "#ff5555 SCAN COULD NOT START#\n\n"
@@ -400,6 +402,7 @@ static void start_scan()
             "BLE detectors), then scan.");
         return;   // stay in the current state (IDLE / LIST)
     }
+#endif
 
     // (b) Low internal SRAM -> esp_wifi_init returns false. Release the partial
     //     allocation and tell the user rather than crashing on the next alloc.

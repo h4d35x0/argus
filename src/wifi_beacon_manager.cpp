@@ -1,4 +1,5 @@
 #include "wifi_beacon_manager.h"
+#include "radio_coexist.h"
 #include "pwnagotchi_peer.h"
 #include "handshake.h"
 #include <WiFi.h>
@@ -11,7 +12,7 @@
 // wifi_is_active(): on this board WiFi.mode(WIFI_STA) HANGS if the BLE
 // controller already holds the internal SRAM, so we must refuse to bring WiFi
 // up while BLE is enabled rather than freeze the watch.
-static bool ble_is_active()
+[[maybe_unused]] static bool ble_is_active()
 {
     return esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED;
 }
@@ -152,8 +153,10 @@ static bool start_wifi()
     // COEXISTENCE GUARD: WiFi.mode(WIFI_STA) below HANGS if the BLE controller
     // is up. Refuse cleanly BEFORE the call so a WiFi detector (Evil Twin, Pwn,
     // Flock) can tell the user "turn Bluetooth off first" instead of freezing.
+#if !ARGUS_RADIO_COEXIST
     if (ble_is_active())
-        return false;
+        return false;   // mutual-exclusion fallback (coexistence disabled)
+#endif
 
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();

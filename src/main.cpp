@@ -4,6 +4,10 @@
 #include <LV_Helper.h>
 #include <bosch/BoschSensorDataHelper.hpp>
 #include "esp_wifi.h"
+#include "esp_bt.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
+#include <SD.h>
 #include <time.h>
 #include <math.h>
 #include "gps_screen.h"
@@ -75,6 +79,7 @@
 #include "threat_radar.h"
 #include "hexhound.h"
 #include "ble_scan_manager.h"
+#include "radio_coexist.h"
 #include "boot_prefs.h"
 #include <esp_wifi.h>   // esp_wifi_get_mode() for live WiFi-mode reads
 #include "threat_radar_screen.h"
@@ -98,6 +103,38 @@
 // it piggybacks cleanly (toggle AirTag/Flipper ON to bring BLE up) with no
 // boot-loop. See ble_detect_pipeline.h.
 #define ARGUS_BLE_THREAT_PIPELINE  1
+
+#if ARGUS_COEX_MEASURE
+static void coex_log_heap(const char *phase)
+{
+    unsigned largest_internal = (unsigned)heap_caps_get_largest_free_block(
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    unsigned free_internal = (unsigned)heap_caps_get_free_size(
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    unsigned largest_dma = (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+    unsigned bt_status = (unsigned)esp_bt_controller_get_status();
+
+    Serial.printf(
+        "[COEX] phase=%s ms=%lu largest_internal=%u free_internal=%u "
+        "largest_dma=%u bt_status=%u\n",
+        phase, (unsigned long)millis(), largest_internal, free_internal,
+        largest_dma, bt_status);
+    Serial.flush();
+
+    if (!instance.isCardReady()) return;
+    File f = SD.open("/Settings/coexlog.txt", FILE_APPEND);
+    if (!f) return;
+    f.printf(
+        "phase=%s ms=%lu reset=%u largest_internal=%u free_internal=%u "
+        "largest_dma=%u bt_status=%u\n",
+        phase, (unsigned long)millis(), (unsigned)esp_reset_reason(),
+        largest_internal, free_internal, largest_dma, bt_status);
+    f.flush();
+    f.close();
+}
+#else
+static inline void coex_log_heap(const char *) {}
+#endif
 
 // Modal dialog helper; defined lower down (near the low-mem section) but called
 // from setup()'s boot-radio block above it, so it needs an early prototype.
@@ -1299,6 +1336,7 @@ void setup()
                   FW_NAME, FW_VERSION, __DATE__, __TIME__);
 
     instance.begin();
+    coex_log_heap("after-instance-begin");
     instance.powerControl(POWER_NFC, false); // ensure NFC is off on boot
     beginLvglHelper(instance);
     // NOTE: bringing the BLE controller up here (ble_scan_boot_keepalive) crashed
@@ -1771,6 +1809,18 @@ void setup()
     lv_scr_load(clock_screen);
     lv_obj_del(boot_splash);
     s_last_activity_ms = millis();
+    coex_log_heap("before-ble");
+
+#if ARGUS_RADIO_COEXIST || ARGUS_COEX_MEASURE
+    // Bring the BLE (Bluedroid) controller up ONCE now - late in setup, after the
+    // display/LVGL and clock are up, and while WiFi is still OFF. This is the
+    // coexistence-safe order (BLE before WiFi); the controller then stays alive so
+    // WiFi coming up later COEXISTS instead of hanging. Matches upstream r3dfish;
+    // the mutual-exclusion guards are compiled out via radio_coexist.h. If this
+    // ever hangs the watch, flip ARGUS_RADIO_COEXIST to 0 and reflash.
+    ble_scan_boot_keepalive();
+    coex_log_heap("after-ble");
+#endif
 
     // Power button short press cycles forward through screens:
     //   - clock -> GPS -> LoRa -> WiFi -> Bluetooth -> NFC
@@ -1889,6 +1939,7 @@ void setup()
     // the boot radios, so it correctly no-ops if WiFi-at-boot or a BLE scanner is
     // already holding the radio (and keeps the preference for next time).
     device_mode_restore_boot();
+    coex_log_heap("setup-done");
 }
 
 // ── Low-memory warning ────────────────────────────────────────────────────

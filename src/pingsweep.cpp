@@ -7,6 +7,7 @@ void clock_screen_get_local_time(struct tm *out);
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <string.h>
 #include "ping/ping_sock.h"
 #include "lwip/ip_addr.h"
@@ -14,7 +15,9 @@ void clock_screen_get_local_time(struct tm *out);
 
 // ---- state -----------------------------------------------------------------
 
-static PingDevice        s_devices[PINGSWEEP_MAX_DEVICES];
+// The sweep table is used only by this WiFi tool. Allocate its 20.3 KB from
+// PSRAM on first use so it does not consume scarce internal RAM at every boot.
+static PingDevice        *s_devices = nullptr;
 static volatile int      s_device_count = 0;
 static volatile int      s_scanned      = 0;
 static int               s_total        = 0;
@@ -32,6 +35,17 @@ static SemaphoreHandle_t   s_sem = nullptr;
 static volatile bool       s_cur_alive = false;
 static volatile uint32_t   s_cur_rtt   = 0;
 static esp_ping_callbacks_t s_cbs;
+
+static bool ensure_device_storage()
+{
+    if (s_devices) return true;
+    s_devices = static_cast<PingDevice *>(heap_caps_calloc(
+        PINGSWEEP_MAX_DEVICES, sizeof(PingDevice),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!s_devices)
+        Serial.println("[pingsweep] unable to allocate device storage in PSRAM");
+    return s_devices != nullptr;
+}
 
 // ---- esp_ping callbacks (run on the ping session's internal task) ----------
 
@@ -103,7 +117,7 @@ static void sweep_task(void *)
             esp_ping_delete_session(hdl);
         }
 
-        if (s_cur_alive && s_device_count < PINGSWEEP_MAX_DEVICES) {
+        if (s_devices && s_cur_alive && s_device_count < PINGSWEEP_MAX_DEVICES) {
             PingDevice dev;
             memset(&dev, 0, sizeof(dev));
             dev.ip = ((uint32_t)s_net_a << 24) | ((uint32_t)s_net_b << 16)
@@ -131,6 +145,7 @@ static void sweep_task(void *)
 
 static void write_log()
 {
+    if (!s_devices) return;
     if (usb_sd_is_running() || !instance.isCardReady()) return;
     if (!SD.exists("/PingSweeps")) SD.mkdir("/PingSweeps");
 
@@ -180,6 +195,7 @@ void pingsweep_start()
 {
     if (s_running) return;
     if (WiFi.status() != WL_CONNECTED) return;
+    if (!ensure_device_storage()) return;
 
     IPAddress ip = WiFi.localIP();
     s_net_a = ip[0];
@@ -226,13 +242,13 @@ int pingsweep_device_count() { return s_device_count; }
 
 const PingDevice *pingsweep_device(int idx)
 {
-    if (idx < 0 || idx >= s_device_count) return nullptr;
+    if (!s_devices || idx < 0 || idx >= s_device_count) return nullptr;
     return &s_devices[idx];
 }
 
 void pingsweep_set_name(int idx, const char *name, uint8_t src)
 {
-    if (idx < 0 || idx >= s_device_count) return;
+    if (!s_devices || idx < 0 || idx >= s_device_count) return;
     if (src == PNAME_NONE || !name || !name[0]) return;
     // Don't overwrite a more-authoritative name with a weaker one.
     // Ranking (high → low): MDNS=4, NBNS=3, PTR=2, OUI=1, NONE=0.
