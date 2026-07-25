@@ -24,8 +24,8 @@
 // cause. See tasks/COEXIST-NOTES.md.
 #define ARGUS_RADIO_COEXIST 1
 
-// Measurement-only build: keep every mutual-exclusion guard active, but start a
-// BLE keepalive late in setup and log internal-heap checkpoints to
-// /Settings/coexlog.txt. WiFi-at-boot remains safely refused while BLE is live.
-// Set back to 0 after collecting the measurements.
-#define ARGUS_COEX_MEASURE 1
+// Measurement-only diagnostics: log boot-time internal-heap checkpoints and
+// reset reasons to serial and /Settings/coexlog.txt, plus the pre-WiFi heap
+// checkpoint. Keep this off in release builds. ARGUS_RADIO_COEXIST independently
+// controls the production BLE keepalive and simultaneous-radio behavior above.
+#define ARGUS_COEX_MEASURE 0

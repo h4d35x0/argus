@@ -220,7 +220,7 @@ static void on_toggle(lv_event_t *)
         // CONTIGUOUS internal SRAM, so esp_wifi_init fails (returns false) when
         // Bluetooth is already up. Detect that, revert the switch, and tell the
         // user plainly rather than leaving a dead toggle stuck "on".
-#if ARGUS_RADIO_COEXIST
+#if ARGUS_COEX_MEASURE
         // COEXIST DIAGNOSTIC: WiFi.mode(WIFI_STA) below can HANG (never return)
         // when base Bluedroid plus resident firmware exhaust contiguous internal
         // DRAM. This reproduces without a phone or ANCS connection.
