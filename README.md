@@ -539,6 +539,10 @@ Dependencies are fetched at build time (pinned in `platformio.ini`); their sourc
 - **LilyGoLib, LVGL, RadioLib, SensorLib, XPowersLib** — MIT.
 - **TinyGPSPlus** — GNU LGPL (Lesser GPL). Linked unmodified; because this project ships full source and a reproducible build, the LGPL relink provision is satisfied.
 - **ST25R3916 / NFC-RFAL** (lewisxhe forks of STMicroelectronics RFAL) — ST **SLA0052** (a BSD-3-Clause-style license that explicitly permits redistribution embedded in a microcontroller device). © STMicroelectronics.
+- **Saira Condensed SemiBold** by the Saira Project Authors: SIL Open Font License 1.1. Used to generate the embedded LVGL title and wordmark bitmap fonts; see [licenses/SairaCondensed-OFL.txt](licenses/SairaCondensed-OFL.txt).
+- **Montserrat Medium** by the Montserrat Project Authors: SIL Open Font License 1.1. Used to generate the embedded digital-clock bitmap subsets; see [licenses/Montserrat-OFL.txt](licenses/Montserrat-OFL.txt).
+- **Orbitron** by the Orbitron Project Authors: SIL Open Font License 1.1. Used for embedded UI label bitmap fonts; see [licenses/Orbitron-OFL.txt](licenses/Orbitron-OFL.txt).
+- **VT323** by the VT323 Project Authors: SIL Open Font License 1.1. Used for embedded terminal and numeric bitmap fonts; see [licenses/VT323-OFL.txt](licenses/VT323-OFL.txt).
 
 ### Responsible use
 

@@ -280,7 +280,7 @@ void loot_screen_create()
 
     loot_title = lv_label_create(loot_screen);
     lv_obj_set_style_text_color(loot_title, ARGUS_OFFENSE_ACCENT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(loot_title, &font_argus_label_28, LV_PART_MAIN);   // Orbitron (not Bank Gothic)
+    lv_obj_set_style_text_font(loot_title, &font_argus_label_28, LV_PART_MAIN);   // Orbitron
     lv_label_set_text(loot_title, "LOOT");
     lv_obj_align(loot_title, LV_ALIGN_TOP_MID, 0, 12);
 

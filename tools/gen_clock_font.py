@@ -7,7 +7,7 @@ covering only the characters the digital clock actually renders. Keeps
 flash cost down to ~10-15 KB at 96 px while still letting us call it via
 the existing `lv_font_t *` font slot.
 
-Tuned for the t-watch-ultra-clock project — uses Montserrat-Medium.ttf
+Tuned for the t-watch-ultra-clock project; uses Montserrat-Medium.ttf
 shipped with the LVGL library, 4 bits per pixel, no compression.
 """
 
@@ -54,7 +54,7 @@ for ch in CHARS:
     adv_w = (g.metrics.horiAdvance + 2) // 4
 
     # Convert grayscale 8bpp → 4bpp (15 levels). Use perceptually flat
-    # quantization: (v * 15 + 127) / 255 — same rounding lv_font_conv uses.
+    # quantization: (v * 15 + 127) / 255, the same rounding lv_font_conv uses.
     w, h = bm.width, bm.rows
     pitch = bm.pitch
     pixels = []
@@ -86,7 +86,7 @@ for ch in CHARS:
         "bitmap":     bytes(packed),
     })
 
-# Stable insertion order — by codepoint so cmaps are simple.
+# Stable insertion order by codepoint so cmaps are simple.
 glyphs.sort(key=lambda g: g["codepoint"])
 
 # Compute bitmap_index for each glyph (running byte offset).
@@ -95,7 +95,7 @@ for g in glyphs:
     g["bitmap_index"] = bitmap_index
     bitmap_index += len(g["bitmap"])
 
-# Font-wide metrics — line height & ascender/descender from face metrics
+# Font-wide metrics: line height and ascender/descender from face metrics
 # (also 26.6 FP, also converted to pixels).
 size_metrics = face.size
 line_height  = (size_metrics.height + 32) >> 6
@@ -129,8 +129,8 @@ with open(OUT_PATH, "w") as f:
  * space, A/M/P) so the flash cost stays tiny (~{(bitmap_index/1024):.1f} KB
  * of glyph bitmap data) compared with a full-character font at this size.
  *
- * The format mirrors what `lv_font_conv` produces — same struct layout,
- * cmap type, glyph descriptor field order — so this file plugs in via
+ * The format mirrors what `lv_font_conv` produces: same struct layout,
+ * cmap type, and glyph descriptor field order. This file plugs in via
  * the existing `lv_font_t *` slot exactly like the built-in fonts.
  */
 

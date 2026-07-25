@@ -431,7 +431,7 @@ void send_message_screen_create()
     // screens so all three feel visually identical when swiping.
     title_label = lv_label_create(send_screen);
     lv_obj_set_style_text_color(title_label, argus_accent(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title_label, &font_argus_ui, LV_PART_MAIN);   // Bank Gothic heading, matches other screens
+    lv_obj_set_style_text_font(title_label, &font_argus_ui, LV_PART_MAIN);   // Saira Condensed heading, matches other screens
     lv_label_set_text(title_label, "SEND MESSAGE");
     lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 21);
 

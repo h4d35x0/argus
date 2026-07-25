@@ -1153,7 +1153,7 @@ void clock_screen_show()
 
 // Defined in lv_font_montserrat_clock_96.c — bigger base font generated
 // from the project's bundled Montserrat-Medium.ttf via tools/gen_clock_font.py.
-// Only contains 14 glyphs (0-9, ':', ' ', 'A', 'M', 'P') so the flash
+// Only contains 15 glyphs (0-9, ':', ' ', 'A', 'M', 'P') so the flash
 // cost is ~24 KB of glyph data instead of the ~120 KB a full-character
 // 96 px font would cost.
 extern "C" const lv_font_t lv_font_montserrat_clock_96;
@@ -1161,11 +1161,11 @@ extern "C" const lv_font_t lv_font_montserrat_clock_96;
 // widest formats fit WITHOUT a runtime transform. See tools/gen_clock_font.py.
 extern "C" const lv_font_t lv_font_montserrat_clock_72;
 extern "C" const lv_font_t lv_font_montserrat_clock_56;
-// Larger 110 px Bank Gothic size so the "00:00" formats fill more of the 378 px
+// Larger 110 px Montserrat size so the "00:00" formats fill more of the 378 px
 // usable width. resize_clock_text() only picks it when its worst-case string fits,
 // so it is a pure "go bigger when there is room" option with no overflow risk.
 extern "C" const lv_font_t lv_font_montserrat_clock_110;
-// 116 px - the largest Bank Gothic size whose "00:00" fits the ~402 px usable
+// 116 px - the largest Montserrat size whose "00:00" fits the ~402 px usable
 // width with no letter-spacing tricks. Selected only when it actually fits.
 extern "C" const lv_font_t lv_font_montserrat_clock_116;
 
@@ -1303,8 +1303,8 @@ static void update_clock()
 #define FW_NAME    "ARGUS"
 #define FW_VERSION "0.1.0"   // ARGUS fork of r3dfish/13-37 (base 1.0.0)
 
-// Brand Bank Gothic boot-splash fonts (generated from the ARGUS brand TTF
-// via lv_font_conv; see src/font_argus_argus.c / src/font_argus_wordmark.c).
+// Saira Condensed boot-splash fonts generated via lv_font_conv; see
+// src/font_argus_argus.c and src/font_argus_wordmark.c.
 LV_FONT_DECLARE(font_argus_argus);
 LV_FONT_DECLARE(font_argus_wordmark);
 
@@ -1359,7 +1359,7 @@ void setup()
     // Boot splash — ARGUS lockup on the panel before the clock comes up.
     // Backlight on now so it's visible; the splash stays up through the rest of
     // setup (screen construction) and is swapped for the clock below, held to a
-    // minimum visible time. Brand typeface is Bank Gothic (src/font_argus_*.c),
+    // minimum visible time. Brand typeface is Saira Condensed (src/font_argus_*.c),
     // filled steel-blue (#9BBCD6) on black — the sanctioned dark-surface treatment.
     instance.setBrightness(DEVICE_MAX_BRIGHTNESS_LEVEL);
     lv_obj_t *boot_splash = lv_obj_create(NULL);
