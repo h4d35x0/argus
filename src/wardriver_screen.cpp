@@ -467,10 +467,11 @@ static void on_start_stop(lv_event_t *) {
             return;
         }
 
-        // wifi_beacon_add() inside start_wardriving()
-        // can block the main loop for ~1 s. Flip the UI to STOP *before*
-        // we go into that blocking call (and force a flush) so the user
-        // sees instant feedback instead of staring at a stale START.
+        // wifi_beacon_add() inside start_wardriving() blocks the main loop for
+        // ~250 ms (measured 2026-07-25 under BLE+WiFi+LoRa load; the old "~1 s"
+        // figure here was stale). Flip the UI to STOP *before* that blocking
+        // call (and force a flush) so the user sees instant feedback instead of
+        // staring at a stale START.
         lv_obj_set_style_bg_color(start_btn, lv_color_make(0xCC, 0x00, 0x00), LV_PART_MAIN);
         lv_label_set_text(start_btn_label, "STOP");
         lv_obj_add_state(wifi_toggle_sw, LV_STATE_DISABLED);
