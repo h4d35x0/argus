@@ -21,6 +21,7 @@ sensorlib = (
 
 header = sensorlib / "SensorBHI260AP.hpp"
 bridge = sensorlib / "bosch" / "BoschParseStatic.cpp"
+callback_manager = sensorlib / "bosch" / "BoschParseCallbackManager.hpp"
 
 replace_once(
     header,
@@ -58,6 +59,57 @@ replace_once(
     """    SensorBHI260AP *sensor = static_cast<SensorBHI260AP *>(user_data);
     if (sensor) {
         sensor->SensorBHI260AP::parseData(fifo, user_data);
+    }
+""",
+)
+
+# SensorLib's GCC < 10 path uses a custom callback vector. Its call() method
+# names the FIFO payload length "size", shadowing the member "size" that tracks
+# the number of registered callbacks. The loop therefore walks payload-length
+# entries beyond the initialized vector and can call an uninitialized function
+# pointer. A matching core dump caught that callx8 jumping to 0x3225A54A.
+replace_once(
+    callback_manager,
+    """    void call(uint8_t sensor_id, uint8_t *data, uint32_t size, uint64_t *timestamp)
+    {
+#ifdef USE_CUSTOM_VECTOR
+        for (uint32_t i = 0; i < size; i++) {
+            if (entries[i].cb) {
+                if (entries[i].id == sensor_id) {
+                    entries[i].cb(sensor_id, data, size, timestamp, entries[i].user_data);
+                }
+            }
+        }
+#else
+        for (uint32_t i = 0; i < entries.size(); i++) {
+            if (entries[i].cb) {
+                if (entries[i].id == sensor_id) {
+                    entries[i].cb(sensor_id, data, size, timestamp, entries[i].user_data);
+                }
+            }
+        }
+#endif
+    }
+""",
+    """    void call(uint8_t sensor_id, uint8_t *data, uint32_t data_size, uint64_t *timestamp)
+    {
+#ifdef USE_CUSTOM_VECTOR
+        for (uint32_t i = 0; i < this->size; i++) {
+            if (entries[i].cb) {
+                if (entries[i].id == sensor_id) {
+                    entries[i].cb(sensor_id, data, data_size, timestamp, entries[i].user_data);
+                }
+            }
+        }
+#else
+        for (uint32_t i = 0; i < entries.size(); i++) {
+            if (entries[i].cb) {
+                if (entries[i].id == sensor_id) {
+                    entries[i].cb(sensor_id, data, data_size, timestamp, entries[i].user_data);
+                }
+            }
+        }
+#endif
     }
 """,
 )
