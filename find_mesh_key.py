@@ -16,17 +16,27 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import binascii
 
-# ── PASTE YOUR CAPTURED VALUES HERE ──────────────────────────────────────────
+# --- PASTE YOUR OWN CAPTURED VALUES HERE -------------------------------------
+#
+# These are PLACEHOLDERS. The upstream 13-37 project shipped this file with real
+# packets captured off a live mesh (a node id, nonce and ciphertext). Those were
+# someone else's traffic, so they were removed rather than republished here.
+# Capture your own from the [MESH] serial lines and paste them below.
+#
+# Expected shape, from the serial log:
+#   [MESH] from=AABBCCDD pkt_id=11223344 ct_len=17
+#   [MESH] NONCE: 44332211 00000000 DDCCBBAA 00000000
+#   [MESH] CT: 00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF 00
 
-#NONCE_HEX = "78563412 00000000 DDCCBBAA 00000000"   # from [MESH] NONCE: line
-#CT_HEX    = "1A 2B 3C 4D 5E 6F 70 81 92 A3 B4 C5"  # from [MESH] CT: line
+NONCE_HEX = ""   # e.g. "44332211 00000000 DDCCBBAA 00000000"
+CT_HEX    = ""   # e.g. "00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF 00"
 
-#[MESH] from=EA1695E8 pkt_id=9FE95FC5 ct_len=17
-#NONCE_HEX = "C55FE99F 00000000 E89516EA 00000000"
-#CT_HEX = "00 10 97 E2 B7 DE 32 0E BB 95 CC 78 23 32 A6 51 ED"
-NONCE_HEX = "C8070EBB 00000000 E89516EA 00000000"
-CT_HEX = "00 10 5B A8 08 E2 51 9B 57 4B FA BB 4F 62 6C 0C"
-# ─────────────────────────────────────────────────────────────────────────────
+if not NONCE_HEX or not CT_HEX:
+    raise SystemExit(
+        "Paste your own NONCE_HEX and CT_HEX (from the [MESH] serial lines) "
+        "before running. This script ships with no captured data on purpose."
+    )
+# -----------------------------------------------------------------------------
 
 # Known Meshtastic default-channel key candidates to test
 CANDIDATES = {
