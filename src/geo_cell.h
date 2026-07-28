@@ -26,6 +26,25 @@ namespace geo {
 // would be silently dropped; keeping this >= 0 makes the two compose correctly.
 int32_t coarse_cell(double lat_deg, double lon_deg, double cell_m = 120.0);
 
+// Decimal places to use when writing a GPS fix into an SD detection log.
+//
+// The detector logs (/AirTag, /Flipper, /Skimmers, /EvilTwin, /Flock,
+// /ThreatRadar) each pair a THIRD PARTY's MAC with the wearer's position at the
+// moment of the sighting. At full precision that card becomes both a location
+// dataset about other people's devices and a complete track of the wearer, which
+// is a liability if the watch is lost, seized, or handed to a stranger.
+//
+// 3 places is roughly 110 m. That still shows a device was near you at distinct
+// places over time, which is the entire claim a detection record makes, without
+// pinning anyone to a spot. Use it as `f.printf("%.*f", geo::kGpsLogDecimals, lat)`.
+//
+// This is a LOGGING precision only. Detection maths (coarse_cell, waypoint
+// spacing, span) keeps using the full-precision fix and is unaffected.
+//
+// Deliberately NOT applied to the wardriver's /Wardrive/*.csv: that is a WiGLE
+// export whose whole purpose is a precise survey the wearer chose to collect.
+static const int kGpsLogDecimals = 3;
+
 // Stateful boundary hysteresis for a live GPS stream. A raw grid cell can flip
 // when stationary GPS jitter straddles a cell edge, even if the fixes are only
 // metres apart. update() keeps the accepted cell until the fix has moved at

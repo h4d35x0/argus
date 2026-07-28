@@ -9,6 +9,7 @@ void clock_screen_get_local_time(struct tm *out);   // defined in main.cpp
 #include <string.h>
 #include <stdio.h>
 #include "freertos/queue.h"
+#include "geo_cell.h"   // geo::kGpsLogDecimals - SD log GPS precision
 
 // --- tuning ---------------------------------------------------------------
 //
@@ -153,6 +154,10 @@ static TrContact *find_or_alloc(const uint8_t *mac)
 // contact, the first time it crosses the LIKELY alert threshold, from the main
 // task (threatradar_bg_tick), which already runs only while USB-SD is inactive.
 // Mirrors the per-detector logging format (timestamp + GPS + headline fields).
+//
+// GPS is logged at geo::kGpsLogDecimals rather than full precision; see the
+// rationale on that constant in geo_cell.h. Waypoint detection is unaffected
+// and still uses the full-precision fix, so TR_WP_MIN_M (120 m) still holds.
 static void log_tail_to_sd(const TrContact *c)
 {
     if (!instance.isCardReady()) return;
@@ -176,8 +181,10 @@ static void log_tail_to_sd(const TrContact *c)
     f.printf("\tDwell %lumin", (unsigned long)((c->last_ms - c->first_ms) / 60000UL));
     f.printf("\tRSSI %d", (int)c->best_rssi);
     f.printf("\tFirstSeen %s", c->first_time);
-    f.printf("\tFirstGPS %.6f,%.6f", c->first_lat, c->first_lon);
-    f.printf("\tFarGPS %.6f,%.6f", c->far_lat, c->far_lon);
+    f.printf("\tFirstGPS %.*f,%.*f",
+        geo::kGpsLogDecimals, c->first_lat, geo::kGpsLogDecimals, c->first_lon);
+    f.printf("\tFarGPS %.*f,%.*f",
+        geo::kGpsLogDecimals, c->far_lat, geo::kGpsLogDecimals, c->far_lon);
     f.print("\n");
     f.close();
 }

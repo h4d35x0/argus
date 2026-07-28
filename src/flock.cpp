@@ -12,6 +12,7 @@ void clock_screen_get_local_time(struct tm *out);
 #include "freertos/queue.h"
 #include <string.h>
 #include <stdio.h>
+#include "geo_cell.h"   // geo::kGpsLogDecimals - SD log GPS precision
 
 // OUI table: packed as (b0<<16)|(b1<<8)|b2. An OUI is interface-agnostic, so
 // this same table is matched against both BLE addresses and WiFi BSSIDs.
@@ -299,8 +300,9 @@ void flock_bg_tick()
     // The queue typically drains within a tick, so the position is
     // effectively "where we were when we saw it".
     if (gps_screen_has_lock() && instance.gps.location.isValid()) {
-        f.printf("GPS:    %.6f,%.6f\n",
-            instance.gps.location.lat(), instance.gps.location.lng());
+        f.printf("GPS:    %.*f,%.*f\n",
+            geo::kGpsLogDecimals, instance.gps.location.lat(),
+            geo::kGpsLogDecimals, instance.gps.location.lng());
         if (instance.gps.altitude.isValid())
             f.printf("Alt:    %.1fm\n", instance.gps.altitude.meters());
     }

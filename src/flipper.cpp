@@ -11,6 +11,7 @@ void clock_screen_get_local_time(struct tm *out);
 #include <string.h>
 #include "esp_gap_ble_api.h"
 #include "freertos/queue.h"
+#include "geo_cell.h"   // geo::kGpsLogDecimals - SD log GPS precision
 
 // Stock Flipper Zero firmware advertises a complete-local-name with this prefix.
 #define FLIPPER_NAME_PREFIX     "Flipper "
@@ -206,8 +207,9 @@ void flipper_bg_tick()
     f.printf("\tName %s", hit.name);
 
     if (gps_screen_has_lock() && instance.gps.location.isValid()) {
-        f.printf("\tGPS %.6f,%.6f",
-            instance.gps.location.lat(), instance.gps.location.lng());
+        f.printf("\tGPS %.*f,%.*f",
+            geo::kGpsLogDecimals, instance.gps.location.lat(),
+            geo::kGpsLogDecimals, instance.gps.location.lng());
         if (instance.gps.altitude.isValid())
             f.printf("\tAlt %.1fm", instance.gps.altitude.meters());
     }

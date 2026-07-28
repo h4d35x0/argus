@@ -10,6 +10,7 @@ void clock_screen_get_local_time(struct tm *out);
 #include <string.h>
 #include "esp_gap_ble_api.h"
 #include "freertos/queue.h"
+#include "geo_cell.h"   // geo::kGpsLogDecimals - SD log GPS precision
 
 // Cap the captured advertising payload at 31 bytes — the BLE advertising
 // PDU payload max. Anything bigger isn't a valid advert.
@@ -225,8 +226,9 @@ void airtag_bg_tick()
     for (int i = 0; i < hit.apple_data_len; i++) f.printf("%02X", hit.apple_data[i]);
 
     if (gps_screen_has_lock() && instance.gps.location.isValid()) {
-        f.printf("\tGPS %.6f,%.6f",
-            instance.gps.location.lat(), instance.gps.location.lng());
+        f.printf("\tGPS %.*f,%.*f",
+            geo::kGpsLogDecimals, instance.gps.location.lat(),
+            geo::kGpsLogDecimals, instance.gps.location.lng());
         if (instance.gps.altitude.isValid())
             f.printf("\tAlt %.1fm", instance.gps.altitude.meters());
     }
