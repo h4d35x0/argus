@@ -1038,11 +1038,11 @@ void settings_screen_create()
     register_shiftable(set_btn, 1054);
     register_manual_obj(set_btn);
 
-    // Apply the layout once now that all the rows are registered. The
-    // switches default to off, so the editor controls start hidden and
-    // the screenshot section below the manual row sits flush against it.
-    // The settings-load path will call apply_layout again with the saved
-    // states once /Settings/settings.txt is read.
+    // Provisional layout pass for the rows registered SO FAR. The sections
+    // below (screenshot, wallpaper, boot, system, mode) have not been built
+    // yet, so this call cannot position them - the authoritative pass is the
+    // apply_layout() at the very end of this function. Kept only so the manual
+    // rollers collapse before the rest of the list is measured.
     apply_layout();
 
     lv_obj_t *set_lbl = lv_label_create(set_btn);
@@ -1305,6 +1305,18 @@ void settings_screen_create()
         if (argus_mode_current() == ArgusMode::Offense) { lock_offense(); clock_screen_show(); }
         else                                            { pin_pad_screen_show(); }
     }, LV_EVENT_CLICKED, NULL);
+
+    // Lay the list out now that EVERY row has registered. This must be the last
+    // thing the builder does: register_shiftable() only records a row's design
+    // y, and apply_layout() is what collapses the hidden Manual Time / analog
+    // face blocks. A row registered after an apply_layout() call keeps its raw
+    // design y until the next call, which is what left a ~230 px hole between
+    // Manual Time and the Screenshot section on a watch with no SD card - the
+    // earlier apply_layout() ran before this whole lower half existed, and the
+    // only other calls live in the settings-load path behind an
+    // instance.isCardReady() early-return, so with a card the gap was silently
+    // repaired on load and without one it stayed.
+    apply_layout();
 
     // Reflect the current SD state in the row's interactability + checked
     // state. Boot order matters here — instance.isCardReady() may flip
