@@ -1,0 +1,78 @@
+#!/bin/sh
+# ARGUS pre-commit guard: keep real-world captured data out of the repo.
+#
+# WHY THIS EXISTS
+# ARGUS is an anti-surveillance tool whose whole point is not leaking location
+# and device identifiers. On 2026-07-28 a con-readiness doc in tasks/ quoted the
+# owner's real home coordinates three times, as "evidence" that a GPS-precision
+# fix worked. It was caught before it was ever staged, but nothing would have
+# stopped it. This hook is that something.
+#
+# WHAT IT BLOCKS (in ADDED lines only, so existing content never re-trips it)
+#   1. A latitude/longitude PAIR with 4 or more decimal places. 4 decimals is
+#      ~11 m, precise enough to identify a home. No example is given here on
+#      purpose: an earlier draft of this very file used a real pair as the
+#      illustration, and the hook correctly refused to commit itself.
+#   2. A literal MAC address in a documentation file (*.md / *.txt).
+#
+# WHAT IT DELIBERATELY DOES NOT BLOCK
+#   - printf format strings ("GPS %.*f,%.*f") - no literal digits, no match.
+#   - Single coordinates used as test constants (test_geo_cell.cpp's kLat /
+#     kLon are on separate lines, so they are not a pair).
+#   - MACs inside .c/.cpp/.h, where %02X formatting and OUI tables are normal.
+#
+# THE RULE THIS ENFORCES
+# Never paste a real coordinate, MAC, SSID, node id, or capture payload as
+# evidence. Describe the SHAPE of the evidence instead: "3 decimals vs 6",
+# "a tracker MAC", "a live node id". The claim survives; the data does not.
+#
+# INSTALL:  cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# OVERRIDE: git commit --no-verify   (use only for genuinely synthetic data,
+#           and prefer changing the data to something obviously fake)
+
+fail=0
+
+# Added lines across the whole staged set, with their file paths.
+added=$(git diff --cached --unified=0 --no-color)
+[ -z "$added" ] && exit 0
+
+# --- 1. lat/lon pair at >= 4 decimal places -------------------------------
+coords=$(printf '%s\n' "$added" \
+  | grep -nE '^\+' \
+  | grep -vE '^\+\+\+' \
+  | grep -E '\-?[0-9]{1,3}\.[0-9]{4,}[[:space:]]*,[[:space:]]*\-?[0-9]{1,3}\.[0-9]{4,}')
+
+if [ -n "$coords" ]; then
+  echo "BLOCKED: a real-looking GPS coordinate pair (4+ decimals) is being committed."
+  echo "$coords" | head -10
+  echo ""
+  echo "  4 decimals is about 11 m. That identifies a home."
+  echo "  Describe the evidence instead of pasting it - '3 decimals vs 6'."
+  fail=1
+fi
+
+# --- 2. literal MAC address in a doc file ---------------------------------
+for f in $(git diff --cached --name-only --diff-filter=ACM); do
+  case "$f" in
+    *.md|*.txt)
+      hits=$(git diff --cached --unified=0 --no-color -- "$f" \
+        | grep -E '^\+' | grep -vE '^\+\+\+' \
+        | grep -EI '([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}')
+      if [ -n "$hits" ]; then
+        echo "BLOCKED: literal MAC address in $f"
+        echo "$hits" | head -5
+        echo "  Use a placeholder (AA:BB:CC:DD:EE:FF) or describe it in words."
+        fail=1
+      fi
+      ;;
+  esac
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Commit aborted by scripts/pre-commit."
+  echo "If the data is genuinely synthetic, make it obviously fake, or use --no-verify."
+  exit 1
+fi
+
+exit 0
