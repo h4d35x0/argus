@@ -43,8 +43,14 @@ lv_color_t argus_accent(void)
 // ---- Persistent per-mode indicator (lv_layer_top overlay) -------------------
 
 static lv_obj_t *s_mode_frame    = nullptr;   // full-screen border (Offense only)
-static lv_obj_t *s_mode_chip     = nullptr;   // "DEF" / "OFF" chip container
-static lv_obj_t *s_mode_chip_lbl = nullptr;   // the chip's text
+
+// The "DEF" / "OFF" corner chip is DISABLED (2026-07-28). Mode is already
+// unmistakable without it: the wallpaper changes, the tool set changes, and the
+// accent colour changes. The chip was redundant on top of that, and it sat on
+// lv_layer_top so it rode along on every screen rather than just the clock.
+// Kept commented rather than deleted so it can be restored in one edit.
+// static lv_obj_t *s_mode_chip     = nullptr;   // "DEF" / "OFF" chip container
+// static lv_obj_t *s_mode_chip_lbl = nullptr;   // the chip's text
 
 void argus_mode_indicator_init(void)
 {
@@ -61,38 +67,41 @@ void argus_mode_indicator_init(void)
     lv_obj_clear_flag(s_mode_frame, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_mode_frame, LV_OBJ_FLAG_HIDDEN);
 
+    // --- "DEF" / "OFF" corner chip: DISABLED, see the note on the statics. ---
     // Chip = a small container (bg + radius) with a centred label child, the
     // reliable idiom here (a bare label-with-bg did not render as a chip).
-    s_mode_chip = lv_obj_create(top);
-    lv_obj_remove_style_all(s_mode_chip);
-    lv_obj_set_size(s_mode_chip, 48, 26);
-    lv_obj_set_style_bg_opa(s_mode_chip, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_mode_chip, ARGUS_ACCENT, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_mode_chip, 6, LV_PART_MAIN);
-    lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_SCROLLABLE);
-    // Sit the badge UP IN THE STATUS HEADER ROW (same y as the WiFi/BT/SD/GPS
-    // icons at y~20), on the LEFT half of that row - the status icons live on the
-    // right, this side is empty. Referenced from TOP_MID (screen centre, x~205 on
-    // the 410-wide panel) so it lands well clear of BOTH rounded top corners; the
-    // leftward offset keeps it left of the right-side status chain. NOTE: this is
-    // an lv_layer_top overlay so it shows on every screen's header band - the
-    // redesign will make it a proper clock-only status-row element.
-    lv_obj_align(s_mode_chip, LV_ALIGN_TOP_MID, -120, 16);
-    lv_obj_add_flag(s_mode_chip, LV_OBJ_FLAG_HIDDEN);
-
-    s_mode_chip_lbl = lv_label_create(s_mode_chip);
-    lv_obj_set_style_text_font(s_mode_chip_lbl, &font_argus_label_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_mode_chip_lbl, lv_color_black(), LV_PART_MAIN);
-    lv_label_set_text(s_mode_chip_lbl, "DEF");
-    lv_obj_center(s_mode_chip_lbl);
+    // s_mode_chip = lv_obj_create(top);
+    // lv_obj_remove_style_all(s_mode_chip);
+    // lv_obj_set_size(s_mode_chip, 48, 26);
+    // lv_obj_set_style_bg_opa(s_mode_chip, LV_OPA_COVER, LV_PART_MAIN);
+    // lv_obj_set_style_bg_color(s_mode_chip, ARGUS_ACCENT, LV_PART_MAIN);
+    // lv_obj_set_style_radius(s_mode_chip, 6, LV_PART_MAIN);
+    // lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_CLICKABLE);
+    // lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_SCROLLABLE);
+    // // Sit the badge UP IN THE STATUS HEADER ROW (same y as the WiFi/BT/SD/GPS
+    // // icons at y~20), on the LEFT half of that row - the status icons live on the
+    // // right, this side is empty. Referenced from TOP_MID (screen centre, x~205 on
+    // // the 410-wide panel) so it lands well clear of BOTH rounded top corners; the
+    // // leftward offset keeps it left of the right-side status chain. NOTE: this is
+    // // an lv_layer_top overlay so it shows on every screen's header band - the
+    // // redesign will make it a proper clock-only status-row element.
+    // lv_obj_align(s_mode_chip, LV_ALIGN_TOP_MID, -120, 16);
+    // lv_obj_add_flag(s_mode_chip, LV_OBJ_FLAG_HIDDEN);
+    //
+    // s_mode_chip_lbl = lv_label_create(s_mode_chip);
+    // lv_obj_set_style_text_font(s_mode_chip_lbl, &font_argus_label_14, LV_PART_MAIN);
+    // lv_obj_set_style_text_color(s_mode_chip_lbl, lv_color_black(), LV_PART_MAIN);
+    // lv_label_set_text(s_mode_chip_lbl, "DEF");
+    // lv_obj_center(s_mode_chip_lbl);
 
     argus_mode_indicator_refresh();
 }
 
 void argus_mode_indicator_refresh(void)
 {
-    if (!s_mode_frame || !s_mode_chip || !s_mode_chip_lbl) return;
+    // Guard covers the frame only. The chip pointers are gone with the chip; if
+    // it is ever restored, add them back here or the frame stops refreshing.
+    if (!s_mode_frame) return;
     ArgusMode m = argus_mode_current();
 
     // Border frame: Offense only; colour follows argus_accent() (amber, or red
@@ -104,14 +113,15 @@ void argus_mode_indicator_refresh(void)
         lv_obj_add_flag(s_mode_frame, LV_OBJ_FLAG_HIDDEN);
     }
 
+    // --- "DEF" / "OFF" corner chip: DISABLED, see the note on the statics. ---
     // Chip: hidden in Daily (innocent), "DEF" (steel) in Defense, "OFF" in Offense.
-    if (m == ArgusMode::Daily) {
-        lv_obj_add_flag(s_mode_chip, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        bool off = (m == ArgusMode::Offense);
-        lv_label_set_text(s_mode_chip_lbl, off ? "OFF" : "DEF");
-        lv_obj_set_style_bg_color(s_mode_chip, off ? argus_accent() : ARGUS_ACCENT, LV_PART_MAIN);
-        lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(s_mode_chip);   // above any other top-layer content
-    }
+    // if (m == ArgusMode::Daily) {
+    //     lv_obj_add_flag(s_mode_chip, LV_OBJ_FLAG_HIDDEN);
+    // } else {
+    //     bool off = (m == ArgusMode::Offense);
+    //     lv_label_set_text(s_mode_chip_lbl, off ? "OFF" : "DEF");
+    //     lv_obj_set_style_bg_color(s_mode_chip, off ? argus_accent() : ARGUS_ACCENT, LV_PART_MAIN);
+    //     lv_obj_clear_flag(s_mode_chip, LV_OBJ_FLAG_HIDDEN);
+    //     lv_obj_move_foreground(s_mode_chip);   // above any other top-layer content
+    // }
 }

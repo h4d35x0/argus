@@ -47,13 +47,17 @@ lv_color_t argus_accent(void);
 // Daily, which stays innocent and never flips). Defined in theme.cpp.
 lv_color_t argus_base_accent(void);
 
-// Persistent per-mode indicator on lv_layer_top(): hidden in Daily, a steel "DEF"
-// chip in Defense, an amber/red border frame + "OFF" chip in Offense. init() once
-// at boot (after LVGL/clock build); refresh() on every mode change and on the 1s
-// status tick so the border/chip flip live under threat. Defined in theme.cpp.
+// Persistent per-mode indicator on lv_layer_top(): an amber/red border frame in
+// Offense, nothing in Daily or Defense. init() once at boot (after LVGL/clock
+// build); refresh() on every mode change and on the 1s status tick so the border
+// flips live under threat. Defined in theme.cpp.
+//
+// The "DEF" / "OFF" corner chip this used to also draw is disabled (2026-07-28)
+// and left commented in theme.cpp: mode is already obvious from the wallpaper,
+// tool set and accent colour, and the chip rode on every screen, not just the
+// clock.
 void argus_mode_indicator_init(void);
 void argus_mode_indicator_refresh(void);
-
 // Pipeline-driven threat override for the brand accent. The detect_pipeline
 // (WiFi evil-twin + beacon-flood aggregator, src/detect_pipeline.*) calls this
 // to flip argus_accent() to HADES_RED when its ThreatState posture reaches

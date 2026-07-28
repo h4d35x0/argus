@@ -1871,10 +1871,10 @@ void setup()
     update_nfc_indicator();
     update_wardriver_indicator();
 
-    // Per-mode indicator overlay (Daily hidden / Defense "DEF" chip / Offense
-    // border + "OFF"). Init now that LVGL + argus_mode are up; refresh on every
-    // mode change. The 1 Hz loop tick also refreshes it so the Offense border
-    // flips to threat-red live.
+    // Per-mode indicator overlay (Offense border frame only; the "DEF" / "OFF"
+    // corner chip is disabled - see theme.cpp). Init now that LVGL + argus_mode
+    // are up; refresh on every mode change. The 1 Hz loop tick also refreshes it
+    // so the Offense border flips to threat-red live.
     argus_mode_indicator_init();
     argus_mode_on_change([](ArgusMode) { argus_mode_indicator_refresh(); });
 
