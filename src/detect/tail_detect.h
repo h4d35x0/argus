@@ -47,8 +47,9 @@ struct DeviceSighting {
 // Confidence that a device is FOLLOWING the wearer. Mirrors Threat Radar's
 // TrLevel ladder (None/Possible/Likely/Confirmed) with an added, explicit
 // Familiar verdict for the learned-benign case. Familiar is NOT a point on the
-// tail ladder: it is a separate terminal state a device settles into when it is
-// seen over and over in a single cell, and a Familiar device never escalates.
+// tail ladder: it is a separate state a device settles into while it is seen
+// over and over in a single cell. Cross-cell movement revokes Familiar so a
+// device first observed at home cannot remain permanently exempt while following.
 enum class TailFlag : uint8_t {
   None = 0,       // brand-new / single sighting / not enough evidence yet
   Familiar,       // learned benign: repeatedly seen in ONE cell (home/work)
@@ -97,8 +98,9 @@ class TailDetector {
   // clockless module has no notion of a calendar day, so we instead implement
   // the other half the task calls out: a device seen many times and pinned to a
   // SINGLE cell is a stationary fixture at a place the wearer frequents (home /
-  // work AP) and is benign. Once learned Familiar it is latched and never
-  // escalates to a tail. ---
+  // work AP) and is benign. Familiar remains active only while the device stays
+  // in that one cell; cross-cell evidence revokes it and enables the tail ladder.
+  // ---
   static const uint16_t kFamiliarMinHits  = 5;   // sightings before we trust it
   static const uint8_t  kFamiliarMaxCells = 1;   // ... all in one cell
 
@@ -118,8 +120,8 @@ class TailDetector {
 
   // Age the store against a caller-supplied "now": relax devices unseen for
   // kRelaxSec back down to None, and free slots for devices unseen for
-  // kEvictSec. A Familiar device's learned-benign status is preserved through a
-  // relax (only a full evict forgets it).
+  // kEvictSec. A stationary Familiar device's learned-benign status is preserved
+  // through a relax (cross-cell movement or a full evict clears it).
   void decay(uint32_t now_sec);
 
   // Forget every tracked device.
@@ -141,7 +143,7 @@ class TailDetector {
     uint16_t hits;                     // total sightings folded in
     int8_t   best_rssi;                // strongest (closest) sample
     uint8_t  tail_level;               // 0..3 ladder rank (see ladder_flag)
-    bool     familiar;                 // latched learned-benign
+    bool     familiar;                 // learned benign while still single-cell
     uint8_t  ncells;                   // distinct cells recorded (<= kMaxCellsPerDevice)
     Cell     cells[kMaxCellsPerDevice];
   };

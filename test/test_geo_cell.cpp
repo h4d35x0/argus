@@ -6,10 +6,12 @@
 #include "wl_test.h"
 #include "geo_cell.h"
 
+#include <cmath>
 #include <cstdint>
 #include <set>
 
 using geo::coarse_cell;
+using geo::StableCellTracker;
 
 // A reference spot (somewhere near 45N, a mid-latitude so cos(lat) is exercised).
 static const double kLat = 45.000000;
@@ -27,6 +29,36 @@ WL_TEST(geo_tiny_jitter_same_cell) {
   int32_t a = coarse_cell(kLat, kLon);
   int32_t b = coarse_cell(kLat + 1e-6, kLon - 1e-6);
   WL_CHECK_EQ(a, b);
+}
+
+// ---- Boundary hysteresis: stationary jitter cannot create a second cell. ----
+WL_TEST(geo_stable_cell_blocks_grid_boundary_flapping) {
+  const double dlat = 120.0 / 111320.0;
+  const double boundary = std::floor(kLat / dlat) * dlat;
+  const double half_metre_deg = 0.5 / 111320.0;
+  const double below = boundary - half_metre_deg;
+  const double above = boundary + half_metre_deg;
+
+  // The raw grid deliberately flips across this edge.
+  WL_CHECK(coarse_cell(below, kLon) != coarse_cell(above, kLon));
+
+  // The live tracker sees only a one-metre wobble and holds the accepted cell.
+  StableCellTracker stable;
+  const int32_t held = stable.update(below, kLon);
+  for (int i = 0; i < 20; ++i) {
+    WL_CHECK_EQ(stable.update((i & 1) ? above : below, kLon), held);
+  }
+}
+
+// ---- A real move beyond 120 m is still admitted as location evidence. --------
+WL_TEST(geo_stable_cell_accepts_real_movement) {
+  StableCellTracker stable;
+  const int32_t first = stable.update(kLat, kLon);
+  const int32_t moved = stable.update(kLat + 0.0020, kLon);  // about 223 m
+  WL_CHECK(first != moved);
+
+  stable.reset();
+  WL_CHECK_EQ(stable.update(kLat, kLon), first);
 }
 
 // ---- A clear move to a different area yields a different cell. ---------------

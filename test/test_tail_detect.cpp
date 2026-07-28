@@ -37,8 +37,8 @@ WL_TEST(tail_baseline_not_paranoid) {
   WL_CHECK(d.ingest(mk(1, 30, 100)).flag == TailFlag::None);  // 1 cell, 30s
 }
 
-// ---- Many sightings in ONE cell -> Familiar, and it NEVER escalates to tail. -
-WL_TEST(tail_one_cell_becomes_familiar_never_tail) {
+// ---- Many sightings in one cell become Familiar; movement revokes it. --------
+WL_TEST(tail_familiarity_is_revoked_by_cross_cell_movement) {
   TailDetector d;
   // Below kFamiliarMinHits (5): still None.
   WL_CHECK(d.ingest(mk(7, 0,   500)).flag == TailFlag::None);
@@ -50,11 +50,11 @@ WL_TEST(tail_one_cell_becomes_familiar_never_tail) {
   WL_CHECK(v.flag == TailFlag::Familiar);
   WL_CHECK_EQ(v.distinct_cells, (uint8_t)1);
 
-  // Now it moves across many cells over a long time - tail-like geometry - but
-  // a Familiar device is latched benign and must NOT escalate.
-  WL_CHECK(d.ingest(mk(7, 1000, 600)).flag == TailFlag::Familiar);
-  WL_CHECK(d.ingest(mk(7, 2000, 700)).flag == TailFlag::Familiar);
-  WL_CHECK(d.ingest(mk(7, 3000, 800)).flag == TailFlag::Familiar);  // 4 cells, >18min
+  // Real BLE tags advertise frequently and can reach Familiar before the wearer
+  // leaves the starting point. A second cell must revoke that local exemption.
+  WL_CHECK(d.ingest(mk(7, 300, 600)).flag == TailFlag::Watching);
+  WL_CHECK(d.ingest(mk(7, 600, 700)).flag == TailFlag::PossibleTail);
+  WL_CHECK(d.ingest(mk(7, 1080, 800)).flag == TailFlag::ConfirmedTail);
 }
 
 // ---- A device seen many times but across TWO cells is NOT familiar. ----------

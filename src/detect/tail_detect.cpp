@@ -27,7 +27,9 @@
 //              reference's multi-calendar-day co-movement, because a pure
 //              clockless module cannot know the date. It captures the same
 //              intent the task calls out: a device predominantly in ONE cell
-//              (home/work) is benign.
+//              (home/work) is benign. Cross-cell movement revokes this local
+//              familiarity so an initially stationary device cannot receive a
+//              permanent exemption from the tail ladder.
 //   DESIGNED   decay() actively relaxes a stopped tail to None and frees stale
 //              slots. The reference latched upward and applied staleness only at
 //              read time; the task's API asks for an explicit decay(), so it is
@@ -124,14 +126,20 @@ TailVerdict TailDetector::ingest(const DeviceSighting& s) {
 
   uint32_t span = (d->last_sec >= d->first_sec) ? (d->last_sec - d->first_sec) : 0;
 
+  // Familiarity learned from one location is valid only while the device stays
+  // there. Real BLE devices advertise repeatedly, so a tracker can easily reach
+  // five hits before the wearer leaves the starting cell. Keeping Familiar
+  // latched after a second cell would permanently hide exactly that real tail.
+  if (d->familiar && d->ncells > kFamiliarMaxCells) d->familiar = false;
+
   TailFlag flag;
   if (d->familiar) {
-    // Latched benign: never escalates, regardless of later movement.
+    // Still pinned to the familiar location, so it remains benign.
     flag = TailFlag::Familiar;
   } else if (d->hits >= kFamiliarMinHits && d->ncells >= 1 &&
              d->ncells <= kFamiliarMaxCells) {
     // Learned benign: seen enough times, all in one cell -> a fixture the wearer
-    // frequents (home/work). Latch it so it stays quiet.
+    // frequents (home/work). It stays quiet unless later seen in another cell.
     d->familiar = true;
     flag = TailFlag::Familiar;
   } else {

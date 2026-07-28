@@ -26,4 +26,25 @@ namespace geo {
 // would be silently dropped; keeping this >= 0 makes the two compose correctly.
 int32_t coarse_cell(double lat_deg, double lon_deg, double cell_m = 120.0);
 
+// Stateful boundary hysteresis for a live GPS stream. A raw grid cell can flip
+// when stationary GPS jitter straddles a cell edge, even if the fixes are only
+// metres apart. update() keeps the accepted cell until the fix has moved at
+// least min_move_m from the last accepted location, then admits the new raw
+// cell. This preserves the 120 m evidence threshold without counting boundary
+// noise as travel.
+class StableCellTracker {
+ public:
+  StableCellTracker() { reset(); }
+
+  int32_t update(double lat_deg, double lon_deg,
+                 double min_move_m = 120.0);
+  void reset();
+
+ private:
+  bool initialized_;
+  double anchor_lat_;
+  double anchor_lon_;
+  int32_t cell_id_;
+};
+
 }  // namespace geo

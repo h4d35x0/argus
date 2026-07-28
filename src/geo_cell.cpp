@@ -8,6 +8,17 @@ namespace geo {
 static const double kMetersPerDegLat = 111320.0;
 static const double kPi = 3.14159265358979323846;
 
+static double distance_m(double lat1, double lon1, double lat2, double lon2)
+{
+    const double mean_lat = (lat1 + lat2) * 0.5 * kPi / 180.0;
+    const double north = (lat2 - lat1) * kMetersPerDegLat;
+    double dlon = lon2 - lon1;
+    if (dlon > 180.0) dlon -= 360.0;
+    else if (dlon < -180.0) dlon += 360.0;
+    const double east = dlon * kMetersPerDegLat * std::cos(mean_lat);
+    return std::sqrt(north * north + east * east);
+}
+
 int32_t coarse_cell(double lat_deg, double lon_deg, double cell_m)
 {
     if (!(cell_m > 0.0)) cell_m = 120.0;   // guard 0 / negative / NaN
@@ -43,6 +54,38 @@ int32_t coarse_cell(double lat_deg, double lon_deg, double cell_m)
     // contribute no location evidence. 31 bits still makes collisions across a
     // tail's handful of cells negligible.
     return static_cast<int32_t>(h & 0x7FFFFFFFu);
+}
+
+int32_t StableCellTracker::update(double lat_deg, double lon_deg,
+                                  double min_move_m)
+{
+    if (!(min_move_m > 0.0)) min_move_m = 120.0;
+
+    const int32_t candidate = coarse_cell(lat_deg, lon_deg, min_move_m);
+    if (!initialized_) {
+        initialized_ = true;
+        anchor_lat_ = lat_deg;
+        anchor_lon_ = lon_deg;
+        cell_id_ = candidate;
+        return cell_id_;
+    }
+
+    if (candidate == cell_id_) return cell_id_;
+    if (distance_m(anchor_lat_, anchor_lon_, lat_deg, lon_deg) < min_move_m)
+        return cell_id_;
+
+    anchor_lat_ = lat_deg;
+    anchor_lon_ = lon_deg;
+    cell_id_ = candidate;
+    return cell_id_;
+}
+
+void StableCellTracker::reset()
+{
+    initialized_ = false;
+    anchor_lat_ = 0.0;
+    anchor_lon_ = 0.0;
+    cell_id_ = -1;
 }
 
 }  // namespace geo
