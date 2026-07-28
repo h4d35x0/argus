@@ -10,7 +10,10 @@ void configuration_screen_commit(); // push field values to meshtastic
 // Called from the 1-second tick in main.cpp while the screen is active.
 void configuration_screen_update();
 
-// User-intent flag for the "Broadcast Location" toggle. Callers that actually
+// User-intent flag for the "Broadcast Location" toggle. This is the wearer's
+// consent to disclose their position over the mesh at all; it defaults to OFF
+// and persists in /Meshtastic/config.txt. meshtastic.cpp gates the automatic
+// reply to a peer's directed position request on it. Callers that actually
 // broadcast should still gate on gps_screen_has_lock() themselves.
 bool configuration_screen_get_broadcast_location();
 

@@ -34,6 +34,7 @@ int  clock_screen_get_utc_offset();
 bool configuration_screen_get_rebroadcast_enabled();
 bool configuration_screen_get_vibrate_dm();
 bool configuration_screen_get_vibrate_broadcast();
+bool configuration_screen_get_broadcast_location();
 
 // --- Radio config for Meshtastic LongFast (US 915 MHz band) ---
 // EU_868 users: change MESH_FREQ_MHZ to 869.525
@@ -859,15 +860,24 @@ static void handle_position(uint32_t node_id, uint32_t ota_dest,
     // your position?" Reply only if we have a GPS fix; ignore the
     // request when no fix (sending 0,0 would lie). Don't honour
     // broadcast requests - that would have every node spam-reply.
+    //
+    // Answering is disclosure of the wearer's exact location to whoever
+    // asked, so it is gated on the same "Broadcast Location" consent the
+    // Configuration screen already owns and persists (default OFF). Any
+    // peer can learn our node id from the periodic NodeInfo announce, so
+    // without this gate an unsolicited query from a stranger would be
+    // answered automatically.
     if (plen == 0 && ota_dest == s_node_id) {
-        if (gps_screen_has_lock() && instance.gps.location.isValid()
+        if (configuration_screen_get_broadcast_location()
+            && gps_screen_has_lock() && instance.gps.location.isValid()
             && s_pos_reply_queue_count < 2) {
             s_pos_reply_queue[s_pos_reply_queue_count].dest = node_id;
             s_pos_reply_queue_count++;
             MESH_LOG("[MESH] queued position reply -> %08lx\n",
                 (unsigned long)node_id);
         } else {
-            MESH_LOG("[MESH] position request from %08lx ignored (no fix or queue full)\n",
+            MESH_LOG("[MESH] position request from %08lx ignored "
+                "(broadcast off, no fix, or queue full)\n",
                 (unsigned long)node_id);
         }
         return;
