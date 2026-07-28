@@ -480,8 +480,8 @@ void send_message_screen_create()
     lv_obj_add_flag(compose_ta, LV_OBJ_FLAG_HIDDEN);
 
     keyboard = lv_keyboard_create(send_screen);
-    lv_obj_set_size(keyboard, 410, 240);
-    lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // Narrowed + lifted so the rounded corners cannot clip the bottom row.
+    argus_keyboard_fit(keyboard, 240);
     lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(keyboard, on_kb_event, LV_EVENT_READY,  NULL);
     lv_obj_add_event_cb(keyboard, on_kb_event, LV_EVENT_CANCEL, NULL);

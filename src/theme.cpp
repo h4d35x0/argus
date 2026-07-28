@@ -125,3 +125,14 @@ void argus_mode_indicator_refresh(void)
     //     lv_obj_move_foreground(s_mode_chip);   // above any other top-layer content
     // }
 }
+
+// ---- On-screen keyboard placement ------------------------------------------
+// See the rationale in theme.h. One geometry for every keyboard so the rounded
+// corners cannot clip a bottom row, and so the numbers cannot drift apart across
+// the eight screens that create one.
+void argus_keyboard_fit(lv_obj_t *kb, int height)
+{
+    if (!kb) return;
+    lv_obj_set_size(kb, ARGUS_KB_SAFE_W, height);
+    lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, -ARGUS_KB_BOTTOM_INSET);
+}

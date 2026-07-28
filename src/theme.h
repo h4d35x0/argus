@@ -58,6 +58,31 @@ lv_color_t argus_base_accent(void);
 // clock.
 void argus_mode_indicator_init(void);
 void argus_mode_indicator_refresh(void);
+
+// ---- On-screen keyboard placement ------------------------------------------
+//
+// The panel is a 410x502 ROUNDED rectangle. A keyboard sized to the full 410 and
+// aligned flush to LV_ALIGN_BOTTOM_MID puts its bottom row exactly where the
+// corner radius cuts in, so the outer keys of that row are clipped by the bezel
+// and cannot be read or reliably tapped. Every keyboard in the tree had this.
+//
+// argus_keyboard_fit() applies one safe geometry to all of them: narrowed to
+// ARGUS_KB_SAFE_W and lifted ARGUS_KB_BOTTOM_INSET px off the bottom edge, which
+// keeps the bottom row inside the flat part of the panel. The LVGL keyboard is a
+// button matrix and lays its keys out within the object, so narrowing the object
+// narrows the keys rather than clipping them.
+//
+// Height stays per-caller: keyboards here range 180..240 px depending on how much
+// of the screen the field above them needs.
+//
+// These two numbers are the whole tuning surface. If a bottom row still clips,
+// raise ARGUS_KB_BOTTOM_INSET (and/or lower ARGUS_KB_SAFE_W) here, once, rather
+// than editing call sites.
+#define ARGUS_KB_SAFE_W         360
+#define ARGUS_KB_BOTTOM_INSET   36
+
+void argus_keyboard_fit(lv_obj_t *kb, int height);
+
 // Pipeline-driven threat override for the brand accent. The detect_pipeline
 // (WiFi evil-twin + beacon-flood aggregator, src/detect_pipeline.*) calls this
 // to flip argus_accent() to HADES_RED when its ThreatState posture reaches

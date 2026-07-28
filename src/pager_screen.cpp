@@ -679,8 +679,8 @@ void pager_screen_create()
 
     // On-screen keyboard for the custom RX frequency field.
     rx_kb = lv_keyboard_create(pager_screen);
-    lv_obj_set_size(rx_kb, lv_pct(100), 200);
-    lv_obj_align(rx_kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // Narrowed + lifted so the rounded corners cannot clip the bottom row.
+    argus_keyboard_fit(rx_kb, 200);
     lv_obj_add_event_cb(rx_kb, on_rx_kb_event, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(rx_kb, LV_OBJ_FLAG_HIDDEN);
 
@@ -872,8 +872,8 @@ void pager_screen_create()
     // Shared on-screen keyboard for both text areas. Lives on the modal so
     // it sits above the panel; the textarea's focus events show/hide it.
     tx_keyboard = lv_keyboard_create(tx_modal);
-    lv_obj_set_size(tx_keyboard, lv_pct(100), 180);
-    lv_obj_align(tx_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // Narrowed + lifted so the rounded corners cannot clip the bottom row.
+    argus_keyboard_fit(tx_keyboard, 180);
     lv_obj_add_event_cb(tx_keyboard, on_tx_kb_event, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(tx_keyboard, LV_OBJ_FLAG_HIDDEN);
 

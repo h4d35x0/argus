@@ -617,8 +617,8 @@ void wifi_screen_create()
     lv_obj_set_flex_flow(list_box, LV_FLEX_FLOW_COLUMN);
 
     keyboard = lv_keyboard_create(wifi_screen);
-    lv_obj_set_size(keyboard, 410, 240);
-    lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // Narrowed + lifted so the rounded corners cannot clip the bottom row.
+    argus_keyboard_fit(keyboard, 240);
     lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
     // Attach the ready/cancel handler to the TEXTAREA, not the keyboard. The
     // checkmark key (LV_SYMBOL_OK) forwards READY to both the keyboard and the
