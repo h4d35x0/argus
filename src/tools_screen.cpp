@@ -346,7 +346,10 @@ static void draw_wifi_icon(lv_obj_t *tile)
     lv_obj_set_style_text_color(wifi, lv_color_make(0x33, 0xBB, 0xFF), LV_PART_MAIN);
     lv_obj_set_style_text_font(wifi, &lv_font_montserrat_48, LV_PART_MAIN);
     lv_label_set_text(wifi, LV_SYMBOL_WIFI);
-    lv_obj_align(wifi, LV_ALIGN_TOP_MID, 0, 44);
+    // y=14 matches draw_notify_icon, the other direct 48px-symbol tile. This was
+    // 44, which put a 48px glyph at y=44..92+ and ran it into the label band
+    // (~y=94), covering the text.
+    lv_obj_align(wifi, LV_ALIGN_TOP_MID, 0, 14);
 }
 
 // Notify tile: a bell glyph in amber, for the phone-notification mirror screen.
@@ -410,6 +413,13 @@ static void draw_analyzer_icon(lv_obj_t *tile)
 // Trackers — a Tile-style tag (rounded square + hanging hole + a red centre dot)
 // for the universal non-Apple BLE tracker sweep. Procedural fallback for
 // /Icons/trackers.png.
+// Trackers - a tag body with a lanyard hole and an LED dot. The whole
+// composition sits 16px higher in layer space than it was authored: the 84x100
+// body anchored at y=44 bottomed out at layer y=144, which the icon_layer
+// transform maps to tile y~99.9, past the label top (~94) - the tag visibly
+// covered the word "Trackers". Shifted as a unit (44/56/96 -> 28/40/80) so the
+// tag keeps its proportions; the bottom now lands at ~87.5, the same clearance
+// the Pwn icon uses.
 static void draw_trackers_icon(lv_obj_t *tile)
 {
     tile = icon_layer(tile);
@@ -425,7 +435,7 @@ static void draw_trackers_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(body, 5, LV_PART_MAIN);
     lv_obj_set_style_pad_all(body, 0, LV_PART_MAIN);
     lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 28);
 
     lv_obj_t *hole = lv_obj_create(tile);
     lv_obj_set_size(hole, 20, 20);
@@ -435,7 +445,7 @@ static void draw_trackers_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(hole, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_all(hole, 0, LV_PART_MAIN);
     lv_obj_clear_flag(hole, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(hole, LV_ALIGN_TOP_MID, 0, 56);
+    lv_obj_align(hole, LV_ALIGN_TOP_MID, 0, 40);
 
     lv_obj_t *dot = lv_obj_create(tile);
     lv_obj_set_size(dot, 24, 24);
@@ -445,7 +455,7 @@ static void draw_trackers_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(dot, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(dot, LV_ALIGN_TOP_MID, 0, 96);
+    lv_obj_align(dot, LV_ALIGN_TOP_MID, 0, 80);
 }
 
 // NFC Field — concentric RF-field rings with a red core, for the reader-field
@@ -1591,7 +1601,11 @@ static void draw_handshake_icon(lv_obj_t *tile)
     lv_obj_set_style_border_width(pkt, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(pkt, 0, LV_PART_MAIN);
     lv_obj_clear_flag(pkt, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(pkt, LV_ALIGN_TOP_MID, 0, 124);
+    // The packet block is the lowest element in this icon. At y=124 its 16px
+    // height put its scaled bottom at tile y~96.8, just past the label top
+    // (~94), so it clipped the top of the "w" in "Pwn". y=112 lands the bottom
+    // at ~87.5, clear of the label.
+    lv_obj_align(pkt, LV_ALIGN_TOP_MID, 0, 112);
 }
 
 // Write the current tile order (top-to-bottom, left-to-right) to SD, one stable
