@@ -123,15 +123,28 @@ Severity severity_of(const DeviceVerdict &v)
 
 // --- feed() convenience -----------------------------------------------------
 // Each detector owns exactly one ThreatDomain; report the mapped severity there.
+//
+// PER-ENTITY domains (RogueAp, Tail, Airtag, Surveillance) are fed one verdict
+// PER OBSERVED ENTITY per cycle - a rogue-AP verdict for each AP, a follow
+// verdict for each advert, a camera classification for each AP. Any one of those
+// is authoritative only UPWARD for its domain, so they use ThreatState::
+// report_raise(): a benign entity seen between two sightings of a real threat
+// must not stomp the level to None (that strobed the Airtag domain None<->High
+// every advert in the 2026-07-29 field log). Falling is owned by decay().
+//
+// FLOOD domains (DeauthFlood, BleSpam, BeaconFlood) are different: each detector
+// reports a single in-window AGGREGATE that is authoritative both up and down
+// (it already folds every offender and relaxes on its own), so they use the
+// authoritative report() and may lower immediately.
 
 void feed(ThreatState &ts, RogueFlag f, uint32_t t_sec)
 {
-    ts.report(ThreatDomain::RogueAp, severity_of(f), t_sec);
+    ts.report_raise(ThreatDomain::RogueAp, severity_of(f), t_sec);
 }
 
 void feed(ThreatState &ts, TailFlag f, uint32_t t_sec)
 {
-    ts.report(ThreatDomain::Tail, severity_of(f), t_sec);
+    ts.report_raise(ThreatDomain::Tail, severity_of(f), t_sec);
 }
 
 void feed(ThreatState &ts, DeauthFlag f, uint32_t t_sec)
@@ -151,12 +164,12 @@ void feed(ThreatState &ts, BeaconFlag f, uint32_t t_sec)
 
 void feed(ThreatState &ts, const DeviceVerdict &v, uint32_t t_sec)
 {
-    ts.report(ThreatDomain::Surveillance, severity_of(v), t_sec);
+    ts.report_raise(ThreatDomain::Surveillance, severity_of(v), t_sec);
 }
 
 void feed_tracker(ThreatState &ts, TailFlag f, uint32_t t_sec)
 {
-    ts.report(ThreatDomain::Airtag, severity_of(f), t_sec);
+    ts.report_raise(ThreatDomain::Airtag, severity_of(f), t_sec);
 }
 
 } // namespace detect

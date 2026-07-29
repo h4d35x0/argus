@@ -67,6 +67,30 @@ WL_TEST(map_feed_tracker_routes_to_airtag_domain) {
   WL_CHECK(ts.dominant() == ThreatDomain::Airtag);
 }
 
+// The Airtag domain is fed one verdict PER ADVERT, so a confirmed tracker and
+// benign devices interleave. feed_tracker() must hold the confirmed level across
+// the benign adverts instead of strobing to None (2026-07-29 field bug).
+WL_TEST(map_feed_tracker_holds_through_benign_interleave) {
+  ThreatState ts;
+  feed_tracker(ts, TailFlag::ConfirmedTail, 100);        // the real tag
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+  feed_tracker(ts, TailFlag::None, 100);                 // an unrelated device's advert
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);  // held, not stomped
+  feed_tracker(ts, TailFlag::Familiar, 100);             // a benign familiar device
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);  // still held
+  WL_CHECK(ts.level() == ThreatLevel::Critical);
+}
+
+// The per-AP RogueAp feed has the same shape: a benign AP classified between two
+// sightings of a rogue AP must not drop the domain that the rogue raised.
+WL_TEST(map_feed_rogue_holds_through_benign_interleave) {
+  ThreatState ts;
+  feed(ts, RogueFlag::OpenTwinOfSecuredSsid, 100);       // High: an evil twin
+  WL_CHECK(ts.domain_severity(ThreatDomain::RogueAp) == Severity::High);
+  feed(ts, RogueFlag::None, 100);                        // a benign AP in the same scan
+  WL_CHECK(ts.domain_severity(ThreatDomain::RogueAp) == Severity::High);  // held
+}
+
 // ---- feed() reports under the correct domain and drives the aggregator ------
 WL_TEST(map_feed_confirmed_tail_is_critical) {
   ThreatState ts;

@@ -189,3 +189,51 @@ WL_TEST(threat_reset_clears) {
   WL_CHECK(ts.domain_severity(ThreatDomain::RogueAp) == Severity::None);
   WL_CHECK(ts.domain_severity(ThreatDomain::DeauthFlood) == Severity::None);
 }
+
+// ---- report_raise: a stronger read still rises immediately. -----------------
+WL_TEST(threat_report_raise_still_rises) {
+  ThreatState ts;
+  ts.report_raise(ThreatDomain::Airtag, Severity::Low, 500);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::Low);
+  ts.report_raise(ThreatDomain::Airtag, Severity::High, 500);  // a stronger entity
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+  WL_CHECK(ts.level() == ThreatLevel::Critical);
+}
+
+// ---- report_raise: a weaker interleaved read must NOT lower the level. -------
+// Reproduces the 2026-07-29 field bug: a confirmed tracker (High) and benign
+// devices (None) interleave on the per-advert feed. Last-wins report() would
+// strobe the domain None<->High every benign advert; report_raise() holds High.
+WL_TEST(threat_report_raise_holds_against_interleaved_weaker) {
+  ThreatState ts;
+  uint32_t t = 1000;
+  for (int i = 0; i < 20; ++i) {
+    ts.report_raise(ThreatDomain::Airtag, Severity::High, t);   // the real tracker
+    WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+    ts.report_raise(ThreatDomain::Airtag, Severity::None, t);   // a benign device
+    WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);  // not stomped
+    t += 2;
+    ts.tick(t);   // ongoing, re-reported inside kDecaySec: never decays
+  }
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+  WL_CHECK(ts.level() == ThreatLevel::Critical);
+}
+
+// ---- report_raise: a weaker read does not refresh the decay clock, so once the
+// real threat departs the domain still relaxes to None over kDecaySec. ---------
+WL_TEST(threat_report_raise_decays_after_threat_departs) {
+  ThreatState ts;
+  ts.report_raise(ThreatDomain::Airtag, Severity::High, 1000);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+
+  // Tracker gone; only benign None reads keep arriving. They must be ignored
+  // (not refresh the anchor), so decay steps High->Medium->Low->None on schedule.
+  uint32_t t = 1000;
+  for (int i = 0; i < 3; ++i) {
+    t += ThreatState::kDecaySec;
+    ts.report_raise(ThreatDomain::Airtag, Severity::None, t);  // ignored, no refresh
+    ts.tick(t);
+  }
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::None);
+  WL_CHECK(ts.level() == ThreatLevel::Calm);
+}

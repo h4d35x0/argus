@@ -20,6 +20,19 @@ void ThreatState::report(ThreatDomain d, Severity s, uint32_t t_sec) {
   dom_[i].last_report = t_sec;
 }
 
+void ThreatState::report_raise(ThreatDomain d, Severity s, uint32_t t_sec) {
+  const size_t i = static_cast<size_t>(d);
+  if (i >= kDomainCount) return;  // guard: not a real domain (e.g. _Count)
+  // Multi-source domain (see header): only a read AT OR ABOVE the current level
+  // raises it and refreshes the decay clock. A weaker read from a quieter peer is
+  // ignored outright - it neither lowers the level another entity raised nor
+  // touches the decay anchor, so a departed threat still relaxes via tick() while
+  // a benign entity seen mid-stream cannot strobe the domain down.
+  if (static_cast<uint8_t>(s) < static_cast<uint8_t>(dom_[i].sev)) return;
+  dom_[i].sev = s;
+  dom_[i].last_report = t_sec;
+}
+
 void ThreatState::tick(uint32_t now_sec) {
   for (size_t i = 0; i < kDomainCount; ++i) {
     // Nothing to decay, and never rewind time on an out-of-order / stale tick.

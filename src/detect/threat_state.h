@@ -105,7 +105,25 @@ class ThreatState {
   // reported value (rise or fall, applied immediately) and stamps t_sec as the
   // domain's last-report time, refreshing its decay clock. A domain d >= _Count
   // is ignored. t_sec is caller-supplied seconds; no clock is read.
+  //
+  // report() assumes ONE authoritative source per domain: a detector that owns
+  // the whole channel and whose live read (up OR down) is the truth for it (the
+  // flood detectors, which report a single in-window aggregate). Use it for those.
   void report(ThreatDomain d, Severity s, uint32_t t_sec);
+
+  // MULTI-SOURCE variant: for a domain fed by MANY independent entities per cycle
+  // (per-AP rogue verdicts, per-advert tracker follows, per-AP camera
+  // classifications), where each entity is authoritative only UPWARD - "this
+  // entity is at least this dangerous for this domain" - and no single entity may
+  // speak for the whole domain going DOWN. A benign entity seen between two
+  // sightings of a real threat must not stomp the level the threat raised, or the
+  // domain strobes None<->High every advert. So report_raise() only raises (and
+  // refreshes the decay clock) on a read AT OR ABOVE the current level, and
+  // ignores a weaker read entirely - leaving the decay anchor untouched so a
+  // genuinely departed threat still relaxes over kDecaySec via tick(). Falling is
+  // therefore owned solely by DECAY here, never by a quieter peer. A domain
+  // d >= _Count is ignored.
+  void report_raise(ThreatDomain d, Severity s, uint32_t t_sec);
 
   // Age the domains against a caller-supplied "now" even when no new report has
   // arrived: any domain not re-reported for kDecaySec decays one Severity step
