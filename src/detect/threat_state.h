@@ -85,7 +85,45 @@ class ThreatState {
   // Calm. 20s is long enough to ride out a scan gap or a momentary loss of the
   // offending signal, short enough that a genuinely departed threat clears in a
   // reasonable time.
+  //
+  // DEFAULT / FLOOD period. Correct for a domain whose detector reports a live
+  // in-window AGGREGATE every cycle (DeauthFlood, BleSpam, BeaconFlood): it is
+  // effectively continuous, so 20s of silence really does mean the flood stopped.
   static constexpr uint32_t kDecaySec = 20;
+
+  // SLOW-CADENCE period, for domains fed by a PHYSICAL DEVICE'S OWN ADVERTISING
+  // rather than by a continuous detector. A tracker chooses when it talks, and
+  // 20s of silence from one is normal operation, not departure.
+  //
+  // Tuned from the 2026-07-30 real-AirTag field run (see
+  // tasks/TRACKER-DETECTION-VALIDATION-HANDOFF.md): the tracker's verdict cadence
+  // was avg 37.7s with a clear ~60s mode, and 65 of 150 inter-verdict gaps
+  // exceeded 20s. Under a flat 20s period a LONE tracker decays High->Medium->Low
+  // ->None across a single 60s advert gap, so the HADES accent (which flips at
+  // ThreatLevel::Alert, see detect_pipeline.cpp) goes COLD mid-tail and then
+  // flashes back on the next advert. That run only looked healthy because four
+  // other tracker-flagged devices kept the Airtag domain's anchor fresh.
+  //
+  // 90s = 1.5x the observed mode: rides out a normal gap, still clears a genuinely
+  // departed tracker in a few minutes. Raise it if a future run shows a slower
+  // advertiser; do NOT lower it below the observed cadence.
+  static constexpr uint32_t kSlowDecaySec = 90;
+
+  // Per-domain decay period. Falling is owned by decay() for the per-entity
+  // domains (see report_raise), so this constant is what decides how long a tail
+  // is believed after its last sighting - it is a DETECTION parameter, not a
+  // cosmetic one. Keep it in sync with how each domain is actually fed.
+  //
+  // Single return statement, not a switch: the ESP32 Arduino core compiles this
+  // as C++11, where a constexpr function body must be exactly one return. The
+  // host test harness is C++17 and would have accepted either.
+  static constexpr uint32_t decay_sec_for(ThreatDomain d) {
+    // Airtag/Tail are fed per observed entity, on that entity's own advertising
+    // schedule; every other domain is fed by a detector that reports each cycle.
+    return (d == ThreatDomain::Airtag || d == ThreatDomain::Tail)
+               ? kSlowDecaySec
+               : kDecaySec;
+  }
 
   // --- CORRELATION ESCALATION -----------------------------------------------
   // Two or more domains simultaneously at Medium-or-worse is materially more
@@ -126,9 +164,10 @@ class ThreatState {
   void report_raise(ThreatDomain d, Severity s, uint32_t t_sec);
 
   // Age the domains against a caller-supplied "now" even when no new report has
-  // arrived: any domain not re-reported for kDecaySec decays one Severity step
-  // per elapsed kDecaySec, down to None. tick() only moves time forward; a
-  // now_sec at or before a domain's last report leaves that domain untouched.
+  // arrived: any domain not re-reported for its decay_sec_for() period decays one
+  // Severity step per elapsed period, down to None. tick() only moves time
+  // forward; a now_sec at or before a domain's last report leaves that domain
+  // untouched.
   void tick(uint32_t now_sec);
 
   // Forget all state: every domain back to None.

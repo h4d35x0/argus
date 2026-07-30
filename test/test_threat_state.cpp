@@ -114,8 +114,10 @@ WL_TEST(threat_silent_domain_decays_to_calm) {
 WL_TEST(threat_large_gap_decays_all_the_way) {
   ThreatState ts;
   ts.report(ThreatDomain::Tail, Severity::High, 500);
-  // Jump well past 3 decay windows in a single tick.
-  ts.tick(500 + 10 * ThreatState::kDecaySec);
+  // Jump well past 3 decay windows in a single tick. Tail is a slow-cadence
+  // domain, so use ITS period rather than the flood default.
+  const uint32_t period = ThreatState::decay_sec_for(ThreatDomain::Tail);
+  ts.tick(500 + 10 * period);
   WL_CHECK(ts.domain_severity(ThreatDomain::Tail) == Severity::None);
   WL_CHECK(ts.level() == ThreatLevel::Calm);
 }
@@ -220,7 +222,7 @@ WL_TEST(threat_report_raise_holds_against_interleaved_weaker) {
 }
 
 // ---- report_raise: a weaker read does not refresh the decay clock, so once the
-// real threat departs the domain still relaxes to None over kDecaySec. ---------
+// real threat departs the domain still relaxes to None over its decay period. ---
 WL_TEST(threat_report_raise_decays_after_threat_departs) {
   ThreatState ts;
   ts.report_raise(ThreatDomain::Airtag, Severity::High, 1000);
@@ -228,12 +230,67 @@ WL_TEST(threat_report_raise_decays_after_threat_departs) {
 
   // Tracker gone; only benign None reads keep arriving. They must be ignored
   // (not refresh the anchor), so decay steps High->Medium->Low->None on schedule.
+  const uint32_t period = ThreatState::decay_sec_for(ThreatDomain::Airtag);
   uint32_t t = 1000;
   for (int i = 0; i < 3; ++i) {
-    t += ThreatState::kDecaySec;
+    t += period;
     ts.report_raise(ThreatDomain::Airtag, Severity::None, t);  // ignored, no refresh
     ts.tick(t);
   }
   WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::None);
   WL_CHECK(ts.level() == ThreatLevel::Calm);
+}
+
+// ---- PER-DOMAIN DECAY PERIOD ------------------------------------------------
+// Regression cover for the 2026-07-30 field finding: a LONE tracker adverts on
+// its own schedule (measured avg 37.7s, ~60s mode), so under the flat 20s flood
+// period it decayed High->None across a single advert gap and the HADES accent
+// went cold mid-tail. Airtag/Tail now decay on kSlowDecaySec; the flood domains
+// must NOT be slowed down with them.
+
+// A slow-cadence domain HOLDS High across a realistic 60s advert gap.
+WL_TEST(threat_slow_domain_holds_across_advert_gap) {
+  ThreatState ts;
+  ts.report_raise(ThreatDomain::Airtag, Severity::High, 1000);
+
+  // 60s of silence - the observed modal gap between two adverts of one tracker.
+  ts.tick(1060);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+  // Still hot enough for the accent (flips at Alert), which is the whole point.
+  WL_CHECK(ts.level() == ThreatLevel::Critical);
+
+  // The next advert arrives and re-raises; the domain never dipped.
+  ts.report_raise(ThreatDomain::Airtag, Severity::High, 1060);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+}
+
+// ...but it is not immortal: past its own period it still steps down.
+WL_TEST(threat_slow_domain_still_decays_on_its_own_period) {
+  ThreatState ts;
+  const uint32_t period = ThreatState::decay_sec_for(ThreatDomain::Airtag);
+  WL_CHECK(period > ThreatState::kDecaySec);   // genuinely slower than flood
+
+  ts.report_raise(ThreatDomain::Airtag, Severity::High, 1000);
+  ts.tick(1000 + period - 1);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
+
+  ts.tick(1000 + period);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::Medium);
+  ts.tick(1000 + 3 * period);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::None);
+}
+
+// A flood domain keeps the fast 20s staircase - the split is real, not a
+// global slowdown. Same elapsed time that leaves Airtag at High clears BeaconFlood.
+WL_TEST(threat_flood_domain_keeps_fast_decay) {
+  ThreatState ts;
+  WL_CHECK(ThreatState::decay_sec_for(ThreatDomain::BeaconFlood) ==
+           ThreatState::kDecaySec);
+
+  ts.report(ThreatDomain::BeaconFlood, Severity::High, 1000);
+  ts.report_raise(ThreatDomain::Airtag, Severity::High, 1000);
+
+  ts.tick(1060);   // 60s: 3 flood steps, 0 slow steps
+  WL_CHECK(ts.domain_severity(ThreatDomain::BeaconFlood) == Severity::None);
+  WL_CHECK(ts.domain_severity(ThreatDomain::Airtag) == Severity::High);
 }

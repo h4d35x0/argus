@@ -39,12 +39,16 @@ void ThreatState::tick(uint32_t now_sec) {
     if (dom_[i].sev == Severity::None) continue;
     if (now_sec <= dom_[i].last_report) continue;
 
-    // One Severity step drops per whole kDecaySec elapsed since the last report.
-    // Advancing last_report by the consumed whole periods (rather than snapping
-    // it to now_sec) keeps the remainder toward the next step, so decay is a
-    // smooth staircase and never loses partial progress.
+    // One Severity step drops per whole decay period elapsed since the last
+    // report. The period is PER DOMAIN (decay_sec_for): a flood detector reports
+    // continuously so 20s of silence means it stopped, while a tracker domain is
+    // fed on the tracked device's own advertising schedule, where 20s of silence
+    // is normal. Advancing last_report by the consumed whole periods (rather than
+    // snapping it to now_sec) keeps the remainder toward the next step, so decay
+    // is a smooth staircase and never loses partial progress.
+    const uint32_t period = decay_sec_for(static_cast<ThreatDomain>(i));
     uint32_t elapsed = now_sec - dom_[i].last_report;
-    uint32_t steps = elapsed / kDecaySec;
+    uint32_t steps = elapsed / period;
     if (steps == 0) continue;
 
     uint8_t sev = static_cast<uint8_t>(dom_[i].sev);
@@ -54,7 +58,7 @@ void ThreatState::tick(uint32_t now_sec) {
       sev = static_cast<uint8_t>(sev - steps);
     }
     dom_[i].sev = static_cast<Severity>(sev);
-    dom_[i].last_report += steps * kDecaySec;
+    dom_[i].last_report += steps * period;
   }
 }
 

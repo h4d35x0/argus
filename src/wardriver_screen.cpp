@@ -61,6 +61,7 @@ struct ApRecord {
     double  lat;
     double  lng;
     float   alt;
+    float   acc;        // WiGLE AccuracyMeters; 0 = position unknown (lat/lng 0,0)
     char    type;       // 'W' = WiFi, 'L' = BLE
     bool    valid;
 };
@@ -204,6 +205,47 @@ static void ble_gap_cb(esp_ble_gap_cb_param_t *param) {
     xQueueSend(ap_queue, &raw, 0);
 }
 
+// ─── GPS stamp for a captured row ─────────────────────────────
+// A WiGLE row claims "this AP was observed HERE". gps.location.isValid() does
+// NOT support that claim: TinyGPSPlus keeps isValid() true holding the PREVIOUS
+// POWER CYCLE's coordinates until fresh NMEA overwrites them (see the
+// GPS_FRESH_MS note in gps_screen.cpp), so rows silently inherited a position
+// the watch was nowhere near. The 2026-07-30 CSV proves it: 26 GPS lock drops
+// during the session, yet not one row recorded an unknown position.
+//
+// gps_screen_has_stable_lock() is the honest gate - fresh NMEA, satellite
+// hysteresis, and at most ~10 s of debounce staleness, which is ordinary survey
+// accuracy. When it is false we write 0,0 / accuracy 0, WiGLE's convention for
+// "position unknown", rather than inventing one.
+struct GpsStamp {
+    double lat, lng;
+    float  alt, acc;
+};
+
+static GpsStamp gps_stamp_now() {
+    GpsStamp g = { 0.0, 0.0, 0.0f, 0.0f };
+    if (!gps_screen_has_stable_lock() || !instance.gps.location.isValid())
+        return g;   // position unknown - say so
+
+    g.lat = instance.gps.location.lat();
+    g.lng = instance.gps.location.lng();
+    if (instance.gps.altitude.isValid())
+        g.alt = (float)instance.gps.altitude.meters();
+
+    // AccuracyMeters from HDOP. HDOP is unitless dilution-of-precision; the
+    // conventional consumer-GNSS estimate is HDOP x the receiver's nominal UERE
+    // (~5 m here). Floored at 5 m so a bogus HDOP of 0 never claims a perfect
+    // fix, and left at 0 only when HDOP is unavailable (0 = unknown to WiGLE).
+    if (instance.gps.hdop.isValid()) {
+        double h = instance.gps.hdop.hdop();
+        if (h > 0.0) {
+            double m = h * 5.0;
+            g.acc = (float)(m < 5.0 ? 5.0 : m);
+        }
+    }
+    return g;
+}
+
 // ─── Drain queue → ap_table (main-loop task) ──────────────────
 static void drain_queue() {
     // RTC read is I2C (~1-2 ms) and was previously being done per new AP.
@@ -220,12 +262,15 @@ static void drain_queue() {
         if (rec) {
             if (raw.rssi > rec->rssi) {
                 rec->rssi = raw.rssi;
-                if (instance.gps.location.isValid()) {
-                    rec->lat = instance.gps.location.lat();
-                    rec->lng = instance.gps.location.lng();
+                // Re-stamp only when we actually know where we are; a dropout
+                // must not overwrite a good position, nor keep a stale one.
+                GpsStamp g = gps_stamp_now();
+                if (g.acc > 0.0f || g.lat != 0.0 || g.lng != 0.0) {
+                    rec->lat = g.lat;
+                    rec->lng = g.lng;
+                    rec->alt = g.alt;
+                    rec->acc = g.acc;
                 }
-                if (instance.gps.altitude.isValid())
-                    rec->alt = (float)instance.gps.altitude.meters();
             }
         } else {
             rec = ap_get_or_create(raw.mac);
@@ -257,9 +302,11 @@ static void drain_queue() {
                      tm_now.tm_year + 1900, tm_now.tm_mon + 1, tm_now.tm_mday,
                      tm_now.tm_hour, tm_now.tm_min, tm_now.tm_sec);
 
-            rec->lat = instance.gps.location.isValid() ? instance.gps.location.lat() : 0.0;
-            rec->lng = instance.gps.location.isValid() ? instance.gps.location.lng() : 0.0;
-            rec->alt = instance.gps.altitude.isValid()  ? (float)instance.gps.altitude.meters() : 0.0f;
+            GpsStamp g = gps_stamp_now();
+            rec->lat = g.lat;
+            rec->lng = g.lng;
+            rec->alt = g.alt;
+            rec->acc = g.acc;
         }
     }
 }
@@ -298,16 +345,18 @@ static void flush_to_sd() {
         ssid_q[qi++] = '"';
         ssid_q[qi]   = '\0';
 
+        // AccuracyMeters was hardcoded 0.0; it now carries the HDOP-derived
+        // estimate, and stays 0.0 exactly when the position is unknown (0,0).
         if (r->type == 'L') {
-            f.printf("%s,%s,%s,%s,0,,%d,%.6f,%.6f,%.1f,0.0,,%s,BLE\n",
+            f.printf("%s,%s,%s,%s,0,,%d,%.6f,%.6f,%.1f,%.1f,,%s,BLE\n",
                      mac_str, ssid_q, r->auth, r->first_seen,
                      (int)r->rssi, r->lat, r->lng, (double)r->alt,
-                     r->mfgr);
+                     (double)r->acc, r->mfgr);
         } else {
-            f.printf("%s,%s,%s,%s,%d,%d,%d,%.6f,%.6f,%.1f,0.0,,,WIFI\n",
+            f.printf("%s,%s,%s,%s,%d,%d,%d,%.6f,%.6f,%.1f,%.1f,,,WIFI\n",
                      mac_str, ssid_q, r->auth, r->first_seen,
                      r->channel, ch_to_freq(r->channel), (int)r->rssi,
-                     r->lat, r->lng, (double)r->alt);
+                     r->lat, r->lng, (double)r->alt, (double)r->acc);
         }
     }
 
@@ -450,7 +499,10 @@ static void on_start_stop(lv_event_t *) {
         // tells the user exactly what's missing instead of a silent dead press.
         // Wardriving geolocates every capture, so a GPS lock and an SD card to log
         // to are both required, plus at least one radio to scan.
-        bool gps_ok   = gps_screen_has_lock();
+        // Stable lock, matching what gps_stamp_now() will actually record. On the
+        // instantaneous predicate this gate flickered with the fix, so a tap that
+        // landed in a 1 s dropout was refused even though the survey was fine.
+        bool gps_ok   = gps_screen_has_stable_lock();
         bool sd_ok    = instance.isCardReady();
         bool radio_ok = wd_wifi_en || wd_bt_en;
         if (!(gps_ok && sd_ok && radio_ok)) {
@@ -496,7 +548,7 @@ static void on_start_stop(lv_event_t *) {
         // pressed"). Now the button responds instantly, then teardown runs.
         lv_obj_clear_state(wifi_toggle_sw, LV_STATE_DISABLED);
         lv_obj_clear_state(bt_toggle_sw,   LV_STATE_DISABLED);
-        bool gps_ok = gps_screen_has_lock();
+        bool gps_ok = gps_screen_has_stable_lock();   // match on_start_stop's gate
         bool sd_ok  = instance.isCardReady();
         bool ready  = gps_ok && sd_ok && (wd_wifi_en || wd_bt_en);
         lv_obj_set_style_bg_color(start_btn,
@@ -642,10 +694,10 @@ void wardriver_bg_tick()
 
     // Only auto-stop on SD removal. GPS lock can come and go - especially
     // during start_wardriving()'s WiFi init, which blocks the main loop
-    // long enough that TinyGPSPlus's age window expires. drain_queue()
-    // already handles gps.location.isValid()==false by writing lat=lng=0,
-    // and existing rows keep their captured fix - so dropping GPS lock
-    // is no reason to tear the whole session down.
+    // long enough that TinyGPSPlus's age window expires. gps_stamp_now()
+    // handles a lost fix by writing lat=lng=0 (WiGLE "unknown"), and existing
+    // rows keep the fix they were captured with - so dropping GPS lock is no
+    // reason to tear the whole session down.
     if (!instance.isCardReady()) {
         stop_wardriving();
         lv_obj_clear_state(wifi_toggle_sw, LV_STATE_DISABLED);
@@ -676,6 +728,10 @@ int  wardriver_get_bt_count()   { return total_bt_count   + bt_count;   }
 
 void wardriver_screen_update()
 {
+    // The status ICON reports the live truth (instantaneous predicate) so the
+    // user can see the fix actually coming and going. The READY hint below uses
+    // the debounced lock, so it agrees with on_start_stop's gate and with what
+    // gps_stamp_now() will record.
     bool gps_ok = gps_screen_has_lock();
     lv_label_set_text(gps_status_icon, gps_ok ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
     lv_obj_set_style_text_color(gps_status_icon,
@@ -689,7 +745,8 @@ void wardriver_screen_update()
         LV_PART_MAIN);
 
     if (!is_running) {
-        bool ready = gps_ok && sd_ok && (wd_wifi_en || wd_bt_en);
+        bool ready = gps_screen_has_stable_lock() && sd_ok
+                     && (wd_wifi_en || wd_bt_en);
         // Grey when not ready, green when ready — a hint, not a lock. The button
         // stays tappable so the user gets a reason dialog (see on_start_stop).
         lv_obj_set_style_bg_color(start_btn,

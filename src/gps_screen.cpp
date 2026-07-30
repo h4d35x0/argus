@@ -118,6 +118,75 @@ static bool gps_fresh(const T &elem)
     return elem.isValid() && elem.age() < GPS_FRESH_MS;
 }
 
+// ---- STABLE LOCK (debounced) ------------------------------------------------
+// gps_screen_has_lock() below is an INSTANTANEOUS predicate: one stale NMEA
+// sample or a routine satellite dip reads as "no fix" for that tick. That is
+// correct for the UI (show the truth right now), but wrong for the detection
+// consumers, which need to know whether we HAVE a position, not whether this
+// particular millisecond was clean.
+//
+// The 2026-07-30 field run logged 26 lock drops / 25 re-acquires, several only
+// 1-2 s apart. Each one made ble_detect_pipeline publish cell = -1, the tail
+// detector's "unknown location" sentinel, punching holes in the geo-cell trail
+// the follow classifier is built on.
+//
+// So: rising edge is INSTANT (a fix is a fix), falling edge must persist for
+// GPS_STABLE_DROP_MS before we believe it, and the satellite threshold has
+// hysteresis (acquire at 4, hold down to 3) so a routine one-satellite dip does
+// not drop the fix. Evaluated once per second from on_gps_update(); the accessor
+// just reads the cached result.
+//
+// Consequence callers must know: while the drop is being debounced, the position
+// this vouches for can be up to GPS_STABLE_DROP_MS old. That is a bounded,
+// survey-grade staleness - unlike TinyGPSPlus's isValid(), which can hand back a
+// fix from a PREVIOUS POWER CYCLE (see the GPS_FRESH_MS note above).
+static const uint32_t GPS_STABLE_DROP_MS  = 10000;  // ride out sub-10s dropouts
+static const uint32_t GPS_STABLE_SATS_ACQ = 4;      // sats needed to acquire
+static const uint32_t GPS_STABLE_SATS_HLD = 3;      // sats needed to hold
+
+static bool     s_stable_lock       = false;
+static uint32_t s_unlocked_since_ms = 0;    // 0 = not currently timing a drop
+
+// The raw condition behind the stable lock. Same fields as gps_screen_has_lock(),
+// but the satellite floor depends on which way we are crossing it.
+static bool gps_stable_raw()
+{
+    if (!gps_powered) return false;
+    if (!gps_fresh(instance.gps.location))   return false;
+    if (!gps_fresh(instance.gps.satellites)) return false;
+    const uint32_t need = s_stable_lock ? GPS_STABLE_SATS_HLD : GPS_STABLE_SATS_ACQ;
+    return instance.gps.satellites.value() >= need;
+}
+
+static void gps_stable_lock_update()
+{
+    // GPS powered off is a DELIBERATE loss, not a dropout - drop immediately so
+    // nothing keeps vouching for a position after the user kills the radio.
+    if (!gps_powered) {
+        s_stable_lock       = false;
+        s_unlocked_since_ms = 0;
+        return;
+    }
+
+    if (gps_stable_raw()) {
+        s_stable_lock       = true;   // rising edge: instant
+        s_unlocked_since_ms = 0;
+        return;
+    }
+
+    if (!s_stable_lock) return;       // already lost; nothing to debounce
+
+    const uint32_t now = millis();
+    if (s_unlocked_since_ms == 0) {
+        s_unlocked_since_ms = now;    // start timing this drop
+        return;
+    }
+    if (now - s_unlocked_since_ms >= GPS_STABLE_DROP_MS) {
+        s_stable_lock       = false;  // sustained loss: believe it
+        s_unlocked_since_ms = 0;
+    }
+}
+
 static void update_status()
 {
     lv_label_set_text(status_label, gps_powered ? "Radio: ON" : "Radio: OFF");
@@ -180,6 +249,10 @@ static void on_gps_update(lv_timer_t *timer)
 {
     char buf[32];
     bool screen_active = gps_screen_is_active();
+
+    // Debounced lock state, refreshed every tick. Must run BEFORE the
+    // !gps_powered early-return below so powering GPS off clears it.
+    gps_stable_lock_update();
 
     // GPS off path. Push 0 sats to the home indicator so the badge clears
     // even if the user toggled GPS off from this screen and immediately
@@ -399,6 +472,13 @@ bool gps_screen_has_lock()
         && gps_fresh(instance.gps.location)
         && gps_fresh(instance.gps.satellites)
         && instance.gps.satellites.value() >= 4;
+}
+
+// Debounced sibling of gps_screen_has_lock(). See the STABLE LOCK block near
+// gps_fresh() for why the detection/survey consumers use this instead.
+bool gps_screen_has_stable_lock()
+{
+    return s_stable_lock;
 }
 
 // Boot-time power-on: bring GPS up the same way on_toggle does and reflect it on

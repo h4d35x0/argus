@@ -222,8 +222,15 @@ void ble_detect_pipeline_tick(uint32_t now_sec)
 
     // Publish the coarse GPS cell for the (locationless) callback. Read GPS here
     // on the main task; geo::coarse_cell uses <cmath>, unsafe in the BT callback.
+    //
+    // STABLE lock, not the instantaneous one: a 1-2 s GPS dropout must not blank
+    // the cell trail. -1 is tail_detect's "unknown location" sentinel, so every
+    // flap used to punch a hole in the very evidence the follow classifier counts
+    // (26 flaps on the 2026-07-30 run). Through a debounced drop the location is
+    // still the last good one, so StableCellTracker simply re-emits the same
+    // cell - the trail HOLDS instead of breaking. Only a sustained loss reaches -1.
     int32_t next_cell = -1;
-    if (gps_screen_has_lock() && instance.gps.location.isValid())
+    if (gps_screen_has_stable_lock() && instance.gps.location.isValid())
         next_cell = s_stable_cell.update(instance.gps.location.lat(),
                                          instance.gps.location.lng());
     if (next_cell != s_cell_id) {

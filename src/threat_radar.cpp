@@ -301,7 +301,10 @@ void threatradar_bg_tick()
 
     if (!s_queue) return;
 
-    bool   has_fix = gps_screen_has_lock() && instance.gps.location.isValid();
+    // STABLE lock so waypoint capture agrees with the ble_detect_pipeline cell
+    // trail: a 1-2 s dropout must not turn a sighting into a location-less one
+    // and cost the tail a waypoint it actually earned.
+    bool   has_fix = gps_screen_has_stable_lock() && instance.gps.location.isValid();
     double lat = 0, lon = 0;
     if (has_fix) {
         lat = instance.gps.location.lat();
