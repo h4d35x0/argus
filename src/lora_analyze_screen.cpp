@@ -386,7 +386,7 @@ void lora_analyze_screen_create()
     band_btn = make_band_btn();
 
     title_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(title_label, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title_label, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title_label, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title_label, "LoRa");
     // Anchored at the top centre to match the PAGER / TPMS / SETTINGS

@@ -210,7 +210,7 @@ void bluetooth_screen_create()
     // Title — kept under 8 chars so it sits cleanly on the round display
     // at the 48 pt size used by the rest of the radio screens.
     lv_obj_t *title = lv_label_create(bt_screen_root);
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "Bluetooth");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);

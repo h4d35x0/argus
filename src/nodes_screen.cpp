@@ -384,7 +384,7 @@ void nodes_screen_create()
     // the two feel visually identical when swiping between them.
     lv_obj_t *title = lv_label_create(nodes_screen);
     s_nodes_title = title;
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "NODES");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 21);
@@ -534,7 +534,7 @@ void nodes_screen_create()
 void nodes_screen_show()
 {
     main_loop_request_lvgl_priority(12);
-    if (s_nodes_title) lv_obj_set_style_text_color(s_nodes_title, argus_accent(), LV_PART_MAIN);
+    if (s_nodes_title) lv_obj_set_style_text_color(s_nodes_title, argus_base_accent(), LV_PART_MAIN);
     rebuild_list();
     lv_scr_load(nodes_screen);
 }

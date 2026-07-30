@@ -570,7 +570,7 @@ void settings_screen_create()
     // Title
     lv_obj_t *title = lv_label_create(settings_screen);
     s_settings_title = title;   // repainted per mode in settings_screen_show()
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "SETTINGS");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
@@ -1337,7 +1337,7 @@ void settings_screen_show()
 
     // Heading follows the mode: red-team red in Offense, steel-blue otherwise.
     if (s_settings_title)
-        lv_obj_set_style_text_color(s_settings_title, argus_accent(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_settings_title, argus_base_accent(), LV_PART_MAIN);
 
     // Keep the Defense toggle showing the Offense EXIT target - it can be flipped
     // while inside Offense to choose whether Exit Offense lands in Defense or Daily.

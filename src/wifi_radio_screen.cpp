@@ -277,7 +277,7 @@ void wifi_radio_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(wifi_screen_root);
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "WiFi");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);

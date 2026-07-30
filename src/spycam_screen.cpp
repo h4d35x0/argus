@@ -78,7 +78,7 @@ void spycam_screen_create()
     lv_obj_set_style_border_width(spycam_screen, 0, LV_PART_MAIN);
 
     lv_obj_t *title = lv_label_create(spycam_screen);
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "SPYCAM");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);

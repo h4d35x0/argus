@@ -274,7 +274,7 @@ void nfc_screen_create()
 
     // Title
     lv_obj_t *title = lv_label_create(nfc_screen);
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "NFC");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);

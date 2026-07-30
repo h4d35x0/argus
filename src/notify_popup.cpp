@@ -41,7 +41,7 @@ static void show_banner(const notify::Notification &n)
     lv_obj_align(s_banner, LV_ALIGN_TOP_MID, 0, 72);
     lv_obj_set_style_bg_color(s_banner, lv_color_make(0x1A, 0x1A, 0x1E), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_banner, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(s_banner, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_banner, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_border_width(s_banner, 2, LV_PART_MAIN);
     lv_obj_set_style_radius(s_banner, 12, LV_PART_MAIN);
     lv_obj_set_style_pad_all(s_banner, 10, LV_PART_MAIN);
@@ -58,7 +58,7 @@ static void show_banner(const notify::Notification &n)
     // Header: bell + app/source name in the accent colour.
     lv_obj_t *app = lv_label_create(s_banner);
     lv_obj_set_style_text_font(app, &font_argus_label_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(app, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(app, argus_base_accent(), LV_PART_MAIN);
     lv_label_set_text_fmt(app, LV_SYMBOL_BELL "  %s", n.app[0] ? n.app : "Notification");
 
     if (n.title[0]) {

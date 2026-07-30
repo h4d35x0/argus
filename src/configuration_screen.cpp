@@ -359,7 +359,7 @@ void configuration_screen_create()
     // Title
     lv_obj_t *title = lv_label_create(cfg_screen);
     s_cfg_title = title;
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "CONFIGURATION");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
@@ -648,7 +648,7 @@ void configuration_screen_create()
 void configuration_screen_show()
 {
     main_loop_request_lvgl_priority(12);
-    if (s_cfg_title) lv_obj_set_style_text_color(s_cfg_title, argus_accent(), LV_PART_MAIN);
+    if (s_cfg_title) lv_obj_set_style_text_color(s_cfg_title, argus_base_accent(), LV_PART_MAIN);
     // Sync fields with current meshtastic values
     lv_textarea_set_text(long_ta,  meshtastic_get_long_name());
     lv_textarea_set_text(short_ta, meshtastic_get_short_name());

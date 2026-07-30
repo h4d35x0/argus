@@ -260,7 +260,7 @@ void nfc_write_screen_create()
     lv_obj_set_style_border_width(wr_screen, 0, LV_PART_MAIN);
 
     lv_obj_t *title = lv_label_create(wr_screen);
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "NFC WRITE");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);

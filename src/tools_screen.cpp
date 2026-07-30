@@ -62,7 +62,7 @@ static void show_radio_conflict_dialog(bool is_ble_feature)
 }
 
 static lv_obj_t *tools_screen;
-static lv_obj_t *tools_title;   // repainted on show() so it flips to HADES red under threat
+static lv_obj_t *tools_title;   // repainted on show() so it follows the current mode accent
 static lv_obj_t *t_airtag;    // referenced by on_airtag_clicked for colour swap
 static lv_obj_t *t_trackers;  // referenced by on_trackers_clicked for colour swap
 static lv_obj_t *t_flipper;   // referenced by on_flipper_clicked for colour swap
@@ -1685,7 +1685,7 @@ static void tile_long_pressed(lv_event_t *e)
     lv_obj_t *tile = (lv_obj_t *)lv_event_get_current_target(e);
     s_drag_tile   = tile;
     s_drag_active = true;
-    lv_obj_set_style_border_color(tile, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_border_color(tile, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_border_width(tile, 3, LV_PART_MAIN);
     if (tools_grid) lv_obj_clear_flag(tools_grid, LV_OBJ_FLAG_SCROLLABLE);
 }
@@ -1747,7 +1747,7 @@ void tools_screen_create()
 
     // Title
     tools_title = lv_label_create(tools_screen);
-    lv_obj_set_style_text_color(tools_title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(tools_title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(tools_title, &font_argus_label_28, LV_PART_MAIN);
     lv_label_set_text(tools_title, "TOOLS");
     lv_obj_align(tools_title, LV_ALIGN_TOP_MID, 0, 8);
@@ -2056,9 +2056,10 @@ void tools_screen_show()
 {
     main_loop_request_lvgl_priority(12);
     tools_apply_mode();   // reflect the current mode before the screen paints
-    // Repaint the title with the live accent on entry: HADES red if a tail is
-    // currently flagged, calm steel-blue otherwise.
-    if (tools_title) lv_obj_set_style_text_color(tools_title, argus_accent(), LV_PART_MAIN);
+    // Repaint the title with the MODE accent on entry: red-team red in Offense,
+    // calm steel-blue in Daily/Defense. Deliberately argus_base_accent(), not
+    // argus_accent(): a live threat must not turn Defense-side headings red.
+    if (tools_title) lv_obj_set_style_text_color(tools_title, argus_base_accent(), LV_PART_MAIN);
     lv_scr_load(tools_screen);
 }
 bool tools_screen_is_active() { return lv_screen_active() == tools_screen; }

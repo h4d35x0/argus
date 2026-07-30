@@ -46,7 +46,7 @@ static void update_status()
         col = lv_color_make(0x33, 0xCC, 0x66);
     } else {
         txt = "Waiting for phone to pair...";
-        col = argus_accent();
+        col = argus_base_accent();
     }
     lv_label_set_text(status_label, txt);
     lv_obj_set_style_text_color(status_label, col, LV_PART_MAIN);
@@ -86,7 +86,7 @@ static void add_card(const notify::Notification *n)
     if (n->app[0]) {
         lv_obj_t *app = lv_label_create(card);
         lv_obj_set_style_text_font(app, &font_argus_label_14, LV_PART_MAIN);
-        lv_obj_set_style_text_color(app, argus_accent(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(app, argus_base_accent(), LV_PART_MAIN);
         lv_label_set_text(app, n->app);
     }
     if (n->title[0]) {
@@ -187,7 +187,7 @@ void notifications_screen_create()
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *title = lv_label_create(screen);
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "Notify");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);

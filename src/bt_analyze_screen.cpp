@@ -242,7 +242,7 @@ void bt_analyze_screen_create()
     lv_obj_set_style_pad_all(screen, 0, LV_PART_MAIN);
 
     title_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(title_label, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title_label, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title_label, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title_label, "Bluetooth");
     // Anchored at the top centre to match the PAGER / TPMS / SETTINGS

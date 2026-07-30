@@ -340,7 +340,7 @@ void tpms_screen_create()
     // Title — sized to match the SETTINGS screen header so the two read
     // as siblings at the same hierarchy.
     lv_obj_t *title = lv_label_create(tpms_screen);
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TPMS");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);

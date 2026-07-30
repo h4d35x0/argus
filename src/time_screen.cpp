@@ -766,7 +766,7 @@ void time_screen_create()
 
     lv_obj_t *title = lv_label_create(time_screen);
     s_time_title = title;
-    lv_obj_set_style_text_color(title, argus_accent(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, argus_base_accent(), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &font_argus_ui, LV_PART_MAIN);
     lv_label_set_text(title, "TIME");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
@@ -860,7 +860,7 @@ void time_screen_create()
 
 void time_screen_show()
 {
-    if (s_time_title) lv_obj_set_style_text_color(s_time_title, argus_accent(), LV_PART_MAIN);
+    if (s_time_title) lv_obj_set_style_text_color(s_time_title, argus_base_accent(), LV_PART_MAIN);
     // Tile borders follow the mode: red-team red in Offense, steel-blue otherwise.
     if (s_time_grid) {
         lv_color_t bc = (argus_mode_current() == ArgusMode::Offense)

@@ -37,14 +37,25 @@
 
 // Runtime, state-aware accent. Returns ARGUS_ACCENT (steel-blue) at rest and
 // HADES_RED when Threat Radar is flagging a tail (top level >= TR_LVL_LIKELY).
-// High-visibility, frequently-repainted surfaces (clock status bar, Threat
-// Radar screen) call this so the brand flips to the alert state live; static
-// low-traffic screens keep using the ARGUS_ACCENT macro. Defined in theme.cpp.
+//
+// RESERVED FOR ALERT SURFACES ONLY. Red on the Defense side means "a threat is
+// live right now", so only surfaces whose job is to raise that alarm may call
+// this: the clock status icons (main.cpp status_accent_active(), same
+// threshold) and the Threat Radar screen. Ordinary screen chrome must NOT;
+// see argus_base_accent() below. Defined in theme.cpp.
 lv_color_t argus_accent(void);
 
-// Mode-aware BASE accent (no threat overlay): steel-blue in Daily/Defense, amber
-// in Offense. argus_accent() layers the threat-red flip on top of this (except in
-// Daily, which stays innocent and never flips). Defined in theme.cpp.
+// Mode-aware BASE accent (no threat overlay): steel-blue in Daily/Defense,
+// red-team red in Offense. argus_accent() layers the threat-red flip on top of
+// this (except in Daily, which stays innocent and never flips).
+//
+// THIS IS THE DEFAULT FOR SCREEN CHROME: every screen title/heading, list
+// accent, card border and notification banner uses it, so colour tracks the
+// MODE and red appears only on the Offense side. Using argus_accent() for
+// chrome was the 2026-07-30 bug: a live WiFi/tracker threat turned every
+// Defense-mode heading (TOOLS, TIME, WARDRIVER, MESHTASTIC, NODES, SEND
+// MESSAGE, CONFIGURATION, SETTINGS, ...) HADES-red, which reads as "you are in
+// Offense" rather than as an alert. Defined in theme.cpp.
 lv_color_t argus_base_accent(void);
 
 // Persistent per-mode indicator on lv_layer_top(): an amber/red border frame in
