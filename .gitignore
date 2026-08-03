@@ -13,3 +13,12 @@ argusprompt.txt
 
 # Device crash captures are local diagnostic artifacts.
 artifacts/coredump/
+
+# Serial-monitor scratch capture - local diagnostic file, not part of the repo
+tools/panic_capture.txt
+
+# Internal working notes, not part of the product
+tasks/lessons.md
+
+# Internal release-process notes
+tasks/PUBLIC-RELEASE-CHECKLIST.md

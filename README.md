@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **Threat Radar** anti-stalking: correlates tracker / AP sightings against your GPS movement to flag anything *following you*, with haptic + on-face alerts and a hashed warning broadcast to your Meshtastic group.
+- **Threat Radar** anti-stalking: correlates tracker / AP sightings against your GPS movement to score whether a device may be *following you*, with haptic + on-face alerts and a hashed warning broadcast to your Meshtastic group.
 - **Phone notifications** on your wrist from **iPhone (ANCS)** and **Android (Gadgetbridge)**, with a pop-up banner over the watch face. No companion app on iOS.
 - **Anti-surveillance detectors**: unwanted AirTags / Find My trackers, Flipper Zero, card skimmers, evil-twin APs, and surveillance vendors (Flock / Axon / Ring).
 - **RF toolkit**: WiFi survey + port scan, WiFi/BLE/LoRa spectrum analyzers, TPMS, POCSAG/FLEX pager, LoRa APRS, wardriving, WPA handshake capture, NFC read/write.
@@ -174,8 +174,10 @@ These are the per-radio status screens stepped through by short-pressing the pow
 The flagship defensive feature, on the **Radar** tile. Threat Radar correlates every confirmed detector hit (AirTag / Find My tracker, Evil Twin, Flipper, Flock, Skimmer) against your live GPS fix and asks one question: *is this device following me?* A MAC seen at a single spot is ambient; a MAC whose sightings spread across many waypoints as you move is scored **Possible -> Likely -> Confirmed** tail. It runs continuously in the background, fed by all five detectors and the wardriver.
 
 - **On-face alerts** — a Confirmed tail fires a haptic alert and raises a badge on the watch face; the UI accent shifts toward HADES-red as the threat posture rises.
-- **Counter-tail (vehicular)** — persistent ambient BLE/WiFi that co-moves with you (a car radiating infotainment / TPMS / hotspot) is promoted to a `VEHICLE` contact, with a learned "familiar = your own car, seen with you on 2+ days" suppression so your daily driver does not cry wolf.
+- **Counter-tail (vehicular)** — persistent ambient BLE/WiFi that co-moves with you (a car radiating infotainment / TPMS / hotspot) is promoted to a `VEHICLE` contact, with a learned "familiar = your own car, seen with you on 2+ days" suppression designed to keep your daily driver from crying wolf.
 - **Mesh reputation** — when a tail hits Confirmed, ARGUS broadcasts a hashed tracker fingerprint over Meshtastic (`TRFLAG|<hash>|<cat>`) so your whole group is warned; peers fold the hashes into a local reputation store, escalation logged to `/Settings/threat_log.txt`.
+
+**Field status:** the tail scoring and threat-decay logic is implemented and covered by the host unit-test suite, but Threat Radar has not yet been validated end to end against a real tracker performing a real tail over distance. Treat its verdicts as a prompt to look around, not as proof, and expect both misses and false positives until field results are in.
 
 ### Screenshot
 
@@ -546,7 +548,7 @@ Dependencies are fetched at build time (pinned in `platformio.ini`); their sourc
 
 ### Responsible use
 
-This firmware includes RF transmit and wireless-monitoring tools (TPMS, pager TX, Tesla charge-port TX, Wi-Fi/BLE survey, evil-twin / tracker / skimmer detection, etc.). Transmitting on regulated bands and capturing wireless traffic are subject to local law and licensing. Use it only on equipment and networks you own or are explicitly authorized to test, and for educational or defensive purposes. The software is provided "as is", without warranty — see the MIT disclaimer above.
+This firmware includes RF transmit and wireless-monitoring tools (TPMS, pager TX, Tesla charge-port TX, Wi-Fi/BLE survey, evil-twin / tracker / skimmer detection, etc.). Transmitting on regulated bands and capturing wireless traffic are subject to local law and licensing. Use it only on equipment and networks you own or are explicitly authorized to test, and for educational or defensive purposes. The anti-stalking features are an aid, not a safety guarantee: do not rely on ARGUS alone if you believe you are being followed, and contact local authorities. The software is provided "as is", without warranty — see the MIT disclaimer above.
 
 ---
 

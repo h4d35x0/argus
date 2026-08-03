@@ -64,7 +64,7 @@ def tile_ground():
     return base, mask
 
 
-DL = "~/Downloads"   # source art the user provided
+DL = os.environ.get("ARGUS_ICON_SRC", "./icon-src")   # source art dir; override with ARGUS_ICON_SRC
 
 
 def image_glyph(path, accent, hi, target=150):
