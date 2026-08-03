@@ -1,6 +1,7 @@
 #include "evil_twin.h"
 #include "threat_radar.h"
 #include "hexhound.h"       // feed HexHound on a confirmed detector hit
+#include "detect_log_sd.h"
 
 void clock_screen_get_local_time(struct tm *out);
 #include "wifi_beacon_manager.h"
@@ -238,4 +239,9 @@ void evil_twin_bg_tick()
 
     f.print("\n");
     f.close();
+
+    // Bound how long this record is retained. These logs hold other people's
+    // device identifiers and roughly where they stood, so they expire; see
+    // src/detect/log_retention.h for the policy and the reasoning.
+    detect_log_enforce("/EvilTwin/discovered.txt");
 }

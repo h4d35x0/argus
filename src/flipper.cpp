@@ -1,6 +1,7 @@
 #include "flipper.h"
 #include "threat_radar.h"
 #include "hexhound.h"       // feed HexHound on a confirmed detector hit
+#include "detect_log_sd.h"
 
 void clock_screen_get_local_time(struct tm *out);
 #include "ble_scan_manager.h"
@@ -216,4 +217,9 @@ void flipper_bg_tick()
 
     f.print("\n");
     f.close();
+
+    // Bound how long this record is retained. These logs hold other people's
+    // device identifiers and roughly where they stood, so they expire; see
+    // src/detect/log_retention.h for the policy and the reasoning.
+    detect_log_enforce("/Flipper/discovered.txt");
 }

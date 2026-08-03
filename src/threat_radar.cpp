@@ -1,4 +1,5 @@
 #include "threat_radar.h"
+#include "detect_log_sd.h"
 
 void clock_screen_get_local_time(struct tm *out);   // defined in main.cpp
 #include "gps_screen.h"
@@ -187,6 +188,11 @@ static void log_tail_to_sd(const TrContact *c)
         geo::kGpsLogDecimals, c->far_lat, geo::kGpsLogDecimals, c->far_lon);
     f.print("\n");
     f.close();
+
+    // Bound how long this record is retained. These logs hold other people's
+    // device identifiers and roughly where they stood, so they expire; see
+    // src/detect/log_retention.h for the policy and the reasoning.
+    detect_log_enforce("/ThreatRadar/discovered.txt");
 }
 
 static void fill_threat(const TrContact *c, TrThreat *t, uint32_t now)
