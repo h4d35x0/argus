@@ -4,6 +4,9 @@
 #include "boot_prefs.h"
 #include "argus_mode.h"
 #include "pin_pad_screen.h"
+#include "charge_state.h"
+#include "detect_log_sd.h"
+#include "detect/log_retention.h"   // kMaxAgeDays, for the readout
 #include <LilyGoLib.h>
 #include <SD.h>
 #include <time.h>
@@ -51,17 +54,29 @@ static void settings_update_sysinfo()
     unsigned ps_free  = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
     unsigned ps_total = (unsigned)(heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024);
     int  batt = instance.pmu.getBatteryPercent();
-    bool chg  = instance.pmu.isCharging();
+    // Same three-state split the clock-face bolt uses, so the two readouts
+    // never disagree. Snapshot (no debounce): this label is rebuilt on show,
+    // not ticked, so there is nothing here to strobe.
+    ChargeState cs = charge_state_raw(instance.pmu.isVbusIn(),
+                                      instance.pmu.isCharging());
+    const char *chg = (cs == ChargeState::Charging) ? " chg"
+                    : (cs == ChargeState::Topped)   ? " full"
+                                                    : "";
     uint32_t up = millis() / 1000;
+    // Detection-record count. This walks the logs on SD, so it is deliberately
+    // sampled here (settings_screen_show) rather than on a tick.
+    int det = detect_log_total_records();
     lv_label_set_text_fmt(sysinfo_label,
         "Heap : %u KB free\n"
         "PSRAM: %u / %u KB\n"
         "Batt : %d%%%s\n"
-        "Up   : %luh %02lum %02lus",
+        "Up   : %luh %02lum %02lus\n"
+        "Det  : %d record(s), %dd max",
         heap_kb, ps_free, ps_total,
-        batt, chg ? " chg" : "",
+        batt, chg,
         (unsigned long)(up / 3600), (unsigned long)((up % 3600) / 60),
-        (unsigned long)(up % 60));
+        (unsigned long)(up % 60),
+        det, detlog::kMaxAgeDays);
 }
 static int32_t   s_brightness = DEVICE_MAX_BRIGHTNESS_LEVEL;
 static lv_obj_t *face_switch;
@@ -1301,6 +1316,32 @@ void settings_screen_create()
     lv_obj_set_style_text_color(s_ofs_lbl, ARGUS_TEXT, LV_PART_MAIN);
     lv_label_set_text(s_ofs_lbl, "Unlock Offense (test)");
     lv_obj_center(s_ofs_lbl);
+    // "Clear detection logs" - wipes every record ARGUS has kept about other
+    // people's devices. Retention already expires these automatically (see
+    // src/detect/log_retention.h), but a one-tap purge is the difference
+    // between a policy the wearer has to trust and one they can enforce.
+    lv_obj_t *det_btn = lv_button_create(settings_screen);
+    lv_obj_set_size(det_btn, 380, 64);
+    lv_obj_set_style_bg_color(det_btn, lv_color_make(0x1E, 0x1E, 0x1E), LV_PART_MAIN);
+    lv_obj_set_style_border_color(det_btn, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(det_btn, 1, LV_PART_MAIN);
+    lv_obj_align(det_btn, LV_ALIGN_TOP_MID, 0, 2190);
+    register_shiftable(det_btn, 2190);
+    lv_obj_t *det_lbl = lv_label_create(det_btn);
+    lv_obj_set_style_text_font(det_lbl, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(det_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_label_set_text(det_lbl, "Clear detection logs");
+    lv_obj_center(det_lbl);
+    lv_obj_add_event_cb(det_btn, [](lv_event_t *) {
+        int n = detect_log_clear_all();
+        char msg[96];
+        snprintf(msg, sizeof(msg),
+                 n > 0 ? "Detection logs cleared.\n%d file(s) removed."
+                       : "Nothing to clear.\n(%d file(s) found)", n);
+        low_mem_show_dialog(msg);
+        settings_update_sysinfo();
+    }, LV_EVENT_CLICKED, NULL);
+
     lv_obj_add_event_cb(s_ofs_btn, [](lv_event_t *) {
         if (argus_mode_current() == ArgusMode::Offense) { lock_offense(); clock_screen_show(); }
         else                                            { pin_pad_screen_show(); }

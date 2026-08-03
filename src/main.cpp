@@ -81,6 +81,8 @@
 #include "ble_scan_manager.h"
 #include "radio_coexist.h"
 #include "boot_prefs.h"
+#include "charge_state.h"   // debounced Discharging/Charging/Topped readout
+#include "detect_log_sd.h"   // detection-log retention sweep
 #include <esp_wifi.h>   // esp_wifi_get_mode() for live WiFi-mode reads
 #include "threat_radar_screen.h"
 #include "tracker_rep.h"
@@ -181,6 +183,20 @@ static bool     clock_vibrate    = false;
 static lv_obj_t *bat_fill;
 static lv_obj_t *bat_label;
 
+// Charging bolt drawn inside the battery body, left of the percentage.
+// Built from lv_line strokes rather than LV_SYMBOL_CHARGE: bat_label is
+// styled with font_argus_mono_16, a VT323 subset that only covers U+0020..U+007E
+// and declares no .fallback, so the U+F0E7 symbol glyph resolved to nothing
+// and the charge state rendered as an invisible trailing space. Same reason
+// the timer/stopwatch icons above are primitives.
+static lv_obj_t *bat_bolt;
+
+// Debounced charge readout feeding bat_bolt. Fed one sample per 1 Hz tick.
+static ChargeIndicator bat_charge;
+// Alternates each tick while charging to breathe the bolt's opacity.
+static bool bolt_pulse_dim = false;
+static void update_charge_bolt();
+
 // Bell glyph shown to the left of the battery when the alarm is enabled.
 static lv_obj_t *alarm_indicator;
 static lv_obj_t *bat_nub;
@@ -278,6 +294,36 @@ static void build_battery_widget(lv_obj_t *screen)
     lv_obj_set_style_text_font(bat_label, &font_argus_mono_16, LV_PART_MAIN);   // VT323 (brand readout)
     lv_label_set_text(bat_label, "--");
     lv_obj_align(bat_label, LV_ALIGN_CENTER, 0, 0);
+
+    // Charging bolt - a 3-segment zigzag stroked in white, parked against the
+    // left inside edge of the body. Created after bat_label so it draws on
+    // top of both the fill and the digits.
+    //
+    // It cannot actually collide with the digits: VT323 16 is monospace at
+    // adv_w 96 (6 px/glyph), so the widest reading, "100%", is 24 px centred
+    // in the 56 px inner width and spans x=16..40. The bolt lives in x=3..13.
+    //
+    // White, not ARGUS_ACCENT / status_accent_active(): those flip to
+    // threat-red on a tail, and a battery bolt is chrome, not a live-threat
+    // surface. It must mean the same thing in Defense and Offense.
+    //
+    // The line IS the widget (no wrapper container) so the pulse can drive
+    // line_opa directly. Setting `opa` on a parent instead would make LVGL
+    // composite the subtree through an intermediate layer on every redraw,
+    // which is pure waste for four strokes.
+    //
+    // Points: down-left, jog right, down-left again - the standard zigzag.
+    static lv_point_precise_t bolt_pts[] = { {8, 1}, {3, 7}, {7, 8}, {1, 15} };
+    bat_bolt = lv_line_create(bat_body);
+    lv_line_set_points(bat_bolt, bolt_pts, 4);
+    lv_obj_set_pos(bat_bolt, 3, 0);
+    lv_obj_set_style_line_color(bat_bolt, lv_color_white(), 0);
+    lv_obj_set_style_line_width(bat_bolt, 2, 0);
+    lv_obj_set_style_line_rounded(bat_bolt, true, 0);
+    lv_obj_clear_flag(bat_bolt, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(bat_bolt, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_add_flag(bat_bolt, LV_OBJ_FLAG_HIDDEN);   // shown only on USB power
 
     // Terminal nub (positive terminal on the right)
     bat_nub = lv_obj_create(container);
@@ -566,11 +612,62 @@ static void update_battery()
     lv_obj_set_style_bg_color(bat_nub, color, LV_PART_MAIN);
 
     char buf[16];
-    if (instance.pmu.isCharging())
-        snprintf(buf, sizeof(buf), "%d%% " LV_SYMBOL_CHARGE, pct);
-    else
-        snprintf(buf, sizeof(buf), "%d%%", pct);
+    snprintf(buf, sizeof(buf), "%d%%", pct);
     lv_label_set_text(bat_label, buf);
+
+    update_charge_bolt();
+}
+
+// Render the charging bolt from the debounced PMU state. Called from
+// update_battery() on the 1 Hz tick, which is also what paces the pulse.
+//
+//   Discharging  bolt hidden
+//   Charging     bolt pulses between full and 40% opacity, one step per tick
+//   Topped       bolt steady at full opacity (on the charger, cell full)
+//
+// Two USB states rather than one because isCharging() alone goes false the
+// moment the AXP2101 terminates, so a watch sitting full on the charger would
+// look identical to one running on the cell. A slow 1 Hz breathe reads as
+// "energy flowing in"; it is deliberately not a hard on/off blink, which on
+// this watch face means fault or alert.
+static void update_charge_bolt()
+{
+    if (!bat_bolt) return;
+
+    ChargeState st = bat_charge.update(instance.pmu.isVbusIn(),
+                                       instance.pmu.isCharging());
+
+    // Only touch the hidden flag on an actual edge. lv_obj_add_flag()
+    // invalidates whenever LV_OBJ_FLAG_HIDDEN is in the set, so re-asserting
+    // it every tick would queue a redraw of this rect once a second for the
+    // entire time the watch is off the charger.
+    static ChargeState prev = ChargeState::Discharging;
+    bool was_visible = prev != ChargeState::Discharging;
+    bool is_visible  = st  != ChargeState::Discharging;
+    prev = st;
+
+    if (!is_visible) {
+        if (was_visible) lv_obj_add_flag(bat_bolt, LV_OBJ_FLAG_HIDDEN);
+        bolt_pulse_dim = false;
+        return;
+    }
+
+    if (!was_visible) lv_obj_clear_flag(bat_bolt, LV_OBJ_FLAG_HIDDEN);
+
+    if (st == ChargeState::Charging)
+        bolt_pulse_dim = !bolt_pulse_dim;
+    else
+        bolt_pulse_dim = false;   // Topped: hold steady
+
+    // Same edge-only discipline: setting a local style prop refreshes and
+    // invalidates whether or not the value actually changed, and Topped can
+    // sit unchanged for hours on the dock.
+    lv_opa_t want = bolt_pulse_dim ? LV_OPA_40 : LV_OPA_COVER;
+    static lv_opa_t applied = LV_OPA_TRANSP;   // never a legal rendered value
+    if (want != applied || !was_visible) {
+        lv_obj_set_style_line_opa(bat_bolt, want, LV_PART_MAIN);
+        applied = want;
+    }
 }
 
 // Pack the alarm / stopwatch / timer indicators flush against the left
@@ -1395,6 +1492,12 @@ void setup()
     // Load the saved alarm-clock configuration from the SD card (if present).
     alarm_init();
 
+    // Expire stale detection records. The per-detector writers also enforce
+    // retention as they append, but that only fires when something is DETECTED.
+    // A watch that sits unused for a month would otherwise keep last month's
+    // records indefinitely, so the window is also swept once at boot.
+    detect_log_sweep_all();
+
     // Build the clock screen
     clock_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(clock_screen, lv_color_black(), LV_PART_MAIN);
@@ -1863,6 +1966,10 @@ void setup()
     realign_status_icons();
     layout_battery_indicators(); // seed packing so a boot-enabled alarm renders immediately
     update_clock();
+    // Seed the charge readout from the live PMU so a watch booted on the
+    // charger shows the bolt on the first frame rather than after the first
+    // state change.
+    bat_charge.prime(instance.pmu.isVbusIn(), instance.pmu.isCharging());
     update_battery();
     update_lora_indicator();
     update_bt_indicator();
