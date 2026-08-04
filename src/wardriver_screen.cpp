@@ -260,6 +260,19 @@ static void drain_queue() {
     while (xQueueReceive(ap_queue, &raw, 0) == pdTRUE) {
         ApRecord *rec = ap_find(raw.mac);
         if (rec) {
+            // Backfill a name we did not have at first sight. The SSID is only
+            // carried by SOME of an AP's frames as far as we are concerned: a
+            // beacon whose SSID element is zero-length (hidden mode) or whose
+            // tag section is truncated leaves us with "", and whichever frame
+            // happened to create the record used to decide the name for the
+            // whole session. Later beacons from the same BSSID can carry it.
+            // Only ever fill a blank - never let a later frame overwrite a
+            // name we already have, which would let a malformed or spoofed
+            // beacon rewrite survey data.
+            if (rec->ssid[0] == '\0' && raw.ssid[0] != '\0') {
+                strncpy(rec->ssid, raw.ssid, 32);
+                rec->ssid[32] = '\0';
+            }
             if (raw.rssi > rec->rssi) {
                 rec->rssi = raw.rssi;
                 // Re-stamp only when we actually know where we are; a dropout

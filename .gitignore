@@ -14,6 +14,11 @@ argusprompt.txt
 # Device crash captures are local diagnostic artifacts.
 artifacts/coredump/
 
+# SD-card pulls from field sessions. These are raw survey output: real
+# coordinates, real MACs, real detection history. Local evidence only, never
+# committed.
+artifacts/field/
+
 # Serial-monitor scratch capture - local diagnostic file, not part of the repo
 tools/panic_capture.txt
 
