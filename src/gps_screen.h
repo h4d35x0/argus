@@ -1,5 +1,7 @@
 #pragma once
 #include <lvgl.h>
+#include <stdint.h>
+#include "gps_health.h"
 
 void gps_screen_create();
 void gps_screen_restore_power();
@@ -23,3 +25,20 @@ bool gps_screen_has_lock();
 // fix from a previous power cycle. Never gate recorded coordinates on isValid()
 // alone; use this.
 bool gps_screen_has_stable_lock();
+
+// WHY there is no fix, for callers that must explain themselves to the user
+// (the GPS screen's Status row, the WarDrive readiness gate). Distinguishes a
+// dead receiver from a blocked sky from normal acquisition - a distinction the
+// watch used to render as "--" in all three cases, which is what turned a
+// reception problem into three sessions of debugging on 2026-08-03.
+GpsHealth gps_screen_health();
+
+// Seconds WITHOUT A FIX - not seconds in the current health state. Resets only
+// on an actual (stable) lock. "No satellites" for 8 s is normal; for 8 minutes
+// it means move, or the antenna is faulty.
+//
+// Measuring time-in-state instead was tried and field-failed on 2026-08-04:
+// satellites flickering 0 -> 1 -> 0 flap the classification, which reset the
+// counter every few seconds, so a two-minute failure displayed as a timer that
+// never climbed past a few seconds.
+uint32_t gps_screen_health_secs();

@@ -6,12 +6,17 @@
 #include "timezone.h"
 #include "usb_sd.h"
 #include "hexhound.h"     // new GPS cell = new territory = pet exploration XP
+#include "argus_mode.h"          // health log: which mode was live when GPS dropped
+#include "ble_scan_manager.h"    // health log: BLE consumer count
+#include "wifi_radio_screen.h"   // health log: WiFi rail state
+#include "lora_screen.h"         // health log: LoRa rail state
 
 // Defined in main.cpp
 void clock_screen_set_gps_active(bool active);
 void clock_screen_set_sat_count(uint32_t count);
 void clock_screen_set_utc_offset(int offset_hours);
 bool clock_screen_manual_time_active();
+void clock_screen_get_local_time(struct tm *out);
 
 // Lower-bound longitude (×10, integer degrees) for each UTC hour offset -12 … +12.
 // A longitude belongs to offset (i - 12) when lon×10 >= k_tz_lower[i].
@@ -87,9 +92,48 @@ static lv_obj_t *val_gps_time;
 static lv_obj_t *val_altitude;
 static lv_obj_t *val_speed;
 static lv_obj_t *val_fix_age;
+static lv_obj_t *val_status;    // WHY there is no fix - see gps_health.h
+static lv_obj_t *val_nmea;      // NMEA byte rate - see the GPS HEALTH block
+static lv_obj_t *val_csum;      // passed/failed checksums this power cycle
 
 static bool gps_powered = false;
 static bool rtc_synced  = false; // reset each GPS power cycle
+
+// ---- UART RX RING ----------------------------------------------------------
+// The GPS talks 38400 8N1 (LilyGoWatchUltra.cpp, POWER_GPS case) = 3840 bytes/s.
+// The ESP32 core defaults HardwareSerial to a 256-byte RX ring, which is 67 ms
+// of NMEA. instance.gps.loop() is pumped exactly once per main-loop iteration
+// (main.cpp), and this firmware's own comments record iterations of "hundreds of
+// ms" under wardriver load and a ~250 ms block inside start_wardriving(). Any
+// iteration longer than the ring drops bytes mid-sentence; TinyGPSPlus then
+// rejects the sentence on checksum, and with enough loss a module that HAS a fix
+// never lands a parseable one inside gps_fresh()'s 5 s window. That reads on
+// screen as "GPS never locked".
+//
+// 2048 bytes = 533 ms of tolerance, which covers the stalls documented above at
+// 2 KB of internal DRAM. Deliberately not larger: the ring is an internal-DRAM
+// allocation and this build is sensitive to the largest contiguous internal
+// block (see tasks/COEXIST-NOTES.md). If the health log below still shows
+// checksum failures climbing, raise this before adding pump calls to hot paths.
+//
+// setRxBufferSize() is a no-op (and logs an error) while the driver is
+// installed, so it MUST sit between Serial1.end() and the begin() that
+// powerControl() runs. gps_uart_up() is the only sanctioned ordering.
+static const size_t GPS_RX_RING_BYTES = 2048;
+
+// Bring the GPS rail and its UART up together.
+//
+// powerControl(POWER_GPS,false) gpio_reset_pin()s the UART pins but never calls
+// Serial1.end(), so the Serial1.begin() it runs on the next enable re-inits a
+// stale driver and RX stays detached: no NMEA, never locks. Tearing the UART
+// down explicitly makes each enable's begin() start clean, and gives us the one
+// window in which the RX ring can be resized.
+static void gps_uart_up()
+{
+    Serial1.end();
+    Serial1.setRxBufferSize(GPS_RX_RING_BYTES);   // must precede begin()
+    instance.powerControl(POWER_GPS, true);       // enableBLDO1 + Serial1.begin
+}
 
 // Persist the radio on/off state so GPS survives a reboot. Mirrors the
 // small-file pattern used by timezone.cpp / settings_screen.cpp.
@@ -187,6 +231,324 @@ static void gps_stable_lock_update()
     }
 }
 
+// ---- GPS HEALTH (the discriminator) ----------------------------------------
+// When the watch reports "no fix", exactly one of three things is true, and
+// until now nothing on the device could tell them apart after the fact:
+//
+//   bytes/s ~= 0                    -> no NMEA at all. Rail, UART or wiring.
+//   bytes/s healthy, bad climbing   -> byte loss. The RX ring overflowed (see
+//                                      GPS_RX_RING_BYTES) or the main-loop pump
+//                                      is starved. A FIRMWARE problem.
+//   bytes/s healthy, bad flat,
+//   sats > 0, fixes flat            -> the module is talking and sees
+//                                      satellites but cannot resolve a fix.
+//                                      RF: sky view, not firmware.
+//
+// TinyGPSPlus already counts all of it, so this only samples the deltas and puts
+// them somewhere that survives a reboot. It is written to SD because that is the
+// gap that made the 2026-08-03 failures undiagnosable: the run ended, nobody
+// could recall what the screen had shown, and the device kept no record. The
+// two rows added to the screen are the live view of the same numbers.
+//
+// Deliberately carries NO position data, so it is safe to read and quote whole.
+#define GPS_HEALTH_PATH "/Settings/gpshealth.log"
+
+// Heartbeat cadence while the radio is on. 30 s is frequent enough to catch a
+// short outing (session 26 of the 2026-08-03 log was ~15 min and never locked)
+// without the file becoming its own problem: ~85 bytes/line is ~250 KB/day of
+// continuous GPS, hence the rotation cap below.
+static const uint32_t GPS_HEALTH_PERIOD_MS = 30000;
+static const uint32_t GPS_HEALTH_MAX_BYTES = 64u * 1024u;
+
+static uint32_t s_health_last_ms     = 0;   // last heartbeat
+static uint32_t s_health_last_chars  = 0;   // charsProcessed() at last sample
+static uint32_t s_health_last_sample = 0;   // millis() at last sample
+static uint32_t s_health_bytes_per_s = 0;   // latest computed rate
+static uint32_t s_health_power_ms    = 0;   // millis() when the radio came up
+static bool     s_health_last_stable = false;
+
+// Baselines taken at power-on. TinyGPSPlus counters are cumulative for the life
+// of the process, so every figure we report is scoped to THIS power cycle;
+// otherwise a previous session's clean run would mask a bad one.
+static uint32_t s_health_base_chars  = 0;
+static uint32_t s_health_base_ok     = 0;
+static uint32_t s_health_base_bad    = 0;
+static uint32_t s_health_base_fix    = 0;
+
+// Classified condition (see gps_health.h), so the UI and the WarDrive gate can
+// say "no satellites for 3m12s" rather than "X".
+static GpsHealth s_health_state    = GpsHealth::Off;
+static uint32_t  s_health_quiet_ms = 0;   // when bps first fell below the floor
+
+// TIME WITHOUT A FIX, which is deliberately NOT "time in the current state".
+//
+// The first version of this measured the latter and reset on every state
+// change. Field-tested 2026-08-04 and it was useless: with satellites
+// flickering 0 -> 1 -> 0 the classification flaps NoSatellites <-> Acquiring,
+// so the counter kept zeroing and the user watched a timer that never climbed
+// through a two-minute failure. The question being asked is always "how long
+// has this been broken", so measure exactly that: reset only on an actual fix.
+//
+// Stable lock rather than the instantaneous one, so a 1-2 s blip does not
+// silently restart a number the user is reading as elapsed failure time.
+static uint32_t  s_nofix_since_ms  = 0;
+
+// Called on every GPS power transition, so a fresh power cycle never inherits
+// the previous one's counters or rate.
+static void gps_health_reset()
+{
+    const uint32_t now = millis();
+    s_health_power_ms    = now;
+    s_health_last_ms     = 0;         // 0 = no heartbeat yet this cycle
+    s_health_last_sample = now;
+    s_health_last_chars  = instance.gps.charsProcessed();
+    s_health_bytes_per_s = 0;
+    s_health_last_stable = false;
+    s_health_base_chars  = instance.gps.charsProcessed();
+    s_health_base_ok     = instance.gps.passedChecksum();
+    s_health_base_bad    = instance.gps.failedChecksum();
+    s_health_base_fix    = instance.gps.sentencesWithFix();
+
+    // Classify from the current inputs rather than assuming a starting state:
+    // a hot start is already Locked on the first tick, and a power-off must
+    // read Off immediately. quiet_sec is 0 here, so this can never open a power
+    // cycle by declaring the receiver dead.
+    s_health_quiet_ms = 0;
+    s_health_state    = gps_health_classify(
+        gps_powered, gps_screen_has_lock(), 0,
+        gps_fresh(instance.gps.satellites) ? instance.gps.satellites.value() : 0, 0);
+    s_nofix_since_ms  = now;   // a power cycle starts the clock on "no fix yet"
+}
+
+// ---- BACKLOG: THE INSTRUMENT USED TO REQUIRE WHAT IT MEASURES ---------------
+// This log lives ON the SD card, so until now it could only ever observe the
+// card-IN condition. Every session analysed on 2026-08-03 had the card in,
+// because otherwise there was no log to read. That is a blind spot in exactly
+// the wrong place: the reported symptom is "GPS takes longer to lock once the
+// SD card is in", and wardriving is the one feature that needs the card and a
+// fix at the SAME time.
+//
+// So records are captured whether or not a card is present, and buffered in RAM
+// when it is not. main.cpp already polls card-detect and hot-mounts on
+// insertion, so inserting the card mid-run flushes the card-OUT history to disk
+// with its original timestamps intact. Run with no card, let GPS acquire, then
+// insert the card and the whole acquisition is written retroactively.
+//
+// 48 records at 32 bytes is 1.5 KB of static DRAM (.bss, so it never fragments
+// the heap the coexist work is sensitive to) and covers ~24 min at the 30 s
+// heartbeat - comfortably longer than any acquisition worth measuring.
+enum GpsHealthEvent : uint8_t {
+    GHE_START = 0, GHE_TICK, GHE_LOCK, GHE_LOST, GHE_MODE, GHE_OFF
+};
+static const char *const kGpsEventName[] = { "START","TICK","LOCK","LOST","MODE","OFF" };
+
+// Packed so the ring stays small. Counters are per power cycle, already
+// baselined, so 32 bits each is ample.
+struct GpsHealthRec {
+    uint8_t  yy, mon, day, hh, mi, ss;   // local time, yy = year - 2000
+    uint8_t  ev;
+    uint8_t  state;
+    uint8_t  mode;
+    uint8_t  sats;
+    int8_t   ble;
+    uint8_t  flags;                      // see GHF_* below
+    uint16_t on_sec;
+    uint16_t bps;
+    uint32_t chars, ok, bad, fix;
+};
+
+static const uint8_t GHF_LOCK   = 1 << 0;
+static const uint8_t GHF_STABLE = 1 << 1;
+static const uint8_t GHF_WIFI   = 1 << 2;
+static const uint8_t GHF_LORA   = 1 << 3;
+static const uint8_t GHF_USB    = 1 << 4;
+static const uint8_t GHF_CHG    = 1 << 5;
+static const uint8_t GHF_CARD   = 1 << 6;   // was the card present when captured
+
+static const uint8_t GPS_HEALTH_BACKLOG = 48;
+static GpsHealthRec s_ring[GPS_HEALTH_BACKLOG];
+// Aggregate-initialised at definition rather than in gps_screen_create(), so the
+// capacity can never be 0 at the first push regardless of call order (slot()
+// takes a modulo by it).
+static GpsBacklog   s_backlog = { GPS_HEALTH_BACKLOG, 0, 0, 0 };
+
+static bool gps_health_sd_usable()
+{
+    return instance.isCardReady() && !usb_sd_is_running();   // host owns SD
+}
+
+// Snapshot the live state. Saturating casts, so a long run or a wild byte rate
+// truncates a FIELD rather than corrupting the record.
+static void gps_health_capture(GpsHealthEvent ev, GpsHealthRec *r)
+{
+    struct tm t;
+    clock_screen_get_local_time(&t);
+    r->yy  = (uint8_t)((t.tm_year + 1900) % 100);
+    r->mon = (uint8_t)(t.tm_mon + 1);
+    r->day = (uint8_t)t.tm_mday;
+    r->hh  = (uint8_t)t.tm_hour;
+    r->mi  = (uint8_t)t.tm_min;
+    r->ss  = (uint8_t)t.tm_sec;
+
+    const uint32_t on  = (millis() - s_health_power_ms) / 1000u;
+    const uint32_t sat = gps_fresh(instance.gps.satellites)
+                       ? instance.gps.satellites.value() : 0;
+
+    r->ev     = (uint8_t)ev;
+    r->state  = (uint8_t)s_health_state;
+    r->mode   = (uint8_t)argus_mode_current();
+    r->sats   = (uint8_t)(sat > 255 ? 255 : sat);
+    r->ble    = (int8_t)ble_scan_consumer_count();
+    r->on_sec = (uint16_t)(on > 65535u ? 65535u : on);
+    r->bps    = (uint16_t)(s_health_bytes_per_s > 65535u ? 65535u : s_health_bytes_per_s);
+
+    r->flags = 0;
+    if (gps_screen_has_lock())              r->flags |= GHF_LOCK;
+    if (s_stable_lock)                      r->flags |= GHF_STABLE;
+    if (wifi_radio_screen_is_powered())     r->flags |= GHF_WIFI;
+    if (lora_screen_is_powered())           r->flags |= GHF_LORA;
+    if (instance.pmu.isVbusIn())            r->flags |= GHF_USB;
+    if (instance.pmu.isCharging())          r->flags |= GHF_CHG;
+    if (gps_health_sd_usable())             r->flags |= GHF_CARD;
+
+    r->chars = instance.gps.charsProcessed()   - s_health_base_chars;
+    r->ok    = instance.gps.passedChecksum()   - s_health_base_ok;
+    r->bad   = instance.gps.failedChecksum()   - s_health_base_bad;
+    r->fix   = instance.gps.sentencesWithFix() - s_health_base_fix;
+}
+
+// Radio, power and CARD context on every line. The 2026-08-03 runs showed
+// satellites collapsing to 0 while NMEA kept streaming, and the only account of
+// what else was running at that moment was a recollection - which could not even
+// establish when the watch had been on USB. Carrying it inline makes the
+// correlation readable straight off the artifact: if satellites fall as
+// ble/wifi/lora/usb/card come up, that is desense.
+static void gps_health_print(File &f, const GpsHealthRec &r)
+{
+    static const char *const kModeName[] = { "daily", "defense", "offense" };
+    f.printf("20%02u-%02u-%02u %02u:%02u:%02u on=%us %s bps=%u chars=%lu ok=%lu "
+             "bad=%lu fix=%lu sats=%u lock=%d stable=%d state=%s "
+             "mode=%s ble=%d wifi=%d lora=%d usb=%d chg=%d card=%d\n",
+             r.yy, r.mon, r.day, r.hh, r.mi, r.ss,
+             r.on_sec,
+             r.ev < 6 ? kGpsEventName[r.ev] : "?",
+             r.bps,
+             (unsigned long)r.chars, (unsigned long)r.ok,
+             (unsigned long)r.bad,   (unsigned long)r.fix,
+             r.sats,
+             (r.flags & GHF_LOCK)   ? 1 : 0,
+             (r.flags & GHF_STABLE) ? 1 : 0,
+             gps_health_label((GpsHealth)r.state),
+             r.mode < 3 ? kModeName[r.mode] : "?",
+             (int)r.ble,
+             (r.flags & GHF_WIFI) ? 1 : 0,
+             (r.flags & GHF_LORA) ? 1 : 0,
+             (r.flags & GHF_USB)  ? 1 : 0,
+             (r.flags & GHF_CHG)  ? 1 : 0,
+             (r.flags & GHF_CARD) ? 1 : 0);
+}
+
+static void gps_health_buffer(const GpsHealthRec &r)
+{
+    s_ring[s_backlog.push()] = r;
+}
+
+static void gps_health_emit(GpsHealthEvent ev)
+{
+    GpsHealthRec rec;
+    gps_health_capture(ev, &rec);
+
+    if (!gps_health_sd_usable()) { gps_health_buffer(rec); return; }
+    if (!SD.exists("/Settings")) SD.mkdir("/Settings");
+
+    // Rotate rather than grow without bound. Truncate-and-mark, not a ring: this
+    // is a diagnostic, and the RECENT window is the one that matters.
+    File probe = SD.open(GPS_HEALTH_PATH, FILE_READ);
+    bool rotate = probe && probe.size() > GPS_HEALTH_MAX_BYTES;
+    if (probe) probe.close();
+    if (rotate) SD.remove(GPS_HEALTH_PATH);
+
+    File f = SD.open(GPS_HEALTH_PATH, FILE_APPEND);
+    // Card present but the open failed: buffer instead of discarding, so a
+    // transient SD error costs nothing.
+    if (!f) { gps_health_buffer(rec); return; }
+    if (rotate) f.print("-- rotated (size cap) --\n");
+
+    // Drain the card-out history first, oldest first, so the file stays in
+    // chronological order. Say how many were dropped rather than truncating
+    // silently - a backlog that quietly lost its head would misdate an
+    // acquisition.
+    if (s_backlog.count) {
+        f.printf("-- backlog: %u record(s) buffered with no card, %u dropped --\n",
+                 (unsigned)s_backlog.count, (unsigned)s_backlog.dropped);
+        for (uint8_t i = 0; i < s_backlog.count; i++)
+            gps_health_print(f, s_ring[s_backlog.slot(i)]);
+        s_backlog.clear();
+    }
+
+    gps_health_print(f, rec);
+    f.close();
+}
+
+// Sampled once per second from on_gps_update(), before the !gps_powered return.
+static void gps_health_update()
+{
+    if (!gps_powered) return;
+
+    const uint32_t now   = millis();
+    const uint32_t chars = instance.gps.charsProcessed();
+
+    // Byte rate over the interval actually elapsed, not an assumed 1 s: the
+    // timer is LVGL-driven and slips under exactly the load we are hunting.
+    const uint32_t dt = now - s_health_last_sample;
+    if (dt >= 1000) {
+        s_health_bytes_per_s = (uint32_t)(((uint64_t)(chars - s_health_last_chars) * 1000u) / dt);
+        s_health_last_chars  = chars;
+        s_health_last_sample = now;
+
+        // Track how long the link has been silent, so NoData needs to persist
+        // rather than firing on the one legitimately empty sample at power-on.
+        if (s_health_bytes_per_s < kGpsNoDataFloorBps) {
+            if (s_health_quiet_ms == 0) s_health_quiet_ms = now;
+        } else {
+            s_health_quiet_ms = 0;
+        }
+    }
+
+    const uint32_t quiet_sec = s_health_quiet_ms ? (now - s_health_quiet_ms) / 1000u : 0;
+    const GpsHealth h = gps_health_classify(
+        gps_powered, gps_screen_has_lock(), s_health_bytes_per_s,
+        gps_fresh(instance.gps.satellites) ? instance.gps.satellites.value() : 0,
+        quiet_sec);
+    s_health_state = h;
+
+    // Hold the no-fix clock at zero for as long as we HAVE a fix, so the moment
+    // one is lost it starts counting from that loss, not from the power cycle.
+    if (s_stable_lock) s_nofix_since_ms = now;
+
+    // Log the first sample of a power cycle, every stable-lock edge, and a
+    // heartbeat. The edges are what turn the file into a timeline of the run.
+    bool           have  = true;
+    GpsHealthEvent event = GHE_TICK;
+    if (s_health_last_ms == 0)                      event = GHE_START;
+    else if (s_stable_lock != s_health_last_stable) event = s_stable_lock ? GHE_LOCK : GHE_LOST;
+    else if (now - s_health_last_ms >= GPS_HEALTH_PERIOD_MS) event = GHE_TICK;
+    else                                            have  = false;
+    if (!have) return;
+
+    s_health_last_stable = s_stable_lock;
+    s_health_last_ms     = now;
+    gps_health_emit(event);
+}
+
+// Stamp the exact instant of a Daily/Defense/Offense switch. The 30 s heartbeat
+// can straddle a switch, which is the whole difference between "GPS died when
+// Defense came up" and "GPS died sometime in that half-minute".
+static void gps_health_on_mode(ArgusMode)
+{
+    if (gps_powered) gps_health_emit(GHE_MODE);   // the line itself carries mode=
+}
+
 static void update_status()
 {
     lv_label_set_text(status_label, gps_powered ? "Radio: ON" : "Radio: OFF");
@@ -195,17 +557,17 @@ static void update_status()
 static void on_toggle(lv_event_t *e)
 {
     gps_powered = lv_obj_has_state(toggle_sw, LV_STATE_CHECKED);
-    // powerControl(POWER_GPS,false) gpio_reset_pin()s the UART pins but never
-    // calls Serial1.end(), so the Serial1.begin() it runs on the next enable
-    // re-inits a stale driver and RX stays detached → no NMEA, never locks.
-    // Tear the UART down explicitly so each enable's begin() starts clean.
     if (gps_powered) {
-        Serial1.end();
-        instance.powerControl(POWER_GPS, true);  // enableBLDO1 + Serial1.begin
+        gps_uart_up();                           // rail + clean UART, sized ring
     } else {
+        // Close the health timeline BEFORE tearing down, while the counters
+        // still describe the cycle that just ended. Without this a run the user
+        // switched off just stops mid-file, indistinguishable from a crash.
+        gps_health_emit(GHE_OFF);
         instance.powerControl(POWER_GPS, false); // disableBLDO1 + reset pins
         Serial1.end();
     }
+    gps_health_reset();
     clock_screen_set_gps_active(gps_powered);
     if (!gps_powered)
         rtc_synced = false; // allow re-sync on next power-on
@@ -254,6 +616,11 @@ static void on_gps_update(lv_timer_t *timer)
     // !gps_powered early-return below so powering GPS off clears it.
     gps_stable_lock_update();
 
+    // Health sampling runs off-screen too: the whole point is to have a record
+    // of a run that failed while the user was looking at something else.
+    // Must follow gps_stable_lock_update() so LOCK/LOST edges log this tick.
+    gps_health_update();
+
     // GPS off path. Push 0 sats to the home indicator so the badge clears
     // even if the user toggled GPS off from this screen and immediately
     // went back home; only refresh the (hidden) labels when the screen
@@ -269,6 +636,9 @@ static void on_gps_update(lv_timer_t *timer)
             lv_label_set_text(val_altitude,   "--");
             lv_label_set_text(val_speed,      "--");
             lv_label_set_text(val_fix_age,    "--");
+            lv_label_set_text(val_nmea,       "--");
+            lv_label_set_text(val_csum,       "--");
+            lv_label_set_text(val_status,     gps_health_label(GpsHealth::Off));
         }
         return;
     }
@@ -391,6 +761,29 @@ static void on_gps_update(lv_timer_t *timer)
     else
         strcpy(buf, "--");
     lv_label_set_text(val_speed, buf);
+
+    // Status: the label alone once locked, label + dwell otherwise. The dwell is
+    // what separates "just started looking" from "this is never going to work".
+    if (s_health_state == GpsHealth::Locked) {
+        lv_label_set_text(val_status, gps_health_label(s_health_state));
+    } else {
+        char dur[16];
+        gps_health_duration(gps_screen_health_secs(), dur, sizeof(dur));
+        snprintf(buf, sizeof(buf), "%s %s", gps_health_label(s_health_state), dur);
+        lv_label_set_text(val_status, buf);
+    }
+
+    // Health rows. Read these together when the fix will not come:
+    // 0 B/s means no NMEA at all; a healthy rate with "bad" climbing means we
+    // are losing bytes; a healthy rate with bad at 0 means the module is fine
+    // and the sky is the problem. Figures are for this power cycle only.
+    snprintf(buf, sizeof(buf), "%lu B/s", (unsigned long)s_health_bytes_per_s);
+    lv_label_set_text(val_nmea, buf);
+
+    snprintf(buf, sizeof(buf), "%lu ok / %lu bad",
+             (unsigned long)(instance.gps.passedChecksum() - s_health_base_ok),
+             (unsigned long)(instance.gps.failedChecksum() - s_health_base_bad));
+    lv_label_set_text(val_csum, buf);
 }
 
 void gps_screen_create()
@@ -439,6 +832,9 @@ void gps_screen_create()
     lv_obj_set_flex_flow(data_panel, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(data_panel, 0, LV_PART_MAIN);
 
+    // Status first: it is the row that answers "why is there no fix", so it
+    // must be visible without scrolling.
+    make_data_row(data_panel, "Status",     &val_status);
     make_data_row(data_panel, "Satellites", &val_satellites);
     make_data_row(data_panel, "Latitude",   &val_latitude);
     make_data_row(data_panel, "Longitude",  &val_longitude);
@@ -447,8 +843,11 @@ void gps_screen_create()
     make_data_row(data_panel, "Altitude",   &val_altitude);
     make_data_row(data_panel, "Speed",      &val_speed);
     make_data_row(data_panel, "Fix Age",    &val_fix_age);
+    make_data_row(data_panel, "NMEA",       &val_nmea);
+    make_data_row(data_panel, "Checksum",   &val_csum);
 
     lv_timer_create(on_gps_update, 1000, NULL);
+    argus_mode_on_change(gps_health_on_mode);
 }
 
 void gps_screen_show()
@@ -481,6 +880,17 @@ bool gps_screen_has_stable_lock()
     return s_stable_lock;
 }
 
+// WHY there is no fix, and for how long. See the GPS HEALTH block above.
+GpsHealth gps_screen_health()
+{
+    return s_health_state;
+}
+
+uint32_t gps_screen_health_secs()
+{
+    return (millis() - s_nofix_since_ms) / 1000u;
+}
+
 // Boot-time power-on: bring GPS up the same way on_toggle does and reflect it on
 // the switch. Called from setup() ONLY when the user opted GPS into "Enable at
 // boot" (boot_prefs), so the enable decision lives in the caller and there is no
@@ -488,12 +898,12 @@ bool gps_screen_has_stable_lock()
 // (instance.begin) and after gps_screen_create().
 void gps_screen_restore_power()
 {
-    // Power GPS on the same way on_toggle does. See on_toggle for why Serial1
-    // is torn down before powerControl re-inits the UART on enable.
-    Serial1.end();
-    instance.powerControl(POWER_GPS, true);  // enableBLDO1 + Serial1.begin
+    // Power GPS on the same way on_toggle does. See gps_uart_up() for why the
+    // UART is torn down and resized before powerControl re-inits it.
+    gps_uart_up();
     gps_powered = true;
     rtc_synced  = false;
+    gps_health_reset();
     clock_screen_set_gps_active(true);
     update_status();
 

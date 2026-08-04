@@ -506,13 +506,26 @@ static void on_start_stop(lv_event_t *) {
         bool sd_ok    = instance.isCardReady();
         bool radio_ok = wd_wifi_en || wd_bt_en;
         if (!(gps_ok && sd_ok && radio_ok)) {
-            char msg[160];
+            // When GPS is the blocker, say WHY and for how long. A bare red X
+            // here is what made a blocked sky ("in a car") indistinguishable
+            // from a dead receiver on 2026-08-03, and cost three debugging
+            // sessions. gps_screen_health() already knows the difference.
+            char gps_detail[64] = "";
+            if (!gps_ok) {
+                char dur[16];
+                gps_health_duration(gps_screen_health_secs(), dur, sizeof(dur));
+                snprintf(gps_detail, sizeof(gps_detail), "\n    %s (%s)",
+                         gps_health_hint(gps_screen_health()), dur);
+            }
+
+            char msg[256];
             snprintf(msg, sizeof(msg),
                      "WARDRIVE NEEDS:\n"
-                     "%s GPS lock\n"
+                     "%s GPS lock%s\n"
                      "%s SD card\n"
                      "%s WiFi or BT on",
                      gps_ok   ? "#00CC44 " LV_SYMBOL_OK "#" : "#FF3333 " LV_SYMBOL_CLOSE "#",
+                     gps_detail,
                      sd_ok    ? "#00CC44 " LV_SYMBOL_OK "#" : "#FF3333 " LV_SYMBOL_CLOSE "#",
                      radio_ok ? "#00CC44 " LV_SYMBOL_OK "#" : "#FF3333 " LV_SYMBOL_CLOSE "#");
             low_mem_show_dialog(msg);
