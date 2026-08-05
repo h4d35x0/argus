@@ -1752,9 +1752,10 @@ void tools_screen_create()
     lv_label_set_text(tools_title, "TOOLS");
     lv_obj_align(tools_title, LV_ALIGN_TOP_MID, 0, 8);
 
-    // Two-column flex grid. ROW_WRAP gives us 2 tiles per row (since each
-    // 180px tile + the 12px column gap exceeds half the 384px inner width),
-    // and the container scrolls vertically when future tiles overflow.
+    // Three-column flex grid. ROW_WRAP gives us 3 tiles per row: three 118px
+    // tiles plus two 12px column gaps is 378px, which fits the 384px inner
+    // width, while a fourth would not. The container scrolls vertically, which
+    // it does today - 27 tiles is 9 rows.
     lv_obj_t *grid = lv_obj_create(tools_screen);
     lv_obj_set_size(grid, 400, 432);
     lv_obj_align(grid, LV_ALIGN_TOP_MID, 0, 52);
@@ -1773,12 +1774,22 @@ void tools_screen_create()
         LV_FLEX_ALIGN_START);
     tools_grid = grid;   // remembered for save() and the drag handlers
 
-    // DEFAULT tile order (insertion order maps to row-major, grid wraps every 2):
+    // DEFAULT tile order (insertion order maps to row-major, grid wraps every 3):
     // grouped by purpose, most safety-relevant first. Users can long-press-drag
     // to reorder; that is persisted to tools_order.txt and overrides this default
     // (via tools_order_load below). This block is only the first-run layout.
-    //   Defense / anti-surveillance:  Radar, AirTag, Flock, Skimmers, Flipper
-    //   WiFi recon:                   WiFi, Analyze, Evil Twin, Pwn
+    // Visibility is NOT decided here - tile_mode() below is the authority, and
+    // tools_apply_mode() hides on it: Daily hides ALL 27, Defense shows the 19
+    // non-Offense tiles, Offense shows ONLY its 8. Grouping below is the
+    // first-run ORDER; it deliberately mirrors tile_mode()'s classes so the two
+    // do not drift apart again.
+    //   Defense (16):  Radar, Deauth, Timeline, AirTag, Trackers, Spycam,
+    //                  NFC Field, Flock, Skimmers, Flipper, WiFi, Analyze,
+    //                  Evil Twin, HexHound, Pager, TPMS
+    //   Daily (3):     Notify, LoRa APRS, USB SD  (neutral, survive a Daily glance)
+    //   Offense (8):   Pwn, Loot, Beacon, Deauther, Rogue AP, Probes, Mouse, Tesla CP
+    // Note "Deauth" is the DETECTOR (Defense, always live); "Deauther" is the
+    // attack tool (Offense). Pwn/Mouse/Tesla CP read as neutral but are Offense.
     //   Daily / comms:                Notify, Pager, LoRa APRS, HexHound
     //   Peripheral tools:             Mouse, USB SD, TPMS, Tesla CP
     // The timepiece tiles (Alarm / Stopwatch / Timer / Calendar) live on the TIME
