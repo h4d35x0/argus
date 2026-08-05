@@ -79,7 +79,9 @@ static uint32_t  s_buzz_last_ms = 0;
 static const char *kCatNames[TR_CAT_COUNT] = {
     "AirTag", "Flipper", "Skimmer", "Flock", "Evil-Twin", "Vehicle", "Tracker"
 };
-static const char *kLvlNames[4] = { "—", "POSSIBLE", "LIKELY", "CONFIRMED" };
+// ASCII only: these are drawn with fonts that cover U+0020..U+007E, so a
+// non-ASCII placeholder would render as a tofu box on the device.
+static const char *kLvlNames[4] = { "-", "POSSIBLE", "LIKELY", "CONFIRMED" };
 
 const char *threatradar_category_name(uint8_t c)
 { return c < TR_CAT_COUNT ? kCatNames[c] : "?"; }

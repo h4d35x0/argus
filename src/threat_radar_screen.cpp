@@ -54,13 +54,16 @@ static void add_row(const TrThreat *t)
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(bar, LV_ALIGN_LEFT_MID, -6, 0);
 
-    // Headline: "AirTag · LIKELY" (greyed when contact has gone stale).
+    // Headline: "AirTag - LIKELY" (greyed when contact has gone stale).
+    // Separators here are ASCII on purpose: font_argus_label_* cover U+0020..U+007E
+    // only, and LVGL's built-in Montserrat adds just U+00B0 and U+2022 on top of
+    // ASCII. A "·" or an em dash renders as a tofu box on the device.
     lv_obj_t *head = lv_label_create(row);
     lv_obj_set_style_text_font(head, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(head,
         t->active ? accent : lv_color_make(0x77, 0x77, 0x77),
         LV_PART_MAIN);
-    lv_label_set_text_fmt(head, "%s%s  ·  %s%s",
+    lv_label_set_text_fmt(head, "%s%s  -  %s%s",
         t->community ? LV_SYMBOL_BELL " " : "",   // flagged over the mesh
         threatradar_category_name(t->category),
         threatradar_level_name(t->level),
@@ -71,7 +74,7 @@ static void add_row(const TrThreat *t)
     lv_obj_t *m = lv_label_create(row);
     lv_obj_set_style_text_font(m, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(m, ARGUS_TEXT, LV_PART_MAIN);
-    lv_label_set_text_fmt(m, LV_SYMBOL_GPS " %u m  ·  %u min  ·  %u pts",
+    lv_label_set_text_fmt(m, LV_SYMBOL_GPS " %u m  -  %u min  -  %u pts",
         (unsigned)t->span_m, (unsigned)t->span_min, (unsigned)t->waypoints);
     lv_obj_align(m, LV_ALIGN_TOP_LEFT, 8, 30);
 
@@ -79,7 +82,7 @@ static void add_row(const TrThreat *t)
     lv_obj_t *f = lv_label_create(row);
     lv_obj_set_style_text_font(f, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(f, ARGUS_TEXT_DIM, LV_PART_MAIN);
-    lv_label_set_text_fmt(f, "first %s  ·  %d dBm  ·  ..%02X:%02X:%02X",
+    lv_label_set_text_fmt(f, "first %s  -  %d dBm  -  ..%02X:%02X:%02X",
         t->first_time, (int)t->best_rssi, t->mac[3], t->mac[4], t->mac[5]);
     lv_obj_align(f, LV_ALIGN_TOP_LEFT, 8, 54);
 }
@@ -103,10 +106,10 @@ static void refresh()
         btext = LV_SYMBOL_WARNING "  SOMEONE IS FOLLOWING YOU";
     } else if (top == TR_LVL_POSSIBLE) {
         bcol  = lv_color_make(0xFF, 0xCC, 0x00);
-        btext = LV_SYMBOL_EYE_OPEN "  Possible tail — keep watching";
+        btext = LV_SYMBOL_EYE_OPEN "  Possible tail - keep watching";
     } else {
         bcol  = ARGUS_ACCENT;
-        btext = LV_SYMBOL_OK "  Clear — nothing co-moving";
+        btext = LV_SYMBOL_OK "  Clear - nothing co-moving";
     }
     lv_obj_set_style_bg_color(s_banner, bcol, LV_PART_MAIN);
     lv_label_set_text(s_banner_lbl, btext);
@@ -122,7 +125,7 @@ static void refresh()
             "No co-moving devices.\n\n"
             "Trackers seen at a single spot\n"
             "are fixtures and don't count.\n"
-            "Keep moving — a real tail builds\n"
+            "Keep moving - a real tail builds\n"
             "score as it travels with you.");
         lv_obj_set_style_text_align(empty, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         return;

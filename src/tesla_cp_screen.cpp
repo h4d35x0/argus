@@ -76,7 +76,7 @@ static void update_send_btn_state()
 static void on_send(lv_event_t *)
 {
     if (lora_screen_is_powered() || aprs_is_running() || pager_is_running()) {
-        update_status("Radio busy — close LoRa / APRS / Pager first",
+        update_status("Radio busy - close LoRa / APRS / Pager first",
                       lv_color_make(0xFF, 0xAA, 0x00));
         return;
     }

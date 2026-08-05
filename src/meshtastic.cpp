@@ -1664,7 +1664,7 @@ void meshtastic_bg_tick()
             // pkt_len out of range — flush FIFO to unblock radio
             s_dbg.rx_fail++;
             s_dbg.rx_last_rc = -999;
-            Serial.printf("[MESH] pkt_len=%u out of range [16..256] — flushing\n", (unsigned)pkt_len);
+            Serial.printf("[MESH] pkt_len=%u out of range [16..256] - flushing\n", (unsigned)pkt_len);
             radio.readData(buf, sizeof(buf));
         }
 

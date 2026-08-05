@@ -6,7 +6,7 @@
 #include "USBMSC.h"
 
 #if !CONFIG_TINYUSB_MSC_ENABLED
-#error "TinyUSB MSC is not enabled in this build — USB SD cannot be compiled."
+#error "TinyUSB MSC is not enabled in this build - USB SD cannot be compiled."
 #endif
 
 // Constructed at static-init time: the USBMSC constructor registers the MSC
