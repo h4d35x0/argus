@@ -5,24 +5,48 @@ downscaled. This is the GENERATOR for the on-watch pet art.
 USAGE:
   pip install Pillow
   python tools/gen_hexhound_sprites.py
+  python tools/gen_hexhound_sprites.py --asset-size 400
 Outputs into tools/hexhound_out/:
   - hd_<stage>.png       opaque previews (gallery)
   - asset_<stage>.png    200px TRANSPARENT sprites for the watch
+  - asset_<stage>_<N>.png  a non-default --asset-size, kept beside the 200px set
+
+--asset-size only changes the FINAL downsample. Everything is drawn on the same
+960x960 supersampled canvas, so 400 is real detail, not an upscale of the 200.
+The default run is byte-identical to before this option existed: the size is only
+appended to the filename when it is not 200, and the Tools-tile pup icon (which is
+derived from the 200px asset) is written only on a default run.
 Deploy: copy the five asset_<stage>.png onto the SD card as
   /HexHound/egg.png pup.png beast.png gremlin.png sentinel.png
 (pet_screen.cpp loads A:/HexHound/<stage>.png per evolution stage). The Tools-tile
 Packet Pup icon (pup_icon.png) is the alpha-cropped asset_pup.png (see this file's
 tail / the tools/ note). Tweak a stage by editing its function below and re-running.
 """
-import os, base64
+import os, base64, argparse
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hexhound_out")
 os.makedirs(OUT, exist_ok=True)
+
 BG = (6, 11, 17)
 SS = 4
 W = H = 240
 CW = CH = W * SS
+
+_ap = argparse.ArgumentParser(description="Render the HexHound HD stage set.")
+_ap.add_argument("--asset-size", type=int, default=200,
+                 help="edge length of the transparent asset_<stage> PNGs "
+                      "(default 200; the supersampled canvas is CW either way)")
+ASSET_SIZE = _ap.parse_args().asset_size
+if not 8 <= ASSET_SIZE <= CW:
+    raise SystemExit(f"--asset-size must be between 8 and {CW}, the canvas edge; "
+                     "anything larger would be an upscale, not more detail")
+
+def asset_path(name):
+    # The default keeps its historic name so a plain re-run overwrites the same
+    # committed files; any other size lands beside it rather than on top of it.
+    stem = f"asset_{name}" if ASSET_SIZE == 200 else f"asset_{name}_{ASSET_SIZE}"
+    return os.path.join(OUT, f"{stem}.png")
 
 # palette
 ARM_D=(16,18,23); ARM_M=(40,45,54); ARM_L=(84,92,107); RIM=(150,162,182)
@@ -67,10 +91,10 @@ def finalize(name, canvas, glow_list):
     out=out.convert("RGB").resize((W,H),Image.LANCZOS)
     out.save(os.path.join(OUT,f"hd_{name}.png"))
     # TRANSPARENT watch asset (creature + glow over transparency, so it floats
-    # over the sonar rings). 200px, palette-quantized PNG to keep the file tiny.
+    # over the sonar rings). ASSET_SIZE px, palette-quantized PNG to keep it tiny.
     trn=new_canvas(); trn.alpha_composite(bloom); trn.alpha_composite(canvas)
-    trn=trn.resize((200,200),Image.LANCZOS)
-    trn.save(os.path.join(OUT,f"asset_{name}.png"))
+    trn=trn.resize((ASSET_SIZE,ASSET_SIZE),Image.LANCZOS)
+    trn.save(asset_path(name))
     return out
 
 # ---------------- EGG ----------------
@@ -247,15 +271,25 @@ html=f'''<title>HexHound - HD remaster set</title>
  <footer><b>Next:</b> wire these into <code>pet_screen.cpp</code> so the pet evolves through them,
  keeping the idle bob + sonar rings, then flash. Flag any stage you want tweaked.</footer>
 </div>'''
-open(os.path.join(OUT,"hexhound_hd_set.html"),"w",encoding="utf-8").write(html)
+# newline="\n" so a run on Windows does not rewrite the committed file with CRLF.
+# Without it every Windows run left this repo dirty with a 31-line diff that was
+# pure carriage returns and no content change. The PNG writers were already safe;
+# this was the one text output that was not.
+open(os.path.join(OUT,"hexhound_hd_set.html"),"w",encoding="utf-8",
+     newline="\n").write(html)
 print("wrote hexhound_hd_set.html")
 
 # Tools-tile Packet Pup icon: alpha-crop the pup asset to its content and pad to a
 # square that clears the tile label. Deploy to the SD as /HexHound/pup_icon.png
 # (loaded by draw_pet_icon() in tools_screen.cpp).
-pup=Image.open(os.path.join(OUT,"asset_pup.png")).convert("RGBA")
-crop=pup.crop(pup.getbbox()); crop.thumbnail((132,132),Image.LANCZOS)
-icon=Image.new("RGBA",(142,142),(0,0,0,0))
-icon.paste(crop,((142-crop.width)//2,(142-crop.height)//2),crop)
-icon.save(os.path.join(OUT,"pup_icon.png"))
-print("wrote pup_icon.png (Tools tile)")
+# It is derived from the 200px asset, so a non-default --asset-size skips it
+# rather than rewriting a committed file from a source it was not cut from.
+if ASSET_SIZE == 200:
+    pup=Image.open(asset_path("pup")).convert("RGBA")
+    crop=pup.crop(pup.getbbox()); crop.thumbnail((132,132),Image.LANCZOS)
+    icon=Image.new("RGBA",(142,142),(0,0,0,0))
+    icon.paste(crop,((142-crop.width)//2,(142-crop.height)//2),crop)
+    icon.save(os.path.join(OUT,"pup_icon.png"))
+    print("wrote pup_icon.png (Tools tile)")
+else:
+    print(f"asset size {ASSET_SIZE}: skipped pup_icon.png (it is cut from the 200px asset)")
