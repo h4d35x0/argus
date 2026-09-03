@@ -1,5 +1,6 @@
 #include "gps_screen.h"
 #include "gps_gsv.h"       // satellites IN VIEW + C/N0 (see gps_health.h)
+#include "dst_rules.h"    // us_dst_active(): one definition, host-tested
 #include "tools_screen.h"
 #include "theme.h"
 #include <LilyGoLib.h>
@@ -41,45 +42,6 @@ static int utc_offset_from_longitude(double lon)
 }
 
 // Zeller's congruence for the Gregorian calendar. Returns 0 = Sunday,
-// 1 = Monday, ... 6 = Saturday. Year is the full 4-digit year, month
-// is 1..12, day is 1..31. Used by us_dst_active() to find the second
-// Sunday of March / first Sunday of November without a calendar table.
-static int day_of_week(int y, int m, int d)
-{
-    if (m < 3) { m += 12; y--; }
-    int K = y % 100;
-    int J = y / 100;
-    int h = (d + (13 * (m + 1)) / 5 + K + K / 4 + J / 4 + 5 * J) % 7;
-    // Zeller returns 0 = Saturday; shift so 0 = Sunday.
-    return (h + 6) % 7;
-}
-
-// US-style daylight saving: starts at 02:00 on the second Sunday of
-// March, ends at 02:00 on the first Sunday of November (post-2007
-// rules). Hour parameter is local *standard* time. Approximate for
-// the two transition days - we treat the whole transition day as DST
-// on/off rather than handling the 02:00 boundary precisely, which is
-// fine since the RTC is being seeded once at GPS-fix time and the
-// user can flip Manual Time if they need exact precision on a
-// transition Sunday.
-static bool us_dst_active(int year, int month, int day)
-{
-    if (month < 3 || month > 11) return false;
-    if (month > 3 && month < 11) return true;
-
-    if (month == 3) {
-        // DST starts second Sunday of March.
-        int march_first_dow = day_of_week(year, 3, 1);   // 0=Sun
-        int first_sunday    = (march_first_dow == 0) ? 1 : (8 - march_first_dow);
-        int second_sunday   = first_sunday + 7;
-        return day >= second_sunday;
-    }
-
-    // month == 11: DST ends first Sunday of November.
-    int nov_first_dow = day_of_week(year, 11, 1);
-    int first_sunday  = (nov_first_dow == 0) ? 1 : (8 - nov_first_dow);
-    return day < first_sunday;
-}
 
 static lv_obj_t *gps_screen;
 static lv_obj_t *toggle_sw;
@@ -764,7 +726,10 @@ static void on_gps_update(lv_timer_t *timer)
             if (!in_arizona) dst_bump = 1;
         }
         clock_screen_set_utc_offset(base_off + dst_bump);
-        timezone_note_detected(base_off + dst_bump);   // persist across reboots
+        // A GPS fix is a real clock sync (UTC straight off the constellation),
+        // so stamp it - that is what lets the watch later admit it has not been
+        // synced in weeks instead of presenting a drifted RTC with confidence.
+        timezone_note_synced(base_off + dst_bump, clocksync::Source::Gps);
         rtc_synced = true;
     }
 
