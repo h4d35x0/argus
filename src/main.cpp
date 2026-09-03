@@ -29,6 +29,7 @@
 #include "handshake.h"
 #include "tpms_screen.h"
 #include "timezone.h"
+#include "clock_time.h"
 #include "tpms.h"
 #include "pager_screen.h"
 #include "pager.h"
@@ -169,9 +170,22 @@ static lv_obj_t *hand_sec;
 static bool      analog_face = false;
 static uint32_t last_update_ms   = 0;
 static int      clock_utc_offset = -4; // hours; default US Eastern (EDT).
-                                       // The RTC holds UTC; GPS fix refines this
-                                       // (incl. DST) from longitude when available.
+                                       // The RTC ALWAYS holds UTC; this shifts it
+                                       // to local for display. Every RTC writer
+                                       // (GPS, NTP, Manual Time, the build-time
+                                       // seed below) must keep that invariant and
+                                       // persist the offset that pairs with it,
+                                       // or the face comes up hours off after a
+                                       // reboot. GPS refines this (incl. DST)
+                                       // from longitude when available.
 static bool     manual_time_override = false; // user-set time; blocks GPS sync
+
+// Set when the RTC came up unset and was seeded from the firmware build time,
+// together with the offset used to convert that local build time to UTC. If
+// timezone_load_on_boot() then restores a different offset, the seed is rebased
+// so the face keeps showing the build time rather than sliding by the delta.
+static bool     rtc_build_seeded     = false;
+static int      rtc_build_seed_off   = 0;
 static bool     clock_12h        = true;
 static bool     clock_show_day   = true;
 static bool     clock_show_date  = true;
@@ -844,7 +858,7 @@ void clock_screen_set_analog_face(bool analog)
         // Immediately drive hands to the current time
         struct tm t;
         instance.rtc.getDateTime(&t);
-        if (clock_utc_offset != 0) { t.tm_hour += clock_utc_offset; mktime(&t); }
+        clocktime::tm_utc_to_local(&t, clock_utc_offset);
         update_analog_clock(&t);
     } else {
         lv_obj_clear_flag(time_label, LV_OBJ_FLAG_HIDDEN);
@@ -1171,21 +1185,27 @@ void clock_screen_set_manual_override(bool on)
 void clock_screen_get_local_time(struct tm *out)
 {
     instance.rtc.getDateTime(out);
-    if (clock_utc_offset != 0) {
-        out->tm_hour += clock_utc_offset;
-        mktime(out);
-    }
+    clocktime::tm_utc_to_local(out, clock_utc_offset);
 }
 
-// Apply a user-entered local date/time: write it straight to the RTC, drop the
-// GPS-derived UTC offset (the RTC now holds local time directly), enable the
-// manual override so GPS sync stops touching the clock, and refresh the face.
+// Apply a user-entered LOCAL date/time. The RTC always holds UTC (the world
+// clock, Meshtastic and the SD log stamps all read it as UTC), so convert with
+// the offset currently in force and keep that offset rather than zeroing it.
+// Persisting the offset is what makes the setting survive a reboot: it used to
+// be dropped to 0 in RAM only, so the next boot re-applied the last
+// GPS/WiFi-detected offset to an RTC holding local time and the face came up
+// that many hours off. Also enables the manual override so GPS/NTP sync stops
+// touching the clock.
 void clock_screen_apply_manual_time(int year, int mon, int day, int hour, int min)
 {
-    instance.rtc.setDateTime(year, mon, day, hour, min, 0);
+    clocktime::DateTime local = { year, mon, day, hour, min, 0 };
+    const clocktime::DateTime utc = clocktime::local_to_utc(local, clock_utc_offset);
+
+    instance.rtc.setDateTime(utc.year, utc.mon, utc.day, utc.hour, utc.min, utc.sec);
     instance.rtc.hwClockRead();
-    clock_utc_offset     = 0;
     manual_time_override = true;
+    rtc_build_seeded     = false;               // the seed has been superseded
+    timezone_note_detected(clock_utc_offset);   // pair the offset with the RTC on disk
     update_clock();
 }
 
@@ -1330,12 +1350,9 @@ static void update_clock()
     struct tm t;
     instance.rtc.getDateTime(&t); // RTC stores UTC
 
-    // Apply longitude-derived offset to get local time.
-    // mktime() normalises any hour/day/month overflow after the addition.
-    if (clock_utc_offset != 0) {
-        t.tm_hour += clock_utc_offset;
-        mktime(&t);
-    }
+    // Apply the persisted offset to get local time. tm_utc_to_local() also
+    // refills tm_wday / tm_yday, which the day-name label and the calendar read.
+    clocktime::tm_utc_to_local(&t, clock_utc_offset);
 
     if (analog_face) {
         update_analog_clock(&t);
@@ -1429,10 +1446,14 @@ void setup()
 
     // Time fallback: with no GPS fix and no WiFi/NTP, the RTC can come up unset and
     // the clock reads wildly wrong. If the RTC year is implausible, seed it from the
-    // firmware BUILD time (__DATE__/__TIME__) as local wall-clock so the face shows
-    // it directly (clock_utc_offset stays 0). Approximate (build time, not flash
-    // time); a later GPS fix / NTP sync overrides it precisely. Placed after
-    // beginLvglHelper so USB/console are up first.
+    // firmware BUILD time (__DATE__/__TIME__), which is local wall-clock, CONVERTED
+    // TO UTC so the "RTC holds UTC" invariant survives the fallback. The offset to
+    // convert with is the one timezone_load_on_boot() will restore later in setup,
+    // so peek at it now; if it turns out to differ, the seed is rebased right after
+    // that call. Approximate (build time, not flash time); a later GPS fix / NTP
+    // sync overrides it precisely. Placed after beginLvglHelper so USB/console are
+    // up first, and before detect_log_sweep_all() so the retention sweep has a
+    // plausible date to age against.
     {
         struct tm rn;
         instance.rtc.getDateTime(&rn);
@@ -1448,7 +1469,15 @@ void setup()
             int hh  = (T[0]-'0')*10 + (T[1]-'0');
             int mm  = (T[3]-'0')*10 + (T[4]-'0');
             int ss  = (T[6]-'0')*10 + (T[7]-'0');
-            instance.rtc.setDateTime(yr, mon, day, hh, mm, ss);
+
+            clock_utc_offset   = timezone_peek_saved_offset(clock_utc_offset);
+            rtc_build_seed_off = clock_utc_offset;
+            rtc_build_seeded   = true;
+
+            clocktime::DateTime bl = { yr, mon, day, hh, mm, ss };
+            const clocktime::DateTime bu = clocktime::local_to_utc(bl, clock_utc_offset);
+
+            instance.rtc.setDateTime(bu.year, bu.mon, bu.day, bu.hour, bu.min, bu.sec);
             instance.rtc.hwClockRead();
         }
     }
@@ -1998,11 +2027,47 @@ void setup()
     // Called after the default setBrightness so a saved brightness wins.
     settings_screen_load();
 
-    // Timezone: restore the last GPS/WiFi-detected UTC offset so the face shows
-    // correct local time immediately (must run after settings_screen_load() so
-    // the Manual Time flag is known — Manual Time suppresses it). Then register
-    // the WiFi auto-sync hook + background worker.
+    // Timezone: restore the saved UTC offset so the face shows correct local time
+    // immediately. MUST run after settings_screen_load(): the Manual Time flag is
+    // what tells the v1-file migration whether the offset on the card pairs with a
+    // UTC RTC (Manual Time off) or a local one written by the old manual-time code
+    // (Manual Time on). Then register the WiFi auto-sync hook + background worker.
     timezone_load_on_boot();
+
+    // If the RTC was seeded from the build time above with a provisional offset
+    // and timezone_load_on_boot() settled on a different one (a v1 file migrated
+    // to 0 under Manual Time, say), shift the RTC by the delta so the face still
+    // reads the build time instead of sliding by the difference.
+    if (rtc_build_seeded && clock_utc_offset != rtc_build_seed_off) {
+        struct tm t;
+        instance.rtc.getDateTime(&t);
+        clocktime::DateTime seeded = { t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                                       t.tm_hour, t.tm_min, t.tm_sec };
+        // Read the seed back as the local time it was meant to show, then store
+        // it again against the offset that was actually restored.
+        const clocktime::DateTime shown = clocktime::utc_to_local(seeded, rtc_build_seed_off);
+        const clocktime::DateTime utc   = clocktime::local_to_utc(shown, clock_utc_offset);
+        instance.rtc.setDateTime(utc.year, utc.mon, utc.day, utc.hour, utc.min, utc.sec);
+        instance.rtc.hwClockRead();
+        rtc_build_seed_off = clock_utc_offset;
+        clock_screen_refresh();
+    }
+
+    // One line of ground truth on the console. The RTC and the offset are a
+    // pair, and "the clock is N hours off" is unanswerable without seeing both
+    // halves plus the Manual Time flag - which is what made the September 2026
+    // report take a code audit instead of a measurement.
+    {
+        struct tm rtcnow;
+        instance.rtc.getDateTime(&rtcnow);
+        Serial.printf("[clock] rtc(utc)=%04d-%02d-%02d %02d:%02d:%02d "
+                      "utc_off=%+d manual=%d seeded=%d\n",
+                      rtcnow.tm_year + 1900, rtcnow.tm_mon + 1, rtcnow.tm_mday,
+                      rtcnow.tm_hour, rtcnow.tm_min, rtcnow.tm_sec,
+                      clock_utc_offset, manual_time_override ? 1 : 0,
+                      rtc_build_seeded ? 1 : 0);
+    }
+
     timezone_init();
 
     // Decode the wallpaper NOW, while internal SRAM is still fully free, BEFORE

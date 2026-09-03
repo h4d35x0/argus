@@ -7,6 +7,7 @@
 #include <time.h>
 #include <limits.h>
 #include "usb_sd.h"
+#include "clock_time.h"
 
 // Implemented in main.cpp (clock screen). The RTC holds UTC; clock_utc_offset
 // shifts it to local for display.
@@ -17,45 +18,97 @@ void clock_screen_refresh();
 #define TZ_PATH "/Settings/timezone.txt"
 
 // ---- persistence -----------------------------------------------------------
+//
+// File format (one line):  offset=<hours> v=<version>
+//
+// v1 files carry no "v=" key. They were written under the old model, in which
+// Manual Time wrote LOCAL wall clock into the RTC and dropped the offset to 0
+// in RAM ONLY. The 0 was never persisted, so the last GPS/WiFi-detected offset
+// stayed in the file and was re-applied on the next boot to an RTC that no
+// longer held UTC -- a watch set by hand in one zone after a trip to another
+// came back up hours off. v2 always persists the offset that pairs with what
+// is actually in the RTC, so the restored pair is self-consistent.
 
 static int s_last_written = INT_MIN;   // avoid redundant SD writes
 
-void timezone_note_detected(int offset_hours)
+// Unconditional write; callers dedupe.
+static bool tz_write(int offset_hours)
 {
-    if (offset_hours == s_last_written) return;            // unchanged
-    if (offset_hours < -12 || offset_hours > 14) return;   // sanity
-    if (!instance.isCardReady() || usb_sd_is_running()) return;
-
     if (!SD.exists("/Settings")) SD.mkdir("/Settings");
     File f = SD.open(TZ_PATH, FILE_WRITE);   // FILE_WRITE = truncate
-    if (!f) return;
-    f.printf("offset=%d\n", offset_hours);
+    if (!f) return false;
+    f.printf("offset=%d v=%d\n", offset_hours, clocktime::kFileVersion);
     f.close();
     s_last_written = offset_hours;
+    return true;
+}
+
+// Read the saved line into *out_off / *out_ver. Returns false when there is no
+// usable value on the card.
+static bool tz_read(int *out_off, int *out_ver)
+{
+    if (!instance.isCardReady() || usb_sd_is_running()) return false;
+    if (!SD.exists(TZ_PATH)) return false;
+
+    File f = SD.open(TZ_PATH, FILE_READ);
+    if (!f) return false;
+    char buf[48] = {0};
+    int n = f.readBytesUntil('\n', (uint8_t *)buf, sizeof(buf) - 1);
+    f.close();
+    if (n <= 0) return false;
+    buf[n] = '\0';
+
+    const char *p = strstr(buf, "offset=");
+    if (!p) return false;
+    int off = atoi(p + 7);
+    if (!clocktime::offset_plausible(off)) return false;
+
+    const char *v = strstr(buf, "v=");
+    *out_ver = v ? atoi(v + 2) : 1;              // no "v=" key => v1
+    *out_off = off;
+    return true;
+}
+
+void timezone_note_detected(int offset_hours)
+{
+    if (offset_hours == s_last_written) return;                  // unchanged
+    if (!clocktime::offset_plausible(offset_hours)) return;      // sanity
+    if (!instance.isCardReady() || usb_sd_is_running()) return;
+    tz_write(offset_hours);
+}
+
+int timezone_peek_saved_offset(int fallback)
+{
+    int off = 0, ver = 0;
+    if (!tz_read(&off, &ver)) return fallback;
+    return off;
 }
 
 void timezone_load_on_boot()
 {
-    // Manual Time wins — in that mode the RTC already holds local time directly.
-    if (clock_screen_manual_time_active()) return;
-    if (!instance.isCardReady() || usb_sd_is_running()) return;
-    if (!SD.exists(TZ_PATH)) return;
+    int off = 0, ver = 0;
+    if (!tz_read(&off, &ver)) {
+        Serial.printf("[tz] no usable %s (card ready=%d, usb=%d)\n", TZ_PATH,
+                      instance.isCardReady() ? 1 : 0, usb_sd_is_running() ? 1 : 0);
+        return;
+    }
 
-    File f = SD.open(TZ_PATH, FILE_READ);
-    if (!f) return;
-    char buf[32] = {0};
-    int n = f.readBytesUntil('\n', (uint8_t *)buf, sizeof(buf) - 1);
-    f.close();
-    if (n <= 0) return;
-    buf[n] = '\0';
+    const bool manual = clock_screen_manual_time_active();
+    const int  paired = clocktime::effective_saved_offset(off, ver, manual);
 
-    const char *p = strstr(buf, "offset=");
-    if (!p) return;
-    int off = atoi(p + 7);
-    if (off < -12 || off > 14) return;     // sanity
+    // Print the card's state BEFORE the migration rewrites it - this is the only
+    // moment the pre-upgrade evidence exists.
+    Serial.printf("[tz] file offset=%d v=%d manual=%d -> paired=%d\n",
+                  off, ver, manual ? 1 : 0, paired);
 
-    s_last_written = off;                  // already on disk; don't rewrite it
-    clock_screen_set_utc_offset(off);
+    if (ver < clocktime::kFileVersion) {
+        s_last_written = INT_MIN;                // force the rewrite
+        tz_write(paired);                        // best effort; card may be busy
+    } else {
+        s_last_written = paired;                 // already on disk; don't rewrite
+    }
+
+    clock_screen_set_utc_offset(paired);
     clock_screen_refresh();
 }
 
@@ -116,6 +169,9 @@ static void tz_worker(void *)
         // IP geolocation -> current UTC offset.
         if (http_get_offset(&off_h)) got_off = true;
 
+        Serial.printf("[tz] wifi sync: ntp=%d geo=%d off=%d\n",
+                      got_time ? 1 : 0, got_off ? 1 : 0, off_h);
+
         if (got_time) s_utc_tm = tmutc;
         s_got_time     = got_time;
         s_offset_h     = off_h;
@@ -141,7 +197,7 @@ void timezone_bg_tick()
     if (!s_result_ready) return;
     s_result_ready = false;
 
-    // Manual Time wins — drop the results untouched.
+    // Manual Time wins: drop the results untouched.
     if (clock_screen_manual_time_active()) {
         s_got_time = s_got_offset = false;
         return;

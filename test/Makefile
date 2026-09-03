@@ -16,7 +16,7 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -I. -I../src/mesh -I../src/ble -I../src/det
 BUILD    := build
 
 # Pure modules under test (add more as they're extracted). NO hardware includes.
-MODULES  := ../src/mesh/aes.cpp ../src/mesh/crypto.cpp ../src/ble/adv_parser.cpp ../src/image_dims.cpp ../src/geo_cell.cpp ../src/detect/evil_twin.cpp ../src/detect/tail_detect.cpp ../src/detect/deauth_flood.cpp ../src/detect/ble_spam.cpp ../src/detect/beacon_flood.cpp ../src/detect/threat_state.cpp ../src/detect/threat_map.cpp ../src/detect/tracker_ident.cpp ../src/detect/threat_log.cpp ../src/detect/surveillance_device.cpp ../src/notify/notification_store.cpp ../src/device_mode_plan.cpp ../src/detect/log_retention.cpp
+MODULES  := ../src/mesh/aes.cpp ../src/mesh/crypto.cpp ../src/ble/adv_parser.cpp ../src/image_dims.cpp ../src/geo_cell.cpp ../src/detect/evil_twin.cpp ../src/detect/tail_detect.cpp ../src/detect/deauth_flood.cpp ../src/detect/ble_spam.cpp ../src/detect/beacon_flood.cpp ../src/detect/threat_state.cpp ../src/detect/threat_map.cpp ../src/detect/tracker_ident.cpp ../src/detect/threat_log.cpp ../src/detect/surveillance_device.cpp ../src/notify/notification_store.cpp ../src/device_mode_plan.cpp ../src/detect/log_retention.cpp ../src/clock_time.cpp
 # Every test_*.cpp self-registers via WL_TEST; test_main.cpp provides main().
 TESTS    := $(wildcard test_*.cpp)
 BIN      := $(BUILD)/argus_tests.exe
