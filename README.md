@@ -173,11 +173,16 @@ These are the per-radio status screens stepped through by short-pressing the pow
 
 The flagship defensive feature, on the **Radar** tile. Threat Radar correlates every confirmed detector hit (AirTag / Find My tracker, Evil Twin, Flipper, Flock, Skimmer) against your live GPS fix and asks one question: *is this device following me?* A MAC seen at a single spot is ambient; a MAC whose sightings spread across many waypoints as you move is scored **Possible -> Likely -> Confirmed** tail. It runs continuously in the background, fed by all five detectors and the wardriver.
 
-- **On-face alerts** — a Confirmed tail fires a haptic alert and raises a badge on the watch face; the UI accent shifts toward HADES-red as the threat posture rises.
+- **On-face alerts** - a **Likely** tail fires a distinctive triple-pulse haptic, raises a badge on the watch face and writes an evidence record to SD; every live status icon flips to HADES-red at the same threshold. The alert is edge-latched per contact, so one tail buzzes once rather than on every advert.
 - **Counter-tail (vehicular)** — persistent ambient BLE/WiFi that co-moves with you (a car radiating infotainment / TPMS / hotspot) is promoted to a `VEHICLE` contact, with a learned "familiar = your own car, seen with you on 2+ days" suppression designed to keep your daily driver from crying wolf.
 - **Mesh reputation** — when a tail hits Confirmed, ARGUS broadcasts a hashed tracker fingerprint over Meshtastic (`TRFLAG|<hash>|<cat>`) so your whole group is warned; peers fold the hashes into a local reputation store, escalation logged to `/Settings/threat_log.txt`.
 
-**Field status:** the tail scoring and threat-decay logic is implemented and covered by the host unit-test suite, but Threat Radar has not yet been validated end to end against a real tracker performing a real tail over distance. Treat its verdicts as a prompt to look around, not as proof, and expect both misses and false positives until field results are in.
+**Field status: partially validated, and the split matters.** The scoring and threat-decay logic is implemented and covered by the host unit-test suite. Beyond that:
+
+- **Validated in the field.** On 2026-07-30 the ladder ran end to end against a real Find My tracker co-moving on an outdoor drive, reaching **Likely** across 21 waypoints and roughly 7.5 km of displacement. Likely is the threshold that fires the haptic, the face badge and the red accent, so that alert path is field-proven rather than only unit-tested. A separate session confirmed the threat-level decay behaves over a real drive (2 transitions in 110 minutes, no strobing).
+- **Not yet observed in the field: `Confirmed`.** The highest level recorded against a real tracker so far is Likely. Confirmed requires ≥4 waypoints, ≥1500 m displacement and ≥18 minutes of sustained co-movement *together* ([`threat_radar.cpp`](src/threat_radar.cpp)), so the Confirmed-gated Meshtastic broadcast remains unproven outside unit tests.
+
+Treat every verdict as a prompt to look around, not as proof. Expect both misses and false positives - dense enterprise APs, vendor-default SSIDs and devices riding in your own car are all known to produce them.
 
 ### What ARGUS keeps, and for how long
 
