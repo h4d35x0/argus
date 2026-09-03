@@ -1,6 +1,7 @@
 #include "settings_screen.h"
 #include "theme.h"
 #include "usb_sd.h"
+#include "usb_sd_screen.h"   // card reader, reachable in EVERY mode (see below)
 #include "boot_prefs.h"
 #include "argus_mode.h"
 #include "pin_pad_screen.h"
@@ -1341,6 +1342,36 @@ void settings_screen_create()
         low_mem_show_dialog(msg);
         settings_update_sysinfo();
     }, LV_EVENT_CLICKED, NULL);
+
+    // "USB SD card reader" - a SECOND route to the same screen the Tools grid
+    // reaches, and the only one that works in Daily.
+    //
+    // The Tools grid is hidden in Daily on purpose: Daily is the innocent-watch
+    // mode and the whole point is that the grid is not there. But that also put
+    // the card reader out of reach, so pulling logs off the watch required
+    // switching to Defense first - which is a mode change the wearer may not
+    // want to make just to copy a file, and it is not a capability worth
+    // hiding: mounting a card as a USB drive is what any ordinary device does.
+    // Settings is reachable in every mode (BOOT press from the clock face), so
+    // the utility lives here and the disguise stays intact.
+    //
+    // Notify and LoRa APRS sit in the same neutral class and are still
+    // Tools-only; APRS at least is an RF transmitter, so whether it belongs in
+    // Daily is a real question rather than an oversight. See tools_apply_mode().
+    lv_obj_t *usbsd_btn = lv_button_create(settings_screen);
+    lv_obj_set_size(usbsd_btn, 380, 64);
+    lv_obj_set_style_bg_color(usbsd_btn, lv_color_make(0x1E, 0x1E, 0x1E), LV_PART_MAIN);
+    lv_obj_set_style_border_color(usbsd_btn, ARGUS_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(usbsd_btn, 1, LV_PART_MAIN);
+    lv_obj_align(usbsd_btn, LV_ALIGN_TOP_MID, 0, 2270);
+    register_shiftable(usbsd_btn, 2270);
+    lv_obj_t *usbsd_lbl = lv_label_create(usbsd_btn);
+    lv_obj_set_style_text_font(usbsd_lbl, &font_argus_label_16, LV_PART_MAIN);
+    lv_obj_set_style_text_color(usbsd_lbl, ARGUS_TEXT, LV_PART_MAIN);
+    lv_label_set_text(usbsd_lbl, "USB SD card reader");
+    lv_obj_center(usbsd_lbl);
+    lv_obj_add_event_cb(usbsd_btn, [](lv_event_t *) { usb_sd_screen_show(); },
+                        LV_EVENT_CLICKED, NULL);
 
     lv_obj_add_event_cb(s_ofs_btn, [](lv_event_t *) {
         if (argus_mode_current() == ArgusMode::Offense) { lock_offense(); clock_screen_show(); }
