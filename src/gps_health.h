@@ -19,10 +19,23 @@
 //
 //   NoData        nothing arriving on the UART -> the receiver or its rail is
 //                 the problem. Firmware/hardware, not sky.
-//   NoSatellites  sentences arriving cleanly, zero satellites visible -> sky.
+//   NoSatellites  sentences arriving cleanly, nothing in view -> sky.
 //                 Face-down on a desk, in a bag, or in a car. Move outside.
-//   Acquiring     satellites visible but not enough for a fix yet -> just wait.
+//   WeakSignal    satellites in view but every one too weak to acquire -> sky
+//                 again, but the receiver can SEE it is being blocked, which is
+//                 a far more credible thing to tell the user than "no sats".
+//   Acquiring     satellites in view at a usable signal, no fix yet -> wait.
 //   Locked        fix.
+//
+// CORRECTED 2026-09-03. The satellite count fed in here used to come from
+// `TinyGPSPlus::satellites`, which is GGA field 7, "Satellites used"
+// (TinyGPS++.cpp:277) - satellites in the position SOLUTION, not in view. That
+// value is ~0 whenever there is no fix, so NoSatellites and Acquiring could not
+// actually be told apart and the advice was inverted in the one case where
+// waiting was right: on 2026-09-02 this said "Needs open sky" for the first
+// 7.5 minutes of an acquisition that was visibly progressing, then locked at
+// 11m17s. The count now comes from GSV via gps_gsv.h, and the C/N0 that arrives
+// with it is what adds WeakSignal.
 //
 // C++11 only: the ESP32 Arduino core builds this at -std=gnu++11 even though
 // the host test suite is C++17. No `if constexpr`, no inline variables.
@@ -33,8 +46,9 @@
 enum class GpsHealth : uint8_t {
     Off,           // radio powered down by the user
     NoData,        // powered, but no NMEA is arriving
-    NoSatellites,  // NMEA flowing, receiver sees nothing
-    Acquiring,     // satellites visible, no fix yet
+    NoSatellites,  // NMEA flowing, nothing in view at all
+    WeakSignal,    // in view, but the best C/N0 is below acquisition
+    Acquiring,     // in view at a usable signal, no fix yet
     Locked,        // fix
 };
 
@@ -51,25 +65,40 @@ static const uint32_t kGpsNoDataFloorBps = 20;
 // power-on.
 static const uint32_t kGpsNoDataDwellSec = 5;
 
+// Carrier-to-noise floor, in dB-Hz, below which a satellite is in view but
+// cannot realistically be brought into a fix from a standing start.
+//
+// This is a THRESHOLD, not a measurement, and it is set from the physics rather
+// than from our own data: a GNSS receiver tracks a satellite it already holds
+// far below the level it needs to ACQUIRE one, which is why a fix carried
+// indoors survives while the same spot yields nothing after a restart. That
+// asymmetry is exactly what the 2026-09-02 log caught - a fix held indoors on
+// 5-8 satellites, then 16m45s of nothing after a 3m36s power cycle in the same
+// room. 25 dB-Hz sits between the two: comfortably below open-sky levels
+// (35-50), above the point where acquisition stops being plausible.
+static const uint32_t kGpsCnoAcquireDb = 25;
+
 // Classify the current GPS condition.
 //
 //   powered    the radio is on
 //   have_lock  the caller's fix predicate (fresh position + enough satellites)
 //   bps        NMEA bytes/second over the last sample interval
-//   sats       satellites reported, 0 if the count itself is stale
+//   in_view    satellites IN VIEW from GSV (see gps_gsv.h), not used-in-fix
+//   cno_max    strongest C/N0 in view, dB-Hz, 0 if nothing is in view
 //   quiet_sec  how long bps has been continuously below the floor
 //
 // NoData is tested before Locked on purpose: a silent link cannot be vouching
 // for a present-tense fix, and saying so is the more useful answer.
 inline GpsHealth gps_health_classify(bool powered, bool have_lock,
-                                     uint32_t bps, uint32_t sats,
-                                     uint32_t quiet_sec)
+                                     uint32_t bps, uint32_t in_view,
+                                     uint32_t cno_max, uint32_t quiet_sec)
 {
     if (!powered) return GpsHealth::Off;
     if (bps < kGpsNoDataFloorBps && quiet_sec >= kGpsNoDataDwellSec)
         return GpsHealth::NoData;
-    if (have_lock)  return GpsHealth::Locked;
-    if (sats == 0)  return GpsHealth::NoSatellites;
+    if (have_lock)     return GpsHealth::Locked;
+    if (in_view == 0)  return GpsHealth::NoSatellites;
+    if (cno_max < kGpsCnoAcquireDb) return GpsHealth::WeakSignal;
     return GpsHealth::Acquiring;
 }
 
@@ -81,6 +110,7 @@ inline const char *gps_health_label(GpsHealth h)
     case GpsHealth::Off:          return "Off";
     case GpsHealth::NoData:       return "No data";
     case GpsHealth::NoSatellites: return "No sats";
+    case GpsHealth::WeakSignal:   return "Weak sig";
     case GpsHealth::Acquiring:    return "Acquiring";
     case GpsHealth::Locked:       return "Locked";
     }
@@ -95,7 +125,8 @@ inline const char *gps_health_hint(GpsHealth h)
     case GpsHealth::Off:          return "GPS radio is off";
     case GpsHealth::NoData:       return "Receiver not responding";
     case GpsHealth::NoSatellites: return "Needs open sky";
-    case GpsHealth::Acquiring:    return "Acquiring, hold still";
+    case GpsHealth::WeakSignal:   return "Signal too weak, move outside";
+    case GpsHealth::Acquiring:    return "In view, hold still";
     case GpsHealth::Locked:       return "Locked";
     }
     return "";

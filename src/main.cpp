@@ -2547,9 +2547,11 @@ void loop()
     }
     boot_knock_poll(boot_ms);   // fire a deferred beat once its gap goes quiet
 
-    // Feed NMEA bytes to TinyGPSPlus while the GPS radio is on
+    // Feed NMEA bytes to TinyGPSPlus AND the GSV accumulator while the GPS radio
+    // is on. gps_screen_pump() replaces instance.gps.loop() so the byte stream
+    // can be teed; it is still exactly one drain of the port per iteration.
     if (gps_screen_is_powered()) {
-        instance.gps.loop(false);
+        gps_screen_pump();
     }
 
     // When a screen transition was just requested, skip all the heavy

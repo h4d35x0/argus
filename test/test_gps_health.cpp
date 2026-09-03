@@ -19,34 +19,78 @@
 // ~900 B/s locked, so this is comfortably "the link is alive".
 static const uint32_t kLiveBps = 800;
 
+// C/N0 values either side of kGpsCnoAcquireDb, named so each call below reads
+// as an intent rather than a magic number.
+static const uint32_t kGoodCno = 38;   // open-sky signal
+static const uint32_t kWeakCno = 12;   // in view through a roof, unacquirable
+
 WL_TEST(gps_health_off_beats_everything)
 {
     // Radio off is a deliberate user action, never a fault. Even with a stale
     // satellite count and a dead link it must read Off.
-    WL_CHECK(gps_health_classify(false, false, 0, 0, 999) == GpsHealth::Off);
-    WL_CHECK(gps_health_classify(false, true, kLiveBps, 12, 0) == GpsHealth::Off);
+    WL_CHECK(gps_health_classify(false, false, 0, 0, 0, 999) == GpsHealth::Off);
+    WL_CHECK(gps_health_classify(false, true, kLiveBps, 12, kGoodCno, 0) == GpsHealth::Off);
 }
 
 WL_TEST(gps_health_locked_when_fixed)
 {
-    WL_CHECK(gps_health_classify(true, true, kLiveBps, 12, 0) == GpsHealth::Locked);
-    WL_CHECK(gps_health_classify(true, true, kLiveBps, 4, 0) == GpsHealth::Locked);
+    WL_CHECK(gps_health_classify(true, true, kLiveBps, 12, kGoodCno, 0) == GpsHealth::Locked);
+    WL_CHECK(gps_health_classify(true, true, kLiveBps, 4, kGoodCno, 0) == GpsHealth::Locked);
+    // A held fix must stay Locked even as the signal decays toward the
+    // acquisition floor: tracking survives well below where acquiring starts,
+    // which is the whole 2026-09-02 finding. Reporting WeakSignal here would
+    // throw away a fix the receiver is still perfectly capable of holding.
+    WL_CHECK(gps_health_classify(true, true, kLiveBps, 5, kWeakCno, 0) == GpsHealth::Locked);
 }
 
 WL_TEST(gps_health_no_satellites_is_a_sky_problem)
 {
     // The 2026-08-03 failure signature: sentences arriving cleanly, receiver
     // seeing nothing. This must NOT read as a hardware fault.
-    WL_CHECK(gps_health_classify(true, false, 369, 0, 0) == GpsHealth::NoSatellites);
+    // 369 B/s with nothing in view is the measured signature of cycles 2 and 4
+    // of the 2026-09-02 log: 16m45s and 48m35s of an empty but perfectly
+    // healthy NMEA stream. It must NOT read as a hardware fault.
+    WL_CHECK(gps_health_classify(true, false, 369, 0, 0, 0) == GpsHealth::NoSatellites);
     WL_CHECK(strcmp(gps_health_hint(GpsHealth::NoSatellites), "Needs open sky") == 0);
+
+    // in_view is the ONLY thing that may drive this. A receiver with plenty in
+    // view but nothing yet in the solution must never be told to go outside -
+    // that is the exact inversion this signature change exists to fix, and it
+    // is why used-in-fix is not a parameter here at all.
+    WL_CHECK(gps_health_classify(true, false, kLiveBps, 9, kGoodCno, 0)
+             != GpsHealth::NoSatellites);
 }
 
 WL_TEST(gps_health_acquiring_when_sats_visible_but_no_fix)
 {
-    // Satellites in view but not enough of them yet. Waiting is the right
-    // advice; telling the user to move would be wrong.
-    WL_CHECK(gps_health_classify(true, false, kLiveBps, 1, 0) == GpsHealth::Acquiring);
-    WL_CHECK(gps_health_classify(true, false, kLiveBps, 3, 0) == GpsHealth::Acquiring);
+    // Satellites in view at a signal that can actually be acquired. Waiting is
+    // the right advice; telling the user to move would be wrong. This is cycle
+    // 3 of the 2026-09-02 log, which spent 7.5 minutes being told to go outside
+    // and then locked without moving.
+    WL_CHECK(gps_health_classify(true, false, kLiveBps, 1, kGoodCno, 0) == GpsHealth::Acquiring);
+    WL_CHECK(gps_health_classify(true, false, kLiveBps, 3, kGoodCno, 0) == GpsHealth::Acquiring);
+    WL_CHECK(gps_health_classify(true, false, kLiveBps, 30, kGoodCno, 0) == GpsHealth::Acquiring);
+    WL_CHECK(strcmp(gps_health_hint(GpsHealth::Acquiring), "In view, hold still") == 0);
+}
+
+WL_TEST(gps_health_weak_signal_is_distinct_from_no_signal)
+{
+    // In view but unacquirable. Same action as NoSatellites, but a materially
+    // more credible thing to say: the receiver can see it is being blocked.
+    WL_CHECK(gps_health_classify(true, false, kLiveBps, 6, kWeakCno, 0)
+             == GpsHealth::WeakSignal);
+
+    // The boundary belongs to Acquiring: at exactly the floor, acquisition is
+    // considered plausible, so we tell the user to wait rather than to move.
+    WL_CHECK(gps_health_classify(true, false, kLiveBps, 6, kGpsCnoAcquireDb, 0)
+             == GpsHealth::Acquiring);
+    WL_CHECK(gps_health_classify(true, false, kLiveBps, 6, kGpsCnoAcquireDb - 1, 0)
+             == GpsHealth::WeakSignal);
+
+    // Nothing in view outranks a weak signal: with in_view 0 there is no C/N0
+    // to speak of, and NoSatellites is the more specific answer.
+    WL_CHECK(gps_health_classify(true, false, kLiveBps, 0, 0, 0)
+             == GpsHealth::NoSatellites);
 }
 
 WL_TEST(gps_health_no_data_needs_to_persist)
@@ -55,11 +99,11 @@ WL_TEST(gps_health_no_data_needs_to_persist)
     // is computed over an interval that has not elapsed yet. Flashing
     // "receiver not responding" there would cry wolf at every power-on.
     for (uint32_t q = 0; q < kGpsNoDataDwellSec; q++)
-        WL_CHECK(gps_health_classify(true, false, 0, 0, q) != GpsHealth::NoData);
+        WL_CHECK(gps_health_classify(true, false, 0, 0, 0, q) != GpsHealth::NoData);
 
     // Once it has persisted, say so.
-    WL_CHECK(gps_health_classify(true, false, 0, 0, kGpsNoDataDwellSec) == GpsHealth::NoData);
-    WL_CHECK(gps_health_classify(true, false, 0, 0, 999) == GpsHealth::NoData);
+    WL_CHECK(gps_health_classify(true, false, 0, 0, 0, kGpsNoDataDwellSec) == GpsHealth::NoData);
+    WL_CHECK(gps_health_classify(true, false, 0, 0, 0, 999) == GpsHealth::NoData);
 }
 
 WL_TEST(gps_health_no_data_beats_no_satellites)
@@ -67,32 +111,38 @@ WL_TEST(gps_health_no_data_beats_no_satellites)
     // Both conditions are true when the link dies (a silent link also reports
     // zero satellites). The link is the more specific and more actionable
     // answer, so it must win - otherwise a dead receiver reads as "go outside".
-    WL_CHECK(gps_health_classify(true, false, 0, 0, kGpsNoDataDwellSec) == GpsHealth::NoData);
+    WL_CHECK(gps_health_classify(true, false, 0, 0, 0, kGpsNoDataDwellSec) == GpsHealth::NoData);
+
+    // Also true with a STALE in-view table: entries are TTL-expired, but a link
+    // that died mid-second can still be holding satellites that have not aged
+    // out. The dead link is the more actionable answer.
+    WL_CHECK(gps_health_classify(true, false, 0, 8, kGoodCno, kGpsNoDataDwellSec)
+             == GpsHealth::NoData);
 }
 
 WL_TEST(gps_health_no_data_beats_a_stale_lock)
 {
     // A link that has been silent for the dwell cannot be vouching for a
     // present-tense fix, whatever the caller's predicate still says.
-    WL_CHECK(gps_health_classify(true, true, 0, 12, kGpsNoDataDwellSec) == GpsHealth::NoData);
+    WL_CHECK(gps_health_classify(true, true, 0, 12, kGoodCno, kGpsNoDataDwellSec) == GpsHealth::NoData);
 }
 
 WL_TEST(gps_health_trickle_counts_as_alive)
 {
     // The floor asks "is it saying anything", not "is it saying much". A
     // receiver limping along at the floor is alive and must not be condemned.
-    WL_CHECK(gps_health_classify(true, false, kGpsNoDataFloorBps, 0, 999)
+    WL_CHECK(gps_health_classify(true, false, kGpsNoDataFloorBps, 0, 0, 999)
              == GpsHealth::NoSatellites);
-    WL_CHECK(gps_health_classify(true, false, kGpsNoDataFloorBps - 1, 0, 999)
+    WL_CHECK(gps_health_classify(true, false, kGpsNoDataFloorBps - 1, 0, 0, 999)
              == GpsHealth::NoData);
 }
 
 WL_TEST(gps_health_labels_and_hints_are_present)
 {
     const GpsHealth all[] = { GpsHealth::Off, GpsHealth::NoData,
-                              GpsHealth::NoSatellites, GpsHealth::Acquiring,
-                              GpsHealth::Locked };
-    for (int i = 0; i < 5; i++) {
+                              GpsHealth::NoSatellites, GpsHealth::WeakSignal,
+                              GpsHealth::Acquiring, GpsHealth::Locked };
+    for (int i = 0; i < 6; i++) {
         WL_CHECK(gps_health_label(all[i])[0] != '\0');
         WL_CHECK(gps_health_hint(all[i])[0] != '\0');
         WL_CHECK(strcmp(gps_health_label(all[i]), "?") != 0);

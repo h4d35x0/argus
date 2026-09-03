@@ -4,6 +4,12 @@
 #include "gps_health.h"
 
 void gps_screen_create();
+
+// Drain the GPS UART into TinyGPSPlus AND the GSV accumulator. Call once per
+// main-loop iteration while the radio is on; it no-ops when it is off. Replaces
+// instance.gps.loop(), which reads the port itself and left no way to tee the
+// stream for GSV. See the SATELLITES IN VIEW block in gps_screen.cpp.
+void gps_screen_pump();
 void gps_screen_restore_power();
 void gps_screen_show();
 bool gps_screen_is_active();

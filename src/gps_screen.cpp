@@ -1,4 +1,5 @@
 #include "gps_screen.h"
+#include "gps_gsv.h"       // satellites IN VIEW + C/N0 (see gps_health.h)
 #include "tools_screen.h"
 #include "theme.h"
 #include <LilyGoLib.h>
@@ -99,6 +100,15 @@ static lv_obj_t *val_csum;      // passed/failed checksums this power cycle
 static bool gps_powered = false;
 static bool rtc_synced  = false; // reset each GPS power cycle
 
+// Set when the radio is switched off while it HELD a fix, cleared on the next
+// power-on. Surfaced in the Status row because that switch is not the harmless
+// thing it looks like: a receiver tracks a satellite far below the signal it
+// needs to ACQUIRE one, so a fix carried indoors survives while the same spot
+// yields nothing from a standing start. Measured 2026-09-02: a fix held indoors
+// on 5-8 satellites, switched off, then 16m45s of exactly nothing after being
+// switched back on 3m36s later in the same room.
+static bool s_fix_discarded = false;
+
 // ---- UART RX RING ----------------------------------------------------------
 // The GPS talks 38400 8N1 (LilyGoWatchUltra.cpp, POWER_GPS case) = 3840 bytes/s.
 // The ESP32 core defaults HardwareSerial to a 256-byte RX ring, which is 67 ms
@@ -133,6 +143,35 @@ static void gps_uart_up()
     Serial1.end();
     Serial1.setRxBufferSize(GPS_RX_RING_BYTES);   // must precede begin()
     instance.powerControl(POWER_GPS, true);       // enableBLDO1 + Serial1.begin
+}
+
+// ---- SATELLITES IN VIEW ----------------------------------------------------
+// GSV accumulator. TinyGPSPlus does not parse GSV at all, so before this the
+// only satellite figure available was GGA's used-in-fix count - see the
+// CORRECTED note in gps_health.h for what that cost.
+static GpsGsv s_gsv;
+
+// Drain the GPS UART into BOTH parsers.
+//
+// This replaces instance.gps.loop(), which is inline in the LilyGoLib GPS class
+// and reads the port itself, giving no way to tee the stream. Reading the port
+// here instead keeps the library untouched and preserves the property the RX
+// ring note above depends on: the port is drained exactly once per main-loop
+// iteration, from one place.
+//
+// encode() still drives every counter the health log reports (charsProcessed,
+// passedChecksum, failedChecksum, sentencesWithFix), so nothing downstream
+// changes.
+void gps_screen_pump()
+{
+    if (!gps_powered) return;
+    const uint32_t now = millis();
+    while (Serial1.available()) {
+        const int c = Serial1.read();
+        if (c < 0) break;
+        instance.gps.encode((char)c);
+        s_gsv.feed((char)c, now);
+    }
 }
 
 // Persist the radio on/off state so GPS survives a reboot. Mirrors the
@@ -314,9 +353,9 @@ static void gps_health_reset()
     // read Off immediately. quiet_sec is 0 here, so this can never open a power
     // cycle by declaring the receiver dead.
     s_health_quiet_ms = 0;
+    s_gsv.reset();                 // a new cycle must not inherit the old sky
     s_health_state    = gps_health_classify(
-        gps_powered, gps_screen_has_lock(), 0,
-        gps_fresh(instance.gps.satellites) ? instance.gps.satellites.value() : 0, 0);
+        gps_powered, gps_screen_has_lock(), 0, 0, 0, 0);
     s_nofix_since_ms  = now;   // a power cycle starts the clock on "no fix yet"
 }
 
@@ -349,7 +388,9 @@ struct GpsHealthRec {
     uint8_t  ev;
     uint8_t  state;
     uint8_t  mode;
-    uint8_t  sats;
+    uint8_t  sats;       // GGA field 7: satellites USED in the fix
+    uint8_t  view;       // GSV: satellites IN VIEW
+    uint8_t  cno;        // GSV: strongest C/N0 in view, dB-Hz
     int8_t   ble;
     uint8_t  flags;                      // see GHF_* below
     uint16_t on_sec;
@@ -398,6 +439,8 @@ static void gps_health_capture(GpsHealthEvent ev, GpsHealthRec *r)
     r->state  = (uint8_t)s_health_state;
     r->mode   = (uint8_t)argus_mode_current();
     r->sats   = (uint8_t)(sat > 255 ? 255 : sat);
+    r->view   = s_gsv.in_view(millis());
+    r->cno    = s_gsv.cno_max(millis());
     r->ble    = (int8_t)ble_scan_consumer_count();
     r->on_sec = (uint16_t)(on > 65535u ? 65535u : on);
     r->bps    = (uint16_t)(s_health_bytes_per_s > 65535u ? 65535u : s_health_bytes_per_s);
@@ -427,7 +470,7 @@ static void gps_health_print(File &f, const GpsHealthRec &r)
 {
     static const char *const kModeName[] = { "daily", "defense", "offense" };
     f.printf("20%02u-%02u-%02u %02u:%02u:%02u on=%us %s bps=%u chars=%lu ok=%lu "
-             "bad=%lu fix=%lu sats=%u lock=%d stable=%d state=%s "
+             "bad=%lu fix=%lu sats=%u view=%u cno=%u lock=%d stable=%d state=%s "
              "mode=%s ble=%d wifi=%d lora=%d usb=%d chg=%d card=%d\n",
              r.yy, r.mon, r.day, r.hh, r.mi, r.ss,
              r.on_sec,
@@ -435,7 +478,7 @@ static void gps_health_print(File &f, const GpsHealthRec &r)
              r.bps,
              (unsigned long)r.chars, (unsigned long)r.ok,
              (unsigned long)r.bad,   (unsigned long)r.fix,
-             r.sats,
+             r.sats, r.view, r.cno,
              (r.flags & GHF_LOCK)   ? 1 : 0,
              (r.flags & GHF_STABLE) ? 1 : 0,
              gps_health_label((GpsHealth)r.state),
@@ -518,8 +561,7 @@ static void gps_health_update()
     const uint32_t quiet_sec = s_health_quiet_ms ? (now - s_health_quiet_ms) / 1000u : 0;
     const GpsHealth h = gps_health_classify(
         gps_powered, gps_screen_has_lock(), s_health_bytes_per_s,
-        gps_fresh(instance.gps.satellites) ? instance.gps.satellites.value() : 0,
-        quiet_sec);
+        s_gsv.in_view(now), s_gsv.cno_max(now), quiet_sec);
     s_health_state = h;
 
     // Hold the no-fix clock at zero for as long as we HAVE a fix, so the moment
@@ -558,8 +600,13 @@ static void on_toggle(lv_event_t *e)
 {
     gps_powered = lv_obj_has_state(toggle_sw, LV_STATE_CHECKED);
     if (gps_powered) {
+        s_fix_discarded = false;
         gps_uart_up();                           // rail + clean UART, sized ring
     } else {
+        // Read the lock BEFORE tearing anything down: gps_stable_lock_update()
+        // clears it on the next tick, so by then the fact that there was a fix
+        // to discard is gone.
+        s_fix_discarded = s_stable_lock;
         // Close the health timeline BEFORE tearing down, while the counters
         // still describe the cycle that just ended. Without this a run the user
         // switched off just stops mid-file, indistinguishable from a crash.
@@ -638,7 +685,9 @@ static void on_gps_update(lv_timer_t *timer)
             lv_label_set_text(val_fix_age,    "--");
             lv_label_set_text(val_nmea,       "--");
             lv_label_set_text(val_csum,       "--");
-            lv_label_set_text(val_status,     gps_health_label(GpsHealth::Off));
+            lv_label_set_text(val_status,
+                              s_fix_discarded ? "Off - fix discarded"
+                                              : gps_health_label(GpsHealth::Off));
         }
         return;
     }
@@ -716,7 +765,21 @@ static void on_gps_update(lv_timer_t *timer)
     // isn't looking at this screen.
     if (!screen_active) return;
 
-    lv_label_set_text(val_satellites, buf);
+    // Used-in-fix AND in-view, because they are different quantities and the
+    // difference is the diagnosis: on 2026-09-02 used fell 12 -> 5 while in-view
+    // never moved, which is a signal-quality collapse rather than a lost sky.
+    {
+        const uint32_t now_ms = millis();
+        const uint8_t  view   = s_gsv.in_view(now_ms);
+        const uint8_t  cno    = s_gsv.cno_max(now_ms);
+        char sats_line[40];
+        if (view)
+            snprintf(sats_line, sizeof(sats_line), "%s / %u in view %udB",
+                     buf, (unsigned)view, (unsigned)cno);
+        else
+            snprintf(sats_line, sizeof(sats_line), "%s / none in view", buf);
+        lv_label_set_text(val_satellites, sats_line);
+    }
 
     // Location-derived fields (lat, lng, fix age share the same validity flag)
     if (gps_fresh(instance.gps.location)) {
