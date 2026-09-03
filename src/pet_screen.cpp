@@ -12,7 +12,7 @@
 #include <Arduino.h>
 #include <math.h>
 
-// ── HexHound — LVGL renderer ─────────────────────────────────────
+// ── ARGUS HexHound — LVGL renderer ─────────────────────────────────────
 //
 // The HexHound is a per-stage HD sprite loaded from the SD card
 // (/HexHound/<stage>.png: egg / pup / beast / gremlin / sentinel), centered in a

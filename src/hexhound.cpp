@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <math.h>               // floor() for coarse GPS-cell quantisation
 
-// ── HexHound — engine implementation ─────────────────────────────
+// ── ARGUS HexHound — engine implementation ─────────────────────────────
 //
 // Pure game logic. No LVGL. The renderer (pet_screen.cpp) reads state through
 // the accessors. Real recon feeds are polled from handshake.* and

@@ -68,7 +68,7 @@ DL = os.environ.get("ARGUS_ICON_SRC", "./icon-src")   # source art dir; override
 
 
 def image_glyph(path, accent, hi, target=150):
-    """ARGUS-ify a provided PNG: use its alpha as the shape mask, crop, scale
+    """Customize a provided PNG: use its alpha as the shape mask, crop, scale
     to fit, and refill with a top(hi)->bottom(accent) brand gradient."""
     src = Image.open(path).convert("RGBA")
     a = src.split()[3]
@@ -421,7 +421,7 @@ ICONS = [
     ("radar",    g_radar,    STEEL, STEEL_HI),
     ("aprs",     g_aprs,     AMBER, AMBER_HI),
     ("tpms",     g_tpms,     STEEL, STEEL_HI),
-    # tesla + flock ARGUS-ified from the user's provided art (Tesla logo -> amber,
+    # tesla + flock customized from the user's provided art (Tesla logo -> amber,
     # flock-of-birds -> HADES red). pager is intentionally NOT here: it uses 13-37's
     # procedural icon (draw_pager_icon) per user direction.
     ("tesla",    lambda a, hi: image_glyph(DL + "/Tesla.png",         a, hi, target=140), AMBER, AMBER_HI),

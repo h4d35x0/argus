@@ -2,9 +2,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// ── HexHound — watch-native cyber-recon pet engine ────────────────
+// ── ARGUS HexHound — watch-native cyber-recon pet engine ────────────────
 //
-// A watch-native reimagining of the HexHound (Labs/HexHound), the
+// A watch-native reimagining of the ARGUS HexHound (Labs/HexHound), the
 // USB-dongle recon pet, ported to the ARGUS watch (ESP32-S3, 502x410 AMOLED,
 // LVGL 9.5). This module is the *game engine only* — pure state, no LVGL. The
 // rendering lives in pet_screen.cpp, which keeps the pet_screen_*() API so the

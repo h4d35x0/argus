@@ -1418,9 +1418,8 @@ static void update_clock()
 #define FW_VERSION "0.1.0"   // ARGUS fork of r3dfish/13-37 (base 1.0.0)
 
 // Saira Condensed boot-splash fonts generated via lv_font_conv; see
-// src/font_argus_argus.c and src/font_argus_wordmark.c.
+// src/font_argus_argus.c.
 LV_FONT_DECLARE(font_argus_argus);
-LV_FONT_DECLARE(font_argus_wordmark);
 
 void setup()
 {
@@ -1492,12 +1491,6 @@ void setup()
     lv_obj_set_style_bg_color(boot_splash, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_border_width(boot_splash, 0, LV_PART_MAIN);
 
-    // Small "HADES" wordmark above the ARGUS hero.
-    lv_obj_t *boot_wm = lv_label_create(boot_splash);
-    lv_label_set_text(boot_wm, "HADES");
-    lv_obj_set_style_text_color(boot_wm, ARGUS_ACCENT, LV_PART_MAIN);   // ARGUS steel-blue
-    lv_obj_set_style_text_font(boot_wm, &font_argus_wordmark, LV_PART_MAIN);
-    lv_obj_align(boot_wm, LV_ALIGN_CENTER, 0, -46);
 
     // ARGUS hero.
     lv_obj_t *boot_brand = lv_label_create(boot_splash);
