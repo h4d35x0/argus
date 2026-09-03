@@ -319,6 +319,25 @@ static uint32_t s_health_base_fix    = 0;
 static GpsHealth s_health_state    = GpsHealth::Off;
 static uint32_t  s_health_quiet_ms = 0;   // when bps first fell below the floor
 
+// The GSV inputs that produced s_health_state, cached alongside it.
+//
+// A log record must not contradict itself. These were read fresh inside
+// gps_health_capture() at first, which is correct for a TICK (state is
+// recomputed in the same call chain) but wrong for MODE and OFF, which are
+// emitted the instant the event happens - up to a second after the last
+// classification. The 2026-09-03 bring-up caught exactly that: a MODE line
+// reading `view=1 cno=34 ... state=No sats`, which is three fields describing
+// two different moments. A future investigation reading that line would draw
+// the wrong conclusion about what the mode switch did.
+//
+// Deliberately NOT fixed by recomputing the state at capture time. That would
+// regress the OFF record, which is emitted after gps_powered has already gone
+// false and would therefore always classify as "Off" - throwing away the one
+// thing that record exists to preserve, namely that the radio was LOCKED when
+// the user switched it off.
+static uint8_t   s_health_view     = 0;
+static uint8_t   s_health_cno      = 0;
+
 // TIME WITHOUT A FIX, which is deliberately NOT "time in the current state".
 //
 // The first version of this measured the latter and reset on every state
@@ -354,6 +373,8 @@ static void gps_health_reset()
     // cycle by declaring the receiver dead.
     s_health_quiet_ms = 0;
     s_gsv.reset();                 // a new cycle must not inherit the old sky
+    s_health_view     = 0;
+    s_health_cno      = 0;
     s_health_state    = gps_health_classify(
         gps_powered, gps_screen_has_lock(), 0, 0, 0, 0);
     s_nofix_since_ms  = now;   // a power cycle starts the clock on "no fix yet"
@@ -439,8 +460,9 @@ static void gps_health_capture(GpsHealthEvent ev, GpsHealthRec *r)
     r->state  = (uint8_t)s_health_state;
     r->mode   = (uint8_t)argus_mode_current();
     r->sats   = (uint8_t)(sat > 255 ? 255 : sat);
-    r->view   = s_gsv.in_view(millis());
-    r->cno    = s_gsv.cno_max(millis());
+    // From the cache, NOT read fresh - see s_health_view above.
+    r->view   = s_health_view;
+    r->cno    = s_health_cno;
     r->ble    = (int8_t)ble_scan_consumer_count();
     r->on_sec = (uint16_t)(on > 65535u ? 65535u : on);
     r->bps    = (uint16_t)(s_health_bytes_per_s > 65535u ? 65535u : s_health_bytes_per_s);
@@ -559,9 +581,13 @@ static void gps_health_update()
     }
 
     const uint32_t quiet_sec = s_health_quiet_ms ? (now - s_health_quiet_ms) / 1000u : 0;
+    // One snapshot drives the classification AND the record, so a logged line
+    // can never show inputs that disagree with the state they produced.
+    s_health_view  = s_gsv.in_view(now);
+    s_health_cno   = s_gsv.cno_max(now);
     const GpsHealth h = gps_health_classify(
         gps_powered, gps_screen_has_lock(), s_health_bytes_per_s,
-        s_gsv.in_view(now), s_gsv.cno_max(now), quiet_sec);
+        s_health_view, s_health_cno, quiet_sec);
     s_health_state = h;
 
     // Hold the no-fix clock at zero for as long as we HAVE a fix, so the moment
