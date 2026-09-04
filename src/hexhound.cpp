@@ -58,7 +58,9 @@ constexpr uint32_t SAVE_MIN_MS = 15000;      // debounce SD writes
 
 HexHoundState s_st;
 bool     s_loaded    = false;
-int      s_threat    = 0;
+int      s_threat    = 0;   // combined level = max(s_threatSrc[])
+// One slot per HexThreatSource. Static storage => zero-initialised.
+int      s_threatSrc[HEX_THREAT_SOURCE_COUNT];
 
 // Feed baselines: the counters the last time we credited them, so re-opening the
 // screen retro-credits recon that happened while it was closed.
@@ -285,8 +287,15 @@ void hexhound_note_cell(double lat, double lon) {
     portEXIT_CRITICAL(&s_feedMux);
 }
 
-void hexhound_set_threat_level(int level) {
-    s_threat = level < 0 ? 0 : level;
+void hexhound_set_threat_level(int level, uint8_t source) {
+    if (source >= HEX_THREAT_SOURCE_COUNT) return;
+    s_threatSrc[source] = level < 0 ? 0 : level;
+    // Combine by MAX, never last-wins: the two callers tick independently and
+    // one clearing its own slot must not cancel the other's live threat.
+    int top = 0;
+    for (int i = 0; i < HEX_THREAT_SOURCE_COUNT; i++)
+        if (s_threatSrc[i] > top) top = s_threatSrc[i];
+    s_threat = top;
 }
 
 int hexhound_threat_level() { return s_threat; }
@@ -440,7 +449,12 @@ const char* hexhound_ability_name() {
 
 const char* hexhound_mood_speech() {
     switch (s_st.mood) {
-        case HEX_WARY:    return "tail confirmed. teeth out.";
+        // WARY is driven by hexhound_set_threat_level(), which both callers set
+        // from a BOOLEAN posture: main.cpp at TR_LVL_LIKELY, detect_pipeline at
+        // any domain reaching Alert. Neither means a CONFIRMED tail, so this
+        // line must not claim one - on 2026-09-04 it read as a passed field
+        // test while the Threat Radar was empty.
+        case HEX_WARY:    return "threat close. teeth out.";
         case HEX_EXCITED: return "nom! fresh packets!";
         case HEX_HUNGRY:  return "feed me a handshake...";
         case HEX_SLEEPY:  return "low power... resting.";

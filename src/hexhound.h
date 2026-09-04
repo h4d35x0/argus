@@ -113,15 +113,33 @@ void hexhound_note_nfc();
 // ring of recently-visited cells; safe to call every fix.
 void hexhound_note_cell(double lat, double lon);
 
-// ── INTEGRATOR HOOK — threat level ─────────────────────────────────────────
-// Team-owned Threat Radar (threat_radar.h / threatradar_*) is intentionally NOT
-// included here to keep this module decoupled. When the integrator lands the
-// Threat Radar bundle, wire a confirmed tail / active threat to this setter:
-//   0  = calm         (pet relaxes to its normal mood)
-//   >0 = threat level (pet snaps to HEX_WARY, HADES-red, "someone's tailing us")
-// e.g. in the radar's on-confirm path:  hexhound_set_threat_level(1);
-void hexhound_set_threat_level(int level);
-int  hexhound_threat_level();
+// ── Threat level ───────────────────────────────────────────────────────────
+// TWO INDEPENDENT SOURCES feed the pet's wary mood, and they run at different
+// points in the main loop:
+//   HEX_THREAT_RADAR    - main.cpp, threatradar_top_level() >= TR_LVL_LIKELY
+//   HEX_THREAT_PIPELINE - detect_pipeline.cpp, overall posture >= Alert
+//
+// They used to share ONE slot, so whichever ran last won and the pet's mood was
+// decided by call ordering rather than by the threat (found 2026-09-04: the
+// radar path was clearing the flag the pipeline had just set). Each source now
+// owns its own slot and the effective level is the MAX across them, so either
+// can raise the pet and it only relaxes once BOTH are clear.
+//
+// The `source` argument is deliberately NOT defaulted: a new caller has to say
+// which contributor it is, rather than silently colliding with an existing one.
+//   0  = calm         (this source relaxes; another may still hold it wary)
+//   >0 = threat level (pet snaps to HEX_WARY, HADES-red)
+//
+// NOTE: neither source means a CONFIRMED tail - both are boolean postures that
+// trip a full rung below TR_LVL_CONFIRMED. Anything user-visible driven off this
+// must not claim a confirmed tail; see hexhound_mood_speech().
+enum HexThreatSource : uint8_t {
+    HEX_THREAT_RADAR = 0,
+    HEX_THREAT_PIPELINE,
+    HEX_THREAT_SOURCE_COUNT
+};
+void hexhound_set_threat_level(int level, uint8_t source);
+int  hexhound_threat_level();   // combined: max across all sources
 
 // Persist current state to SD /HexHound/pet.txt.
 void hexhound_save();

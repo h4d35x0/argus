@@ -3,8 +3,10 @@
 #include "theme.h"
 // NOTE: threat_radar.h intentionally NOT included. Threat awareness reaches the
 // pet only through hexhound_set_threat_level() (see hexhound.h) so this cluster
-// stays decoupled from the team-owned Threat Radar bundle. The integrator wires
-// a confirmed tail -> hexhound_set_threat_level(1) to flip the pet HADES-red.
+// stays decoupled from the Threat Radar bundle. main.cpp and detect_pipeline.cpp
+// are the two wired sources, each passing its own HexThreatSource.
+// NOT a confirmed tail: both sources trip a full rung below TR_LVL_CONFIRMED, so
+// nothing rendered here may claim a tail is confirmed.
 #include "tools_screen.h"
 #include "wifi_beacon_manager.h"
 #include <lvgl.h>

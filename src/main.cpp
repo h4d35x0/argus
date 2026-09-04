@@ -2596,7 +2596,8 @@ void loop()
             threatradar_bg_tick();  // correlate detector hits into follow-scores
             // Bridge: a Likely+ tail flips the HexHound to its wary/HADES-red mood,
             // matching the status-bar/radar HADES flip. (Team-decoupled hook.)
-            hexhound_set_threat_level(threatradar_top_level() >= TR_LVL_LIKELY ? 1 : 0);
+            hexhound_set_threat_level(threatradar_top_level() >= TR_LVL_LIKELY ? 1 : 0,
+                                      HEX_THREAT_RADAR);
             handshake_bg_tick();    // drain captured EAPOL frames to /pwn/*.pcap
         }
     }

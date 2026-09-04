@@ -295,5 +295,5 @@ void detect_pipeline_tick(uint32_t now_sec)
     bool hot = static_cast<uint8_t>(level) >=
                static_cast<uint8_t>(detect::ThreatLevel::Alert);
     argus_set_threat(hot);
-    hexhound_set_threat_level(hot ? 1 : 0);
+    hexhound_set_threat_level(hot ? 1 : 0, HEX_THREAT_PIPELINE);
 }
