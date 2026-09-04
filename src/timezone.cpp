@@ -15,11 +15,18 @@ void clock_screen_set_utc_offset(int offset_hours);
 bool clock_screen_manual_time_active();
 void clock_screen_refresh();
 
+#include "clock_sync.h"
+
 #define TZ_PATH "/Settings/timezone.txt"
 
 // ---- persistence -----------------------------------------------------------
 //
-// File format (one line):  offset=<hours> v=<version>
+// File format (one line):  offset=<hours> v=<version> [synced=<utc> src=<n>]
+//
+// The synced/src keys record WHEN the RTC was last set from a trusted source
+// and by what. They are optional: a file without them reads as "never synced",
+// which is the honest answer for a card written by older firmware. See
+// clock_sync.h for why the watch needs to be able to distrust its own clock.
 //
 // v1 files carry no "v=" key. They were written under the old model, in which
 // Manual Time wrote LOCAL wall clock into the RTC and dropped the offset to 0
@@ -31,13 +38,20 @@ void clock_screen_refresh();
 
 static int s_last_written = INT_MIN;   // avoid redundant SD writes
 
-// Unconditional write; callers dedupe.
-static bool tz_write(int offset_hours)
+// Last-sync stamp, mirrored in RAM so the UI can ask without touching the card.
+static clocksync::Stamp s_sync = { {0,0,0,0,0,0}, clocksync::Source::None, false };
+
+// Unconditional write; callers dedupe. The stamp is emitted only when valid, so
+// a migration rewrite cannot invent a sync that never happened.
+static bool tz_write(int offset_hours, const clocksync::Stamp &stamp)
 {
     if (!SD.exists("/Settings")) SD.mkdir("/Settings");
     File f = SD.open(TZ_PATH, FILE_WRITE);   // FILE_WRITE = truncate
     if (!f) return false;
-    f.printf("offset=%d v=%d\n", offset_hours, clocktime::kFileVersion);
+    char sync[48] = {0};
+    clocksync::format(sync, sizeof(sync), stamp);
+    f.printf("offset=%d v=%d%s%s\n", offset_hours, clocktime::kFileVersion,
+             sync[0] ? " " : "", sync);
     f.close();
     s_last_written = offset_hours;
     return true;
@@ -66,7 +80,39 @@ static bool tz_read(int *out_off, int *out_ver)
     const char *v = strstr(buf, "v=");
     *out_ver = v ? atoi(v + 2) : 1;              // no "v=" key => v1
     *out_off = off;
+    s_sync = clocksync::parse(buf);              // absent keys => never synced
     return true;
+}
+
+// Snapshot the RTC (UTC) into a stamp for `src`.
+static clocksync::Stamp stamp_now(clocksync::Source src)
+{
+    struct tm t;
+    instance.rtc.getDateTime(&t);
+    clocksync::Stamp s;
+    s.utc.year = t.tm_year + 1900; s.utc.mon = t.tm_mon + 1; s.utc.day = t.tm_mday;
+    s.utc.hour = t.tm_hour;        s.utc.min = t.tm_min;     s.utc.sec = 0;
+    s.src   = src;
+    s.valid = true;
+    return s;
+}
+
+clocksync::Stamp timezone_last_sync() { return s_sync; }
+
+void timezone_note_synced(int offset_hours, clocksync::Source src)
+{
+    if (!clocktime::offset_plausible(offset_hours)) return;      // sanity
+
+    // The RAM stamp updates even with no card, so the UI tells the truth on a
+    // cardless watch; only the persistence needs the card.
+    s_sync = stamp_now(src);
+
+    if (!instance.isCardReady() || usb_sd_is_running()) return;
+    // Deliberately NOT deduped on the offset. A sync that confirms the SAME
+    // offset is still a sync, and skipping the write would leave the stamp
+    // ageing on disk while the clock was in fact being maintained - exactly the
+    // false "stale" this feature must not produce.
+    tz_write(offset_hours, s_sync);
 }
 
 void timezone_note_detected(int offset_hours)
@@ -74,7 +120,7 @@ void timezone_note_detected(int offset_hours)
     if (offset_hours == s_last_written) return;                  // unchanged
     if (!clocktime::offset_plausible(offset_hours)) return;      // sanity
     if (!instance.isCardReady() || usb_sd_is_running()) return;
-    tz_write(offset_hours);
+    tz_write(offset_hours, s_sync);
 }
 
 int timezone_peek_saved_offset(int fallback)
@@ -103,7 +149,7 @@ void timezone_load_on_boot()
 
     if (ver < clocktime::kFileVersion) {
         s_last_written = INT_MIN;                // force the rewrite
-        tz_write(paired);                        // best effort; card may be busy
+        tz_write(paired, s_sync);                // best effort; card may be busy
     } else {
         s_last_written = paired;                 // already on disk; don't rewrite
     }
@@ -212,7 +258,7 @@ void timezone_bg_tick()
     }
     if (s_got_offset) {
         clock_screen_set_utc_offset(s_offset_h);
-        timezone_note_detected(s_offset_h);
+        timezone_note_synced(s_offset_h, clocksync::Source::Ntp);
         s_got_offset = false;
     }
     clock_screen_refresh();

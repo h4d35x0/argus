@@ -44,6 +44,12 @@ static const int kMaxOffsetHours = 14;
 
 bool offset_plausible(int offset_hours);
 
+// Days since 1970-01-01 for a civil date, proleptic Gregorian, no timezone.
+// Exposed because "how many days since the clock was last synced" is a day
+// count, and a second private copy of this arithmetic is exactly the
+// duplication that dst_rules.h was created to end.
+long long days_from_civil(int y, int m, int d);
+
 // The two halves of the invariant. Both normalise the day/month/year rollover
 // the shift can produce: 23:30 local at offset +2 is 21:30 the SAME day in UTC,
 // but 00:30 local at offset +2 is 22:30 the PREVIOUS day.

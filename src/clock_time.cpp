@@ -8,7 +8,7 @@ namespace clocktime {
 // class of silent one-hour error this module exists to stop. These are days
 // since 1970-01-01, proleptic Gregorian, no timezone anywhere.
 
-static long long days_from_civil(int y, int m, int d)
+long long days_from_civil(int y, int m, int d)
 {
     y -= (m <= 2);
     const long long era = (y >= 0 ? y : y - 399) / 400;

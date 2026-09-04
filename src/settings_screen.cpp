@@ -1,6 +1,7 @@
 #include "settings_screen.h"
 #include "theme.h"
 #include "usb_sd.h"
+#include "timezone.h"      // last-sync stamp for the clock-trust row
 #include "usb_sd_screen.h"   // card reader, reachable in EVERY mode (see below)
 #include "boot_prefs.h"
 #include "argus_mode.h"
@@ -39,7 +40,53 @@ void clock_screen_get_local_time(struct tm *out);
 #define MANUAL_YEAR_COUNT 41   // 2020 … 2060
 
 static lv_obj_t *settings_screen;
-static lv_obj_t *s_ofs_btn = nullptr;   // one Offense button; label+action follow the mode
+static lv_obj_t *s_ofs_btn  = nullptr;  // one Offense button; label+action follow the mode
+static lv_obj_t *s_sync_lbl = nullptr;  // "clock last synced" trust row
+
+// Render the clock-trust row from the persisted stamp. Refreshed on every
+// settings_screen_show(), because the answer ages by itself: a row built once
+// would still read "synced today" a month later, which is the exact false
+// confidence this exists to remove.
+static void settings_update_clock_sync()
+{
+    if (!s_sync_lbl) return;
+
+    const clocksync::Stamp st = timezone_last_sync();
+
+    struct tm now;
+    instance.rtc.getDateTime(&now);             // UTC, same basis as the stamp
+    clocktime::DateTime nu = { now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
+                               now.tm_hour, now.tm_min, now.tm_sec };
+
+    const bool stale = clocksync::is_stale(st, nu);
+    char buf[96];
+    if (!st.valid) {
+        snprintf(buf, sizeof(buf),
+                 "Clock NEVER SYNCED - time and log stamps are unverified");
+    } else {
+        const int age = clocksync::age_days(st, nu);
+        if (age < 0) {
+            // The stamp post-dates the RTC, so one of the two is wrong and we
+            // cannot say which. Refusing to pick is the honest answer.
+            snprintf(buf, sizeof(buf),
+                     "Clock sync stamp is in the future (%04d-%02d-%02d) - not trusted",
+                     st.utc.year, st.utc.mon, st.utc.day);
+        } else {
+            snprintf(buf, sizeof(buf), "Clock synced %04d-%02d-%02d (%s), %d day%s ago%s",
+                     st.utc.year, st.utc.mon, st.utc.day,
+                     clocksync::source_name(st.src), age, age == 1 ? "" : "s",
+                     stale ? " - STALE" : "");
+        }
+    }
+    lv_label_set_text(s_sync_lbl, buf);
+    // Emphasis by BRIGHTNESS, not hue. Red on this watch means a live threat
+    // (see the Threat Radar accent rules) and gray means a hardware fault; an
+    // unvouched-for clock is neither, so it gets full-brightness body text
+    // against the dim it normally sits in rather than a colour it has not
+    // earned.
+    lv_obj_set_style_text_color(s_sync_lbl,
+                                stale ? ARGUS_TEXT : ARGUS_TEXT_DIM, LV_PART_MAIN);
+}
 static lv_obj_t *s_ofs_lbl = nullptr;
 static lv_obj_t *brightness_slider;
 static lv_obj_t *brightness_val_label;
@@ -1358,13 +1405,39 @@ void settings_screen_create()
     // Notify and LoRa APRS sit in the same neutral class and are still
     // Tools-only; APRS at least is an RF transmitter, so whether it belongs in
     // Daily is a real question rather than an oversight. See tools_apply_mode().
+    // CLOCK TRUST. The watch used to present whatever the RTC held with exactly
+    // as much confidence as a fresh GPS lock, which is how a Pacific-time RTC
+    // rode home from DEF CON and silently misdated weeks of SD log stamps. This
+    // row says when the clock was last set from a trusted source, and turns red
+    // once nothing has vouched for it in kStaleDays. See clock_sync.h.
+    // GEOMETRY, and it is load-bearing. This row is TWO LINES at width 360 for
+    // every string it can hold (measured against Orbitron 14: the never-synced,
+    // synced, stale and future-stamp variants all wrap to exactly 2 lines,
+    // about 36 px). It first shipped at y=2250, which put it INSIDE the
+    // "Clear detection logs" button above it - that button is at 2190 and 64 px
+    // tall, so it occupies 2190..2254 - and the row rendered across the button's
+    // lower edge, read as part of the chrome, and was reported as missing
+    // entirely. So: leave clearance for two lines, and keep the button below far
+    // enough down. 2264 + 36 = 2300, and usbsd_btn starts at 2320.
+    s_sync_lbl = lv_label_create(settings_screen);
+    lv_obj_set_style_text_font(s_sync_lbl, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_width(s_sync_lbl, 360);
+    // Explicit, unlike the neighbouring mode_hint: the clearance above depends
+    // on this label WRAPPING to a known height rather than clipping, so do not
+    // leave it to the default.
+    lv_label_set_long_mode(s_sync_lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(s_sync_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align(s_sync_lbl, LV_ALIGN_TOP_MID, 0, 2264);
+    register_shiftable(s_sync_lbl, 2264);
+    settings_update_clock_sync();
+
     lv_obj_t *usbsd_btn = lv_button_create(settings_screen);
     lv_obj_set_size(usbsd_btn, 380, 64);
     lv_obj_set_style_bg_color(usbsd_btn, lv_color_make(0x1E, 0x1E, 0x1E), LV_PART_MAIN);
     lv_obj_set_style_border_color(usbsd_btn, ARGUS_TEXT_DIM, LV_PART_MAIN);
     lv_obj_set_style_border_width(usbsd_btn, 1, LV_PART_MAIN);
-    lv_obj_align(usbsd_btn, LV_ALIGN_TOP_MID, 0, 2270);
-    register_shiftable(usbsd_btn, 2270);
+    lv_obj_align(usbsd_btn, LV_ALIGN_TOP_MID, 0, 2320);
+    register_shiftable(usbsd_btn, 2320);
     lv_obj_t *usbsd_lbl = lv_label_create(usbsd_btn);
     lv_obj_set_style_text_font(usbsd_lbl, &font_argus_label_16, LV_PART_MAIN);
     lv_obj_set_style_text_color(usbsd_lbl, ARGUS_TEXT, LV_PART_MAIN);
@@ -1406,6 +1479,7 @@ void settings_screen_show()
 {
     main_loop_request_lvgl_priority(12);
     settings_update_sysinfo();   // snapshot heap/PSRAM/battery/uptime
+    settings_update_clock_sync();// the answer ages on its own; recompute per show
 
     // Heading follows the mode: red-team red in Offense, steel-blue otherwise.
     if (s_settings_title)

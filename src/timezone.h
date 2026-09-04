@@ -1,5 +1,7 @@
 #pragma once
 
+#include "clock_sync.h"
+
 // Persisted timezone offset.
 //
 // INVARIANT: the RTC always holds UTC. clock_utc_offset (in main.cpp / the
@@ -25,6 +27,16 @@
 void timezone_init();                            // register WiFi hook + worker
 void timezone_load_on_boot();                    // restore saved offset (+ migrate v1 files)
 void timezone_note_detected(int offset_hours);   // persist a freshly-detected offset
+
+// Record that the RTC was just set from a trusted source, and persist the
+// stamp beside the offset. Call this instead of timezone_note_detected() from
+// anything that actually WROTE the clock (GPS fix, NTP, Manual Time); the
+// watch has no other way to know its own time is still vouched for. See
+// clock_sync.h for what this cost when it was missing.
+void timezone_note_synced(int offset_hours, clocksync::Source src);
+
+// Last-sync stamp, or an invalid stamp when the clock has never been synced.
+clocksync::Stamp timezone_last_sync();
 void timezone_bg_tick();                         // main loop: apply background WiFi results
 
 // Read the saved offset without touching the clock. Returns *fallback* when

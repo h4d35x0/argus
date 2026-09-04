@@ -1205,7 +1205,11 @@ void clock_screen_apply_manual_time(int year, int mon, int day, int hour, int mi
     instance.rtc.hwClockRead();
     manual_time_override = true;
     rtc_build_seeded     = false;               // the seed has been superseded
-    timezone_note_detected(clock_utc_offset);   // pair the offset with the RTC on disk
+    // Manual Time is a sync in the sense that matters here: the RTC was just
+    // set deliberately. Stamped as Manual rather than Gps/Ntp because it is
+    // only as correct as the person typing, which is precisely the case that
+    // rode home from DEF CON seven hours wrong.
+    timezone_note_synced(clock_utc_offset, clocksync::Source::Manual);
     update_clock();
 }
 
