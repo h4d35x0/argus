@@ -1,0 +1,72 @@
+# ARGUS continuous integration.
+#
+# TWO jobs on purpose. The host suite is fast and covers the security-critical
+# pure logic, but it compiles only the modules listed in test/Makefile's MODULES
+# - roughly two dozen files. Everything else in src/ (main.cpp, every *_screen.cpp,
+# threat_radar.cpp, hexhound.cpp, the detectors' hardware halves) is NOT built by
+# it. On 2026-09-04 two real defects sat in threat_radar.cpp and hexhound.cpp
+# while the suite was fully green at 4966/0, because neither file is in MODULES.
+# So `firmware` is not redundant with `host-tests`: it is the only thing that
+# compiles the other ~90% of the tree.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    name: Host suite (pure logic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compiler version
+        run: g++ --version
+
+      # test/Makefile prepends MINGW_BIN, which does not exist on Linux and is
+      # harmless there; CXX defaults to g++. No changes needed to run it here.
+      - name: Build and run host suite
+        run: make -C test test
+
+  firmware:
+    name: Firmware build (twatch_ultra)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The espressif32 toolchain is large; cache it or every run re-downloads
+      # roughly a gigabyte.
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      # LilyGoLib, ST25R3916-fork and NFC-RFAL-fork are vendored under lib/ (see
+      # platformio.ini) specifically so a fresh checkout builds without fetching
+      # bare commit SHAs. CI is a fresh checkout every time, so this relies on it.
+      - name: Build firmware
+        run: pio run -e twatch_ultra
+
+      - name: Report flash usage
+        if: always()
+        run: |
+          echo "Flash budget is 3145728 bytes; the build has been running near 95%."
+          pio run -e twatch_ultra --target size 2>/dev/null | tail -20 || true
