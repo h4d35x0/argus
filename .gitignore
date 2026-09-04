@@ -27,3 +27,13 @@ tasks/lessons.md
 
 # Internal release-process notes
 tasks/PUBLIC-RELEASE-CHECKLIST.md
+
+# Host simulator build output: 463 LVGL objects, a 2.8 MB static lib, and the
+# dumped PPM frame sequences. About 700 MB, all reproducible with
+# `make -C sim frames`. The simulator SOURCE in sim/ is tracked; this is not.
+sim/build/
+
+# Rendered demo videos. Reproducible from tracked inputs via
+# tools/make_demo_reel.py, tens of MB each, and a firmware repo already sitting
+# at 94.7% flash is not the place to keep them.
+artifacts/demo/
