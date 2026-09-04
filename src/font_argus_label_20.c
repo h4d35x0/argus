@@ -1040,4 +1040,8 @@ const lv_font_t font_argus_label_20 = {
     .underline_position = -8,
     .underline_thickness = 4,
     .dsc = &font_dsc,
+    // ASCII-only subset: fall back to montserrat so an
+    // LV_SYMBOL_* glyph renders instead of silently drawing
+    // nothing. montserrat is already linked, so this is free.
+    .fallback = &lv_font_montserrat_20,
 };

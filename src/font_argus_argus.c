@@ -837,7 +837,11 @@ lv_font_t font_argus_argus = {
 #endif
     .dsc = &font_dsc,          /*The custom font data. Will be accessed by `get_glyph_bitmap/dsc` */
 #if LV_VERSION_CHECK(8, 2, 0) || LVGL_VERSION_MAJOR >= 9
-    .fallback = NULL,
+    // ASCII-only subset: fall back to montserrat so an LV_SYMBOL_*
+    // glyph renders instead of silently drawing nothing. This was
+    // NULL, which is what shipped the tofu box on the Threat Radar
+    // banner. montserrat is already linked, so this costs no flash.
+    .fallback = &lv_font_montserrat_48,
 #endif
     .user_data = NULL,
 };

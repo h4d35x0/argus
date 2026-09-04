@@ -37,6 +37,37 @@ if _arg == "ASCII":
 else:
     CHARS = _arg
 
+# ---- fallback font (argv[6]) -----------------------------------------------
+#
+# THIS MUST NOT DEFAULT TO NOTHING, and that is the whole point of it being
+# here. Every font this script emits is an ASCII-ONLY SUBSET
+# (U+0020..U+007E at most). An LV_SYMBOL_* glyph is a FontAwesome codepoint in
+# the U+F000 block, so on a label styled with one of these faces it resolves to
+# no glyph and LVGL draws NOTHING - silently, with no compile-time or runtime
+# error. That shipped for months: the Threat Radar banner rendered
+# "SOMEONE IS FOLLOWING YOU" with a broken glyph, and an earlier audit "closed"
+# the bug by checking only the mono faces.
+#
+# So a generated font gets a fallback by DEFAULT, chosen as the nearest built-in
+# montserrat. Every montserrat size 14..48 is already referenced elsewhere in
+# src/, so the pointer costs no additional flash - it only names font data that
+# is already linked.
+#
+# Pass "NONE" explicitly to opt out. Do that only for a face where a missing
+# glyph must stay visible as a tofu box, and say why at the call site.
+_MONTSERRAT_SIZES = (14, 16, 20, 24, 28, 32, 36, 48)
+
+def _nearest_montserrat(px):
+    return min(_MONTSERRAT_SIZES, key=lambda s: (abs(s - px), s))
+
+_fb_arg = sys.argv[6] if len(sys.argv) > 6 else ""
+if _fb_arg == "NONE":
+    FALLBACK = None
+elif _fb_arg:
+    FALLBACK = _fb_arg
+else:
+    FALLBACK = "lv_font_montserrat_%d" % _nearest_montserrat(SIZE_PX)
+
 # ---- helpers ---------------------------------------------------------------
 
 face = freetype.Face(TTF_PATH)
@@ -118,6 +149,18 @@ def fmt_bytes_per_line(data, n=12, indent="    "):
 # big unicode_list with per-glyph offsets, glyph_id_start=1.
 unicode_list = [g["codepoint"] for g in glyphs]
 glyph_id_list = list(range(1, len(glyphs) + 1))
+
+# Rendered into the public struct below. Emitted as an explicit NULL when the
+# caller opted out, so the field is never silently absent - an absent field and
+# a deliberate NULL read very differently to the next person.
+if FALLBACK:
+    fallback_line = (
+        "    // ASCII-only subset: fall back to montserrat so an LV_SYMBOL_*\n"
+        "    // glyph renders instead of silently drawing nothing. montserrat is\n"
+        "    // already linked elsewhere, so this costs no flash.\n"
+        "    .fallback = &%s,\n" % FALLBACK)
+else:
+    fallback_line = "    .fallback = NULL,   /* opted out via argv[6]=NONE */\n"
 
 with open(OUT_PATH, "w") as f:
     f.write(f"""/*
@@ -210,7 +253,7 @@ const lv_font_t {FONT_VAR} = {{
     .underline_position = -8,
     .underline_thickness = 4,
     .dsc = &font_dsc,
-}};
+{fallback_line}}};
 """)
 
 print(f"wrote {OUT_PATH}")
