@@ -265,6 +265,10 @@ static void fold_sighting(const TrSighting *s, bool has_fix,
     uint8_t lvl = score_level(c);
     if (lvl > c->level) c->level = lvl;   // latch upward; recency handled at read
 
+    // Set when an edge below already wrote this contact's line this call, so a
+    // contact that clears LIKELY and CONFIRMED in one step logs once, not twice.
+    bool logged_now = false;
+
     // Edge: first time this contact reaches LIKELY, raise the alert + buzz.
     if (c->level >= TR_LVL_LIKELY && !c->alerted) {
         c->alerted = true;
@@ -277,6 +281,7 @@ static void fold_sighting(const TrSighting *s, bool has_fix,
         }
         if (!suppress) {
             log_tail_to_sd(c);      // evidence trail on the first alert
+            logged_now = true;
             if (!s_alert_pending) {
                 fill_threat(c, &s_alert_snap, now);
                 s_alert_pending = true;
@@ -285,13 +290,19 @@ static void fold_sighting(const TrSighting *s, bool has_fix,
         }
     }
 
-    // Confirmed locally → announce this tail to the mesh so the whole group is
-    // warned. tracker_rep dedups + gates on the LoRa radio being active. Never
-    // broadcast one of your own familiar vehicles.
+    // Confirmed locally → record the escalation, then announce this tail to the
+    // mesh so the whole group is warned. The LIKELY edge above wrote a line, but
+    // it froze that contact's geometry at LIKELY-era numbers (3 waypoints, ~600 m,
+    // ~10 min); without this second write, reaching CONFIRMED left NOTHING on the
+    // card and a passing field test read back as a failed one. tracker_rep dedups
+    // + gates on the LoRa radio being active. Never log or broadcast one of your
+    // own familiar vehicles.
     if (c->level >= TR_LVL_CONFIRMED && !c->broadcast) {
         c->broadcast = true;
-        if (!(c->category == TR_CAT_VEHICLE && counter_tail_is_familiar(c->mac)))
+        if (!(c->category == TR_CAT_VEHICLE && counter_tail_is_familiar(c->mac))) {
+            if (!logged_now) log_tail_to_sd(c);   // evidence trail on the confirmed edge
             tracker_rep_flag_local(c->mac, c->category);
+        }
     }
 }
 
