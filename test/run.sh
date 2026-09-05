@@ -2,7 +2,7 @@
 # Host unit tests for ARGUS — no cmake, no make required.
 #   bash test/run.sh
 #
-# Compiles the pure modules under src/mesh/ together with the self-registering
+# Compiles the pure modules under src/ together with the self-registering
 # test_*.cpp files and runs the binary. See test/README.md for details.
 set -euo pipefail
 
@@ -12,24 +12,26 @@ MINGW_BIN="${MINGW_BIN:-/c/msys64/mingw64/bin}"
 [ -d "$MINGW_BIN" ] && export PATH="$MINGW_BIN:$PATH"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/.." && pwd)"
-mkdir -p "$HERE/build"
+cd "$HERE"
+mkdir -p build
 
-MODULES=("$ROOT"/src/mesh/aes.cpp "$ROOT"/src/mesh/crypto.cpp \
-         "$ROOT"/src/ble/adv_parser.cpp "$ROOT"/src/image_dims.cpp \
-         "$ROOT"/src/geo_cell.cpp \
-         "$ROOT"/src/detect/evil_twin.cpp "$ROOT"/src/detect/tail_detect.cpp \
-         "$ROOT"/src/detect/deauth_flood.cpp "$ROOT"/src/detect/ble_spam.cpp \
-         "$ROOT"/src/detect/beacon_flood.cpp \
-         "$ROOT"/src/detect/threat_state.cpp "$ROOT"/src/detect/threat_map.cpp \
-         "$ROOT"/src/detect/tracker_ident.cpp "$ROOT"/src/detect/threat_log.cpp \
-         "$ROOT"/src/detect/surveillance_device.cpp \
-         "$ROOT"/src/notify/notification_store.cpp \
-         "$ROOT"/src/device_mode_plan.cpp)
-BIN="$HERE/build/argus_tests.exe"
+# The Makefile's MODULES line is the SINGLE SOURCE OF TRUTH for what gets
+# linked; this script parses it rather than keeping its own copy. It used to
+# keep a copy, and the two drifted by five modules (log_retention, clock_time,
+# gps_gsv, dst_rules, clock_sync), so this script no longer linked at all while
+# `make -C test test` was green. Parsing keeps the two from ever disagreeing.
+# Word splitting on the result is intentional: the paths carry no spaces.
+MODULES=$(sed -n 's/^MODULES[[:space:]]*:=[[:space:]]*//p' Makefile)
+if [ -z "$MODULES" ]; then
+    echo "run.sh: could not read MODULES from test/Makefile" >&2
+    exit 1
+fi
 
-g++ -std=c++17 -Wall -Wextra -I "$HERE" -I "$ROOT/src/mesh" -I "$ROOT/src/ble" \
-    -I "$ROOT/src/detect" -I "$ROOT/src/notify" -I "$ROOT/src" \
-    "${MODULES[@]}" "$HERE"/test_*.cpp -o "$BIN"
+BIN="build/argus_tests.exe"
+
+# shellcheck disable=SC2086  # $MODULES must word-split into separate arguments
+g++ -std=c++17 -Wall -Wextra -I. -I../src/mesh -I../src/ble \
+    -I../src/detect -I../src/notify -I../src \
+    $MODULES test_*.cpp -o "$BIN"
 
 "$BIN"
