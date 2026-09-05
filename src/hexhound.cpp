@@ -58,9 +58,10 @@ constexpr uint32_t SAVE_MIN_MS = 15000;      // debounce SD writes
 
 HexHoundState s_st;
 bool     s_loaded    = false;
-int      s_threat    = 0;   // combined level = max(s_threatSrc[])
-// One slot per HexThreatSource. Static storage => zero-initialised.
-int      s_threatSrc[HEX_THREAT_SOURCE_COUNT];
+// One slot per HexThreatSource, combined by MAX. The combine rule lives in
+// hexhound_threat.h so the host suite can cover it; see
+// test/test_hexhound_threat.cpp.
+HexThreatSources s_threatSrc;
 
 // Feed baselines: the counters the last time we credited them, so re-opening the
 // screen retro-credits recon that happened while it was closed.
@@ -288,17 +289,12 @@ void hexhound_note_cell(double lat, double lon) {
 }
 
 void hexhound_set_threat_level(int level, uint8_t source) {
-    if (source >= HEX_THREAT_SOURCE_COUNT) return;
-    s_threatSrc[source] = level < 0 ? 0 : level;
     // Combine by MAX, never last-wins: the two callers tick independently and
     // one clearing its own slot must not cancel the other's live threat.
-    int top = 0;
-    for (int i = 0; i < HEX_THREAT_SOURCE_COUNT; i++)
-        if (s_threatSrc[i] > top) top = s_threatSrc[i];
-    s_threat = top;
+    s_threatSrc.set(source, level);
 }
 
-int hexhound_threat_level() { return s_threat; }
+int hexhound_threat_level() { return s_threatSrc.combined(); }
 
 // ── Main tick ──────────────────────────────────────────────────────────────
 
@@ -385,7 +381,7 @@ void hexhound_update() {
 
     // Mood (priority order).
     uint8_t mood;
-    if (s_threat > 0)                       mood = HEX_WARY;
+    if (s_threatSrc.combined() > 0)         mood = HEX_WARY;
     else if (now < s_excitedUntil)          mood = HEX_EXCITED;
     else if (s_st.hunger < 20)              mood = HEX_HUNGRY;
     else if (s_st.energy < 20)              mood = HEX_SLEEPY;

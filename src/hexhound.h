@@ -133,11 +133,13 @@ void hexhound_note_cell(double lat, double lon);
 // NOTE: neither source means a CONFIRMED tail - both are boolean postures that
 // trip a full rung below TR_LVL_CONFIRMED. Anything user-visible driven off this
 // must not claim a confirmed tail; see hexhound_mood_speech().
-enum HexThreatSource : uint8_t {
-    HEX_THREAT_RADAR = 0,
-    HEX_THREAT_PIPELINE,
-    HEX_THREAT_SOURCE_COUNT
-};
+//
+// HexThreatSource and the MAX-combine itself live in hexhound_threat.h, which is
+// hardware-free precisely so the combine rule is covered by the host suite
+// (test/test_hexhound_threat.cpp). This header pulls in SD and FreeRTOS through
+// its implementation, so it can never be compiled there.
+#include "hexhound_threat.h"
+
 void hexhound_set_threat_level(int level, uint8_t source);
 int  hexhound_threat_level();   // combined: max across all sources
 
