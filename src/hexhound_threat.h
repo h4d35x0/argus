@@ -45,13 +45,23 @@ enum HexThreatSource : uint8_t {
 };
 
 // One slot per source, combined by MAX. Zero-initialised, i.e. calm.
+//
+// The zeroing is a default member initialiser and NOT a written constructor,
+// deliberately. This replaced a plain `int[]`, which as a POD got CONSTANT
+// initialisation: zeroed before any dynamic initialisation anywhere in the
+// program. A user-provided constructor would demote the namespace-scope
+// instance in hexhound.cpp to dynamic initialisation, whose order across
+// translation units is unspecified, so a caller reached during another unit's
+// static init could have its value overwritten by this constructor running
+// later. Nothing calls it that early today (both callers run from loop()), so
+// this is closing the hazard rather than fixing a live bug - but the array it
+// replaced could not have the hazard at all, and a refactor should not hand one
+// back. With only this initialiser and no user-declared constructor the
+// implicit default constructor is constexpr, so the instance is constant-
+// initialised exactly as the array was. Verified: no _GLOBAL__sub_I static
+// initialiser is emitted for a namespace-scope instance.
 struct HexThreatSources {
-    int level[HEX_THREAT_SOURCE_COUNT];
-
-    HexThreatSources()
-    {
-        for (int i = 0; i < HEX_THREAT_SOURCE_COUNT; i++) level[i] = 0;
-    }
+    int level[HEX_THREAT_SOURCE_COUNT] = {};
 
     // Record `lvl` for `source`. A negative level clamps to 0 (calm) rather
     // than storing a value that would lose a MAX against a real threat.
