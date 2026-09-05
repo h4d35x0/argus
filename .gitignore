@@ -37,3 +37,9 @@ sim/build/
 # tools/make_demo_reel.py, tens of MB each, and a firmware repo already sitting
 # at 94.7% flash is not the place to keep them.
 artifacts/demo/
+
+# Session handoffs. Working notes, never shipped, and the convention has always
+# been to leave them untracked - but untracked is one `git add -A` from public,
+# and these reference machines, accounts and planning detail that must not end up
+# in a public repo. Ignored so that can never happen by accident.
+tasks/HANDOFF-*.md
