@@ -56,6 +56,43 @@ jobs:
       - name: Check committed rasters
         run: python tools/gen_wallpapers.py --check --stats
 
+  # sim/ compiles the REAL screen sources (tools_screen.cpp, theme.cpp, the clock
+  # screens) against LVGL's SDL backend. Nothing here ships to the watch, but it
+  # is the only build that LINKS those files, so it catches what neither other
+  # job can: on 2026-09-07 a new call to handshake_capture_channel() from
+  # tools_screen.cpp left sim/ with an undefined reference while the host suite
+  # and the firmware build both stayed green, because that symbol lives on the
+  # device side and sim/ substitutes a stub. It would have shipped broken.
+  #
+  # LVGL is a PlatformIO dependency under .pio/libdeps, which is gitignored, so
+  # it is cloned directly at the version platformio.ini pins rather than paying
+  # for a whole PlatformIO install here. KEEP THIS PIN IN STEP with lib_deps.
+  simulator:
+    name: Simulator build (sim/)
+    runs-on: ubuntu-latest
+    env:
+      LVGL_VERSION: '9.5.0'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev
+
+      - name: Check the LVGL pin still matches platformio.ini
+        run: |
+          pinned=$(grep -oE 'lvgl/lvgl *@ *[0-9]+\.[0-9]+\.[0-9]+' platformio.ini | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "platformio.ini pins LVGL $pinned; this job clones $LVGL_VERSION"
+          test "$pinned" = "$LVGL_VERSION"
+
+      - name: Fetch LVGL where sim/Makefile expects it
+        run: |
+          git clone --depth 1 --branch "v$LVGL_VERSION" https://github.com/lvgl/lvgl.git .pio/libdeps/twatch_ultra/lvgl
+
+      - name: Build the simulator
+        run: make -C sim
+
   firmware:
     name: Firmware build (twatch_ultra)
     runs-on: ubuntu-latest

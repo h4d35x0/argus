@@ -28,10 +28,23 @@
 #
 # The compilers are pinned, because `gcc` on PATH depends on how the shell was
 # launched and this build needs the mingw64 one specifically.
+# Platform split. Windows/msys2 is the box this was written on and its toolchain
+# is PINNED for the reason below. Every other platform - Linux CI, a contributor
+# on macOS - takes gcc and SDL from PATH via sdl2-config. Only these variables
+# were ever Windows-specific; every recipe in this file is already POSIX.
+UNAME_S    := $(shell uname -s)
+IS_WINDOWS := $(filter MINGW% MSYS% CYGWIN%,$(UNAME_S))
+
+FIND     := find
+LVGL     := ../.pio/libdeps/twatch_ultra/lvgl
+SRC      := ../src
+
+ifneq ($(IS_WINDOWS),)
+# The compilers are pinned, because `gcc` on PATH depends on how the shell was
+# launched and this build needs the mingw64 one specifically.
 CC       := C:/msys64/mingw64/bin/gcc
 CXX      := C:/msys64/mingw64/bin/g++
 AR       := C:/msys64/mingw64/bin/ar
-FIND     := find
 
 # MANDATORY, and an absolute path to gcc.exe is NOT a substitute for it.
 # mingw64/bin must be on PATH so the WINDOWS LOADER finds gcc's own DLLs
@@ -46,10 +59,20 @@ FIND     := find
 # exit 0 with it.
 export PATH := C:/msys64/mingw64/bin:$(PATH)
 
-LVGL     := ../.pio/libdeps/twatch_ultra/lvgl
-SRC      := ../src
-SDL_INC  := C:/msys64/mingw64/include/SDL2
-SDL_LIB  := C:/msys64/mingw64/lib
+SDL_INC     := C:/msys64/mingw64/include/SDL2
+SDL_LIB     := C:/msys64/mingw64/lib
+SDL_CFLAGS  := -I$(SDL_INC)
+SDL_LDFLAGS := -L$(SDL_LIB) -lSDL2 -lmingw32 -mconsole
+else
+CC       := gcc
+CXX      := g++
+AR       := ar
+# sdl2-config is the portable way to locate SDL2; distros disagree on whether
+# the headers live in /usr/include/SDL2 or /usr/local/include/SDL2, and hard
+# -coding either is how this breaks on somebody else's machine.
+SDL_CFLAGS  := $(shell sdl2-config --cflags)
+SDL_LDFLAGS := $(shell sdl2-config --libs)
+endif
 
 BUILD    := build
 OBJ      := $(BUILD)/obj
@@ -59,7 +82,7 @@ LVOBJ    := $(BUILD)/lvobj
 # "lvgl/lvgl.h" (WITH the directory prefix), so the LIBRARY'S PARENT has to be
 # on the include path, not just the library itself.
 INCS := -I. -Ishim -I$(LVGL)/.. -I$(LVGL) -I$(LVGL)/src -I$(SRC) -I$(SRC)/detect \
-        -I$(SRC)/mesh -I$(SRC)/ble -I$(SRC)/notify -I$(SDL_INC)
+        -I$(SRC)/mesh -I$(SRC)/ble -I$(SRC)/notify $(SDL_CFLAGS)
 
 # LV_CONF_INCLUDE_SIMPLE makes LVGL pick up sim/lv_conf.h off the -I. above
 # rather than the device one beside the library.
@@ -67,7 +90,7 @@ DEFS := -DLV_CONF_INCLUDE_SIMPLE -DARGUS_SIM=1
 
 CFLAGS   := -O2 -g $(DEFS) $(INCS)
 CXXFLAGS := -O2 -g -std=gnu++17 -fpermissive $(DEFS) $(INCS)
-LDFLAGS  := -L$(SDL_LIB) -lSDL2 -lmingw32 -mconsole
+LDFLAGS  := $(SDL_LDFLAGS)
 
 # ---- LVGL ------------------------------------------------------------------
 # The 463-file source list is deliberately NOT held in a make variable. This
