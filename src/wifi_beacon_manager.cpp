@@ -23,6 +23,10 @@ static wifi_beacon_cb_t s_consumers[WBM_MAX_CONSUMERS] = {};
 static int              s_count     = 0;
 static lv_timer_t      *s_hop_timer = nullptr;
 static uint8_t          s_hop_ch    = 1;
+// 0 = hopping. Non-zero parks the shared scan on that channel; see the header
+// for the shared-resource warning. Kept separate from s_hop_ch so an unpin can
+// resume hopping from wherever it left off rather than snapping back to 1.
+static uint8_t          s_pin_ch    = 0;
 static bool             s_data_capture = false;   // also receive DATA frames (handshake capture)
 
 static void parse_and_dispatch(const uint8_t *frame, int len,
@@ -148,6 +152,28 @@ static void on_channel_hop(lv_timer_t *)
     esp_wifi_set_channel(s_hop_ch, WIFI_SECOND_CHAN_NONE);
 }
 
+void wifi_beacon_pin_channel(uint8_t ch)
+{
+    if (ch < 1 || ch > 13) return;        // out of range: keep hopping, never park on garbage
+    if (s_pin_ch == ch) return;           // idempotent
+    s_pin_ch = ch;
+    if (s_hop_timer) { lv_timer_del(s_hop_timer); s_hop_timer = nullptr; }
+    if (wifi_beacon_active()) esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+    // If WiFi is not up yet the pin is remembered and start_wifi() applies it.
+}
+
+void wifi_beacon_unpin()
+{
+    if (!s_pin_ch) return;                // idempotent
+    s_pin_ch = 0;
+    // Resume hopping only if a scan is actually running; otherwise start_wifi()
+    // will create the timer when the first consumer arrives.
+    if (wifi_beacon_active() && !s_hop_timer)
+        s_hop_timer = lv_timer_create(on_channel_hop, 200, nullptr);
+}
+
+uint8_t wifi_beacon_pinned_channel() { return s_pin_ch; }
+
 static bool start_wifi()
 {
     // COEXISTENCE GUARD: WiFi.mode(WIFI_STA) below HANGS if the BLE controller
@@ -170,15 +196,27 @@ static bool start_wifi()
     };
     esp_wifi_set_promiscuous_filter(&filter);
     esp_wifi_set_promiscuous_rx_cb(promisc_cb);
-    s_hop_ch   = 1;
-    esp_wifi_set_channel(s_hop_ch, WIFI_SECOND_CHAN_NONE);
-    s_hop_timer = lv_timer_create(on_channel_hop, 200, nullptr);
+    if (s_pin_ch >= 1 && s_pin_ch <= 13) {
+        // A pin was requested while WiFi was down. Honour it: park, and do NOT
+        // create the hop timer, or the first tick would hop straight off the
+        // pinned channel and the pin would silently do nothing.
+        esp_wifi_set_channel(s_pin_ch, WIFI_SECOND_CHAN_NONE);
+    } else {
+        s_hop_ch   = 1;
+        esp_wifi_set_channel(s_hop_ch, WIFI_SECOND_CHAN_NONE);
+        s_hop_timer = lv_timer_create(on_channel_hop, 200, nullptr);
+    }
     return true;
 }
 
 static void stop_wifi()
 {
     if (s_hop_timer) { lv_timer_del(s_hop_timer); s_hop_timer = nullptr; }
+    // Drop any pin with the scan it belonged to. A pin has no meaning without a
+    // running scan, and leaving it set would silently park the NEXT consumer
+    // (e.g. Evil Twin) on one channel with nothing owning that decision. The
+    // pin's owner re-asserts it on its own tick, so this is safe to clear.
+    s_pin_ch = 0;
     esp_wifi_set_promiscuous(false);
     esp_wifi_set_promiscuous_rx_cb(nullptr);
     WiFi.mode(WIFI_OFF);

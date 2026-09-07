@@ -18,6 +18,12 @@ bool handshake_is_running();
 
 int  handshake_pwnd_count();     // distinct APs whose EAPOL we caught this session
 
+// Channel the capture is currently PARKED on, or 0 while still surveying.
+// The scan hops 1-13 every 200 ms, which sits on any one channel ~7.7% of the
+// time and so misses most handshakes; capture surveys for DATA traffic, then
+// pins to the busiest channel. See the block comment in handshake.cpp.
+uint8_t handshake_capture_channel();
+
 // Called from the WiFi promiscuous callback (WiFi task) for DATA frames while
 // capture is on. Fast EAPOL check; copies a matched frame into a queue. Never
 // touches the SD here.

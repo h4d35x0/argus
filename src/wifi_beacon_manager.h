@@ -43,6 +43,29 @@ int wifi_beacon_consumer_count();
 // PMKID capture. Off by default — the survey path is untouched unless enabled.
 void wifi_beacon_set_data_capture(bool on);
 
+// --- Channel pinning ---------------------------------------------------------
+// Park the shared scan on ONE channel instead of hopping 1-13 every 200 ms.
+//
+// WHY: a full hop sweep is 13 x 200 ms = 2.6 s, so the scan sits on any given
+// channel about 7.7% of the time. That is fine for surveying (an AP beacons
+// every ~100 ms, so you WILL see it within a sweep) but it is useless for
+// catching a WPA 4-way handshake, which completes in tens of milliseconds and
+// is gone. Handshake capture has to be parked on the target's channel.
+//
+// SHARED-RESOURCE WARNING: this manager fans out to EVERY consumer, so pinning
+// parks all of them. While a pin is held the Evil Twin / BeaconFlood detectors
+// and the deauth survey only see the pinned channel. There is no useful
+// "pin only if I am the sole consumer" guard, because detect_pipeline
+// piggybacks whenever any consumer is up, so the count is never 1. Pin only
+// from an explicit, user-initiated capture, and unpin as soon as it ends.
+//
+// ch must be 1-13; anything else is ignored and the scan keeps hopping.
+// Pinning is idempotent and may be called before WiFi is up (start_wifi()
+// honours a pending pin instead of starting the hop timer).
+void    wifi_beacon_pin_channel(uint8_t ch);
+void    wifi_beacon_unpin();
+uint8_t wifi_beacon_pinned_channel();   // 0 = hopping
+
 // --- Raw management-frame fanout (deauth / disassoc detection) ----------------
 // The beacon fanout above only forwards beacons; a deauth-flood DETECTOR needs
 // the raw deauth (mgmt subtype 0xC) / disassoc (0xA) frames the promiscuous mask
