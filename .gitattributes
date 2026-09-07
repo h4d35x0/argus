@@ -1,0 +1,31 @@
+# Binary assets. These MUST never be treated as text: a raw RGB565 raster is
+# full of 0x0D and 0x0A bytes that mean pixel data, not line endings, and a
+# CRLF rewrite would corrupt the image and desync the exact 411,640-byte size
+# src/background.cpp checks before loading it. Git for Windows ships
+# core.autocrlf=true in its SYSTEM config, where it is invisible to
+# `git config --global --list`, so this is not hypothetical.
+#
+# `binary` is shorthand for `-diff -merge -text`: never converted, never
+# line-diffed, never auto-merged.
+*.rgb565 binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.bmp    binary
+*.ttf    binary
+*.bin    binary
+
+# DELIBERATELY NOT SET: any `text eol=lf` rule for source files. Not because it
+# would be wrong, but because it is a separate change that needs its own commit.
+#
+# Measured 2026-09-07, at byte level: 825 of 826 tracked text blobs in HEAD are
+# LF, but 566 of those files are CRLF in the working tree, so 565 are mismatched
+# right now. `git status` stays quiet about them only because the index stat
+# cache matches, so git never re-reads the contents; the moment a file is edited
+# git looks properly and the whole file diffs. That is a latent trap, and adding
+# `text eol=lf` here is the right fix for it: it would rewrite those working
+# copies to LF on the next checkout and produce NO commit diff, because the
+# normalised content already equals the blob.
+#
+# It is not being done in the same commit as an asset addition, because it
+# rewrites 565 files on disk and deserves to be verified on its own.

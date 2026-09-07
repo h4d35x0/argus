@@ -35,6 +35,27 @@ jobs:
       - name: Build and run host suite
         run: make -C test test
 
+  # sdcard/backgrounds/*.rgb565 are committed binaries derived from the images in
+  # tools/wallpapers/. Nothing at build time regenerates them, so without this a
+  # source image could be replaced and the raster the watch actually loads would
+  # quietly stay the old one. --check re-derives and byte-compares; it writes
+  # nothing.
+  wallpapers:
+    name: SD wallpapers match their sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Pillow
+        run: pip install pillow
+
+      - name: Check committed rasters
+        run: python tools/gen_wallpapers.py --check --stats
+
   firmware:
     name: Firmware build (twatch_ultra)
     runs-on: ubuntu-latest

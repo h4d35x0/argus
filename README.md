@@ -479,6 +479,45 @@ That's it — no manual library edits. LilyGoLib and its NFC forks are **vendore
 
 If the board isn't auto-detected, pass the port: `pio run -t upload --upload-port /dev/ttyACM0` (Linux) / `COMx` (Windows) / `/dev/cu.usbmodemXXXX` (macOS).
 
+### SD card assets
+
+Some of what the watch draws lives on the microSD card rather than in flash, so
+it can be changed without reflashing. Those files ship in this repo under
+[`sdcard/`](sdcard/), laid out exactly as the card expects: copy the contents of
+that directory to the **root** of a FAT32-formatted card.
+
+That currently means the three mode wallpapers, which come standard:
+
+| File | Mode | Artwork |
+|------|------|---------|
+| `backgrounds/daily.rgb565` | Daily (default) | HADES logo |
+| `backgrounds/defense.rgb565` | Defense | Privacy is an Illusion |
+| `backgrounds/offense.rgb565` | Offense | Circuit skull |
+
+Switching mode switches wallpaper. Turn **Wallpaper** on in Settings to see
+them; without the files the watch simply shows no wallpaper, which is not an
+error.
+
+Each is a raw, panel-sized, little-endian RGB565 file (exactly 410 x 502 x 2 =
+411,640 bytes) rather than a PNG, because the watch runs **no image decoder**:
+PNG and JPEG decoders inflate the whole compressed file in scarce internal SRAM
+and boot-loop the board, and the BMP decoder re-decodes from the card on every
+render. The raster is read once into PSRAM and blitted from there. See
+[`tasks/WALLPAPER-SAGA.md`](tasks/WALLPAPER-SAGA.md) for how that was arrived at.
+
+To use your own artwork, replace a source image in `tools/wallpapers/` and
+regenerate:
+
+```bash
+pip install pillow
+python tools/gen_wallpapers.py --stats     # rewrites sdcard/backgrounds/
+python tools/gen_wallpapers.py --check     # verify committed rasters, write nothing
+```
+
+`--check` runs in CI, so a committed raster cannot drift from its source image.
+Full detail, including the brightness tuning the low wallpaper opacity requires,
+is in [`sdcard/README.md`](sdcard/README.md).
+
 ### Crash forensics
 
 The ESP32-S3 build layout already reserves a flash `coredump` partition, so after a panic you can pull the saved dump against the exact firmware ELF from this tree instead of depending on live serial panic text.
