@@ -1491,6 +1491,48 @@ static void draw_tesla_cp_icon(lv_obj_t *tile)
 
 // --- pwnpet + passive handshake capture (Phase 3a: WiFi-beacon cluster) -------
 
+// Capture-channel readout on the Pwn tile.
+//
+// handshake.cpp surveys ~10 s counting DATA frames per channel, pins to the
+// busiest, and re-surveys every 3 min. NONE of that was visible on the watch:
+// handshake_capture_channel() existed but nothing called it, and the tile only
+// swapped green for grey, so "did it settle, and where?" was unanswerable
+// without pulling the pcap off the card. This is that readout.
+//
+//   hidden  Pwn is off
+//   SCAN    running, still hunting (handshake_capture_channel() == 0)
+//   CH n    running, parked on channel n
+//
+// Showing SCAN rather than a blank matters: best() deliberately returns 0 on a
+// silent census so capture keeps hopping instead of parking on a dead channel,
+// and that correct-but-unsettled state would otherwise look identical to Pwn
+// simply being off.
+static lv_obj_t *t_handshake_ch;
+
+// Last state PAINTED, so the 1 Hz tick only touches LVGL when it changes:
+// -2 never drawn, -1 hidden, 0 SCAN, n CH n.
+static int s_hs_badge_state = -2;
+
+static void handshake_badge_refresh()
+{
+    if (!t_handshake_ch) return;
+    int want = handshake_is_running() ? (int)handshake_capture_channel() : -1;
+    if (want == s_hs_badge_state) return;          // no change: do not invalidate the tile
+    s_hs_badge_state = want;
+
+    if (want < 0) { lv_obj_add_flag(t_handshake_ch, LV_OBJ_FLAG_HIDDEN); return; }
+    if (want == 0) {
+        lv_label_set_text(t_handshake_ch, "SCAN");
+    } else {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "CH %d", want);
+        lv_label_set_text(t_handshake_ch, buf);
+    }
+    lv_obj_clear_flag(t_handshake_ch, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void handshake_badge_tick(lv_timer_t *) { handshake_badge_refresh(); }
+
 // Passive WPA handshake / PMKID capture toggle. Green while capturing (matches
 // the other detector tiles' "running" state).
 static void set_handshake_tile_running(bool on)
@@ -1498,6 +1540,7 @@ static void set_handshake_tile_running(bool on)
     lv_obj_set_style_bg_color(t_handshake,
         on ? lv_color_make(0x00, 0x55, 0x22) : lv_color_make(0x11, 0x11, 0x11),
         LV_PART_MAIN);
+    handshake_badge_refresh();   // reflect the toggle now, not up to 1 s later
 }
 
 static void on_handshake_clicked(lv_event_t *)
@@ -1846,6 +1889,15 @@ void tools_screen_create()
     tile_icon(t_timeline, "timeline", draw_timeline_icon);
     draw_pet_icon(t_pet);                                       // keep HexHound HD sprite
     tile_icon(t_handshake, "pwn",     draw_handshake_icon);
+    // Created AFTER tile_icon() so it stacks above the glyph. Reuses
+    // font_argus_label_14 (already linked for every tile caption) on purpose:
+    // the app partition is at 94.8% and a new font face would be real flash.
+    t_handshake_ch = lv_label_create(t_handshake);
+    lv_obj_set_style_text_font(t_handshake_ch, &font_argus_label_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(t_handshake_ch, ARGUS_TEXT, LV_PART_MAIN);
+    lv_label_set_text(t_handshake_ch, "SCAN");
+    lv_obj_align(t_handshake_ch, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_add_flag(t_handshake_ch, LV_OBJ_FLAG_HIDDEN);   // Pwn is off at boot
     tile_icon(t_loot,     "loot",     draw_loot_icon);
     tile_icon(t_beacon,   "beaconspam", draw_beaconspam_icon);
     tile_icon(t_deauthatk, "deauthatk", draw_deauth_atk_icon);
@@ -2003,6 +2055,13 @@ void tools_screen_create()
     // change (even when Tools isn't the active screen) so it's correct on entry.
     argus_mode_on_change([](ArgusMode) { tools_apply_mode(); });
     tools_apply_mode();
+
+    // 1 Hz Pwn capture-channel readout. Deliberately NOT gated on Tools being
+    // the active screen: the survey-to-pin transition happens ~10 s after arming
+    // and the re-survey every 3 min, so gating would leave a stale badge on
+    // entry. handshake_badge_refresh() early-returns unless the state actually
+    // changed, so the idle cost is one comparison per second.
+    lv_timer_create(handshake_badge_tick, 1000, NULL);
 }
 
 // Lowest ArgusMode at which a tile is allowed to appear. Offensive tools require
