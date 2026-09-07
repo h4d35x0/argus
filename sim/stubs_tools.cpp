@@ -34,9 +34,21 @@ void flock_stop(void)               {}
 bool flock_is_running(void)         { return false; }
 bool flock_wifi_active(void)        { return false; }
 bool flock_ble_active(void)         { return false; }
+// Pwn capture state. Defaults match the "nothing is running" posture of every
+// other stub here; flip them to render the Pwn tile's SCAN / CH n badge on the
+// host and eyeball it. That is how the badge's FIRST version was found to be
+// unreadable: it painted correctly but sat as bare text on the icon glyph, so
+// it was invisible on the watch. Set running=true, channel=0 for SCAN, or
+// channel=13 for the widest CH string.
+bool    sim_hs_running = false;
+uint8_t sim_hs_channel = 0;
 bool handshake_start(void)          { return false; }
 void handshake_stop(void)           {}
-bool handshake_is_running(void)     { return false; }
+bool handshake_is_running(void)     { return sim_hs_running; }
+// Pwn's pinned capture channel: 0 = still surveying. tools_screen.cpp's tile
+// badge reads this, so without it the simulator does not LINK - which is how the
+// missing stub was found.
+uint8_t handshake_capture_channel(void) { return sim_hs_channel; }
 bool tracker_sweep_start(void)      { return false; }
 void tracker_sweep_stop(void)       {}
 bool tracker_sweep_is_running(void) { return false; }

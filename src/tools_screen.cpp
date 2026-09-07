@@ -1892,11 +1892,26 @@ void tools_screen_create()
     // Created AFTER tile_icon() so it stacks above the glyph. Reuses
     // font_argus_label_14 (already linked for every tile caption) on purpose:
     // the app partition is at 94.8% and a new font face would be real flash.
+    //
+    // It is a filled CHIP, not bare text. The first version was bare cream text
+    // at TOP_MID and it was effectively invisible: the glyph band runs y=6..84
+    // (see tile_icon), so the text landed straight on the artwork and read as
+    // part of it. Verified in sim/ - the badge was painting correctly the whole
+    // time and still could not be seen. An opaque plate with a rim is what makes
+    // it legible over any glyph, and the HD sprites on the card are denser than
+    // the procedural fallback the simulator draws.
     t_handshake_ch = lv_label_create(t_handshake);
     lv_obj_set_style_text_font(t_handshake_ch, &font_argus_label_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(t_handshake_ch, ARGUS_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(t_handshake_ch, lv_color_make(0x0A, 0x0E, 0x14), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(t_handshake_ch, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(t_handshake_ch, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(t_handshake_ch, 6, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(t_handshake_ch, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(t_handshake_ch, ARGUS_ACCENT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(t_handshake_ch, 1, LV_PART_MAIN);
     lv_label_set_text(t_handshake_ch, "SCAN");
-    lv_obj_align(t_handshake_ch, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_align(t_handshake_ch, LV_ALIGN_TOP_MID, 0, 3);
     lv_obj_add_flag(t_handshake_ch, LV_OBJ_FLAG_HIDDEN);   // Pwn is off at boot
     tile_icon(t_loot,     "loot",     draw_loot_icon);
     tile_icon(t_beacon,   "beaconspam", draw_beaconspam_icon);
