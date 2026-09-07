@@ -99,7 +99,21 @@ static void arm_inject(lv_timer_t *t)
         s_inject   = lv_timer_create(inject_tick, 25, nullptr);
         return;
     }
-    if (++s_arm_tries > 10) { lv_timer_del(t); s_arm = nullptr; deauth_attack_stop(); }
+    if (++s_arm_tries > 10) {
+        lv_timer_del(t); s_arm = nullptr;
+        // Say WHY. This path used to stop silently, which is the failure mode a
+        // user actually hits: deauth_attack_start() only ADDS a beacon consumer
+        // and succeeds whenever WiFi is already up, so the survey runs and the
+        // target list appears; it is the EXCLUSIVE claim here that Pwn (or any
+        // detector holding wifi_beacon_active()) blocks. The screen then dropped
+        // to "idle" with no explanation and it read as the tool being broken.
+        // offense_wifi_busy_reason() already produces the right sentence and
+        // da_on_toggle() already shows it on the start path; this is the same.
+        const char *why = offense_wifi_busy_reason();
+        low_mem_show_dialog(why ? why
+                                : "Couldn't get the radio.\nStop the other WiFi tool, then retry.");
+        deauth_attack_stop();
+    }
 }
 
 static void end_survey(lv_timer_t *t)
