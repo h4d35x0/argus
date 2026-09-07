@@ -8,7 +8,18 @@
 # NOTE (this Windows/MSYS2 box): MinGW's cc1plus needs mingw64/bin on PATH or it
 # fails to load its runtime DLLs with no diagnostic. MINGW_BIN handles that; it
 # prepends a path that simply doesn't exist on Linux/macOS, so this stays portable.
-MINGW_BIN ?= /c/msys64/mingw64/bin
+# It MUST be a Windows-form path. A POSIX one (/c/msys64/...) is what was here
+# until 2026-09-07 and it silently did nothing: make exports PATH literally, and
+# the Windows loader that starts cc1plus cannot resolve /c/... So the build only
+# worked when the CALLER already had mingw64 on PATH, and failed with exit 1 and
+# not one byte of diagnostic when it did not. sim/Makefile always used the
+# Windows form, which is why that one never hit this.
+#
+# It stayed hidden for a long time because make no-ops when nothing changed and
+# just re-runs the cached build/argus_tests.exe, printing a perfectly good
+# "5216 checks, 0 failures" without compiling anything. Only a rebuild forced by
+# changed mtimes (a mass line-ending renormalisation, here) exposed it.
+MINGW_BIN ?= C:/msys64/mingw64/bin
 export PATH := $(MINGW_BIN):$(PATH)
 
 CXX      ?= g++
