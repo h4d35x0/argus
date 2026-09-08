@@ -2,6 +2,8 @@
 
 <p align="center"><img src="img/argus/clock.png" width="230" alt="ARGUS watch face"></p>
 
+<p align="center"><img src="img/argus/demo.gif" width="480" alt="ARGUS demo: Daily, Defense and Offense modes, then the watch screens"><br><sub>Rendered by the in-repo simulator (<code>sim/</code>) from current source, not from device captures.</sub></p>
+
 **ARGUS** is the ARGUS Project's security firmware for the LILYGO T-Watch Ultra: an ESP32-S3 smartwatch (AMOLED display, LoRa, GNSS, NFC, full sensor suite) turned into an anti-surveillance field tool and daily-wear companion. It is a full smartwatch (clock, alarms, calendar, phone notifications, Meshtastic comms) plus a suite of RF/wireless detection and analysis tools, with the defensive, anti-stalking features front and centre.
 
 > **ARGUS is a fork of the phenomenal [`13:37` firmware by r3dfish](https://github.com/r3dfish/13-37).** That project is the foundation this is built on, the entire smartwatch core, the Meshtastic client, and most of the RF toolkit are r3dfish's excellent work. ARGUS rebrands it and adds an anti-surveillance / daily-wear layer on top. Full credit and huge thanks to r3dfish, please go star the original: **<https://github.com/r3dfish/13-37>**. See [Credits](#credits--acknowledgments).
