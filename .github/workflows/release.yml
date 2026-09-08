@@ -1,0 +1,117 @@
+# ARGUS release pipeline.
+#
+# Trigger: pushing a tag that looks like a version (v0.1.0). Everything a user
+# needs to flash the watch is built HERE, on a clean runner from the tagged
+# tree, not uploaded from a developer machine, so a release asset is always
+# reproducible from its tag and never carries a local build's leftovers.
+#
+# Produces:
+#   1. A GitHub Release with
+#        argus-<tag>.bin           single merged image, flash at 0x0
+#        firmware.bin              app only, flash at 0x10000
+#        bootloader.bin            flash at 0x0
+#        partitions.bin            flash at 0x8000
+#        boot_app0.bin             flash at 0xe000
+#        argus-<tag>-sdcard.zip    contents of sdcard/, copy to the card root
+#        SHA256SUMS
+#   2. The merged image published to GitHub Packages as an OCI artifact at
+#      ghcr.io/<owner>/argus:<tag> (and :latest), pushed with oras. The
+#      org.opencontainers.image.source annotation links the package to this
+#      repository so it appears in the repo sidebar.
+#
+# Offsets and merge flags match README "Installing a prebuilt binary".
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Build and publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    env:
+      PIO_ENV: twatch_ultra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      # The tag must match what the firmware reports about itself, or a user
+      # reading the boot banner cannot tell which release they are running.
+      - name: Check FW_VERSION matches the tag
+        run: |
+          fw=$(grep -oE '#define FW_VERSION "[0-9]+\.[0-9]+\.[0-9]+"' src/main.cpp | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "src/main.cpp FW_VERSION=$fw  tag=${GITHUB_REF_NAME}"
+          test "v$fw" = "${GITHUB_REF_NAME}"
+
+      - name: Build firmware
+        run: pio run -e "$PIO_ENV"
+
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          out=release; mkdir -p "$out"
+          b=.pio/build/$PIO_ENV
+          cp "$b/firmware.bin" "$b/bootloader.bin" "$b/partitions.bin" "$out/"
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin "$out/"
+          python -m esptool --chip esp32s3 merge_bin -o "$out/argus-${GITHUB_REF_NAME}.bin" \
+            --flash_mode qio --flash_freq 80m --flash_size 16MB \
+            0x0 "$out/bootloader.bin" 0x8000 "$out/partitions.bin" \
+            0xe000 "$out/boot_app0.bin" 0x10000 "$out/firmware.bin"
+          (cd sdcard && zip -qr "../$out/argus-${GITHUB_REF_NAME}-sdcard.zip" . -x 'README.md')
+          (cd "$out" && sha256sum * > SHA256SUMS)
+          ls -l "$out"; cat "$out/SHA256SUMS"
+
+      - name: Flash usage
+        run: pio run -e "$PIO_ENV" --target size 2>/dev/null | tail -8 || true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=.github/release-notes/${GITHUB_REF_NAME}.md
+          if [ -f "$notes" ]; then
+            gh release create "$GITHUB_REF_NAME" release/* --title "ARGUS ${GITHUB_REF_NAME}" --notes-file "$notes"
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --title "ARGUS ${GITHUB_REF_NAME}" --generate-notes
+          fi
+
+      - name: Log in to GitHub Packages
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Install oras
+        uses: oras-project/setup-oras@v1
+
+      - name: Publish merged image as an OCI artifact
+        run: |
+          set -euo pipefail
+          cd release
+          img="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/argus"
+          oras push "$img:${GITHUB_REF_NAME}" \
+            --artifact-type application/vnd.argus.firmware.v1 \
+            --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --annotation "org.opencontainers.image.version=${GITHUB_REF_NAME}" \
+            --annotation "org.opencontainers.image.description=ARGUS firmware for the LILYGO T-Watch Ultra, merged image, flash at 0x0" \
+            --annotation "org.opencontainers.image.licenses=MIT" \
+            "argus-${GITHUB_REF_NAME}.bin:application/octet-stream" \
+            "SHA256SUMS:text/plain"
+          oras tag "$img:${GITHUB_REF_NAME}" latest
