@@ -52,8 +52,10 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
           restore-keys: pio-${{ runner.os }}-
 
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
+      # esptool is pip-installed on purpose: PlatformIO fetches its own copy as a
+      # package (tool-esptoolpy), which is not importable from the runner's python.
+      - name: Install PlatformIO and esptool
+        run: pip install --upgrade platformio esptool
 
       # The tag must match what the firmware reports about itself, or a user
       # reading the boot banner cannot tell which release they are running.
