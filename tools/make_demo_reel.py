@@ -82,7 +82,9 @@ PANEL_W, PANEL_H = 410, 502         # the T-Watch Ultra panel, 1:1 with the shot
 # ASSET AUDIT, 2026-09-03. Every capture in img/argus/ was taken 2026-07-21,
 # which is BEFORE the rebrand (23a7cd5), so three of the twenty are unusable and
 # the rest are only usable because they carry no brand string:
-#   config_1.png  - shows the literal old product name in a text field. Excluded.
+#   config_1.png  - showed the old product name in a text field. REMOVED from
+#                   the repo 2026-09-08 along with hexhound.png (old stage
+#                   label); neither exists any more.
 #   radar.png     - renders tofu boxes where LV_SYMBOL_* glyphs failed on a
 #                   brand-font label (the ASCII-only subset font bug). Excluded
 #                   on appearance grounds AND because the tail verdict is the
@@ -112,7 +114,7 @@ STORYBOARD = [
      "SEVENTEEN TOOLS",
      "HexHound, LoRa APRS, TPMS,\nBLE mouse, USB SD card reader.",
      3.2),
-    ("hexhound.png",
+    ("tools_4.png",
      "HEXHOUND",
      "Sub-GHz and NFC tooling,\nwith a mascot that levels up.",
      3.0),
@@ -544,9 +546,24 @@ def render_sim(aspect, framedir, outdir, keep_frames=False):
                     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18",
                     "-movflags", "+faststart", mp4], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    made = [mp4]
+    if aspect == "wide":
+        # README loop from the SIMULATOR frames, same budget as the device
+        # path: GitHub only animates a GIF in a README, and 480 px @ 10 fps
+        # with a 128-colour palette is what keeps a ~40 s loop near 4 MB.
+        # Frames are dropped to 10 fps in the filter, not by re-timing.
+        gif = os.path.join(outdir, "argus-sim-loop.gif")
+        subprocess.run(["ffmpeg", "-y", "-framerate", str(fps),
+                        "-i", os.path.join(tmp, "f%05d.png"),
+                        "-vf", "fps=10,scale=480:-1:flags=lanczos,"
+                               "split[a][b];[a]palettegen=max_colors=128[p];"
+                               "[b][p]paletteuse=dither=bayer:bayer_scale=3",
+                        "-loop", "0", gif], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        made.append(gif)
     if not keep_frames:
         shutil.rmtree(tmp, ignore_errors=True)
-    return [mp4], n
+    return made, n
 
 
 def main():

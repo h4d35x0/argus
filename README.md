@@ -25,9 +25,9 @@ The LilyGo T-Watch Ultra can be purchased from LilyGo [here](https://www.lilygo.
 |:--:|:--:|:--:|
 | ![Watch face](img/argus/clock.png) | ![Tools grid](img/argus/tools_1.png) | ![Threat Radar](img/argus/radar.png) |
 | Watch face | Tools grid (defense-first) | Threat Radar |
-| ![Phone notifications](img/argus/notify.png) | ![HexHound](img/argus/hexhound.png) | ![Settings](img/argus/settings_1.png) |
-| Phone notifications | HexHound | Settings |
-| ![Meshtastic](img/argus/meshtastic.png) | ![Mesh config](img/argus/config_1.png) | ![Calendar](img/argus/calendar.png) |
+| ![Phone notifications](img/argus/notify.png) | ![RF tools](img/argus/tools_2.png) | ![Settings](img/argus/settings_1.png) |
+| Phone notifications | RF tools | Settings |
+| ![Meshtastic](img/argus/meshtastic.png) | ![Mesh config](img/argus/config_2.png) | ![Calendar](img/argus/calendar.png) |
 | Meshtastic | Mesh config | Calendar |
 
 Screens are reached by swipe gestures, the power/back buttons, and the on-screen **Tools** grid (see **Radios** below for the button-navigation chains).
@@ -462,8 +462,8 @@ Development is done with **PlatformIO** (the `platformio.ini` here targets the `
 Prerequisites: [PlatformIO Core](https://platformio.org/install/cli) (or the VS Code extension) and a USB-C cable.
 
 ```bash
-git clone https://github.com/r3dfish/13-37
-cd 13-37
+git clone https://github.com/h4d35x0/argus
+cd argus
 
 # Build (first run downloads pinned deps; the LilyGoLib patches apply automatically)
 pio run
@@ -475,7 +475,7 @@ pio device monitor          # 115200 baud
 
 That's it — no manual library edits. LilyGoLib and its NFC forks are **vendored under `lib/`** with the required patches baked in (SEND_BUF_SIZE and LV_USE_SNAPSHOT), so there is no build-time patch step, and all dependencies are pinned for reproducible output. The build emits `bootloader.bin`, `partitions.bin`, and `firmware.bin` under `.pio/build/twatch_ultra/`.
 
-> **Note:** ARGUS is ARGUS Project's fork of the open-source T-Watch Ultra firmware. The `r3dfish/13-37` links in this section point to the **upstream base project**; there are no ARGUS-specific prebuilt binaries or web-flasher yet, so build ARGUS from source (above). The two extra PlatformIO envs (`ancs_spike`, `screenshots`) are development-only.
+> **Note:** ARGUS is a fork of the open-source T-Watch Ultra firmware; the `r3dfish/13-37` links elsewhere in this README point to the **upstream base project**. Prebuilt ARGUS images are attached to each [GitHub Release](https://github.com/h4d35x0/argus/releases) (see **Installing a prebuilt binary** below); there is no ARGUS web-flasher yet. The two extra PlatformIO envs (`ancs_spike`, `screenshots`) are development-only.
 
 If the board isn't auto-detected, pass the port: `pio run -t upload --upload-port /dev/ttyACM0` (Linux) / `COMx` (Windows) / `/dev/cu.usbmodemXXXX` (macOS).
 
@@ -537,13 +537,15 @@ local build does not match the crashed firmware.
 
 ### Installing a prebuilt binary
 
-**Easiest — flash from your browser** (no toolchain): open **<https://r3dfish.github.io/13-37/>** in desktop **Chrome** or **Edge**, plug the watch in over USB-C, and click **Install**. (Uses [ESP Web Tools](https://esphome.github.io/esp-web-tools/) over WebSerial.)
+Every [ARGUS release](https://github.com/h4d35x0/argus/releases) is built by CI from its tag and ships a single merged image, the four separate parts, an `sdcard.zip` for the card, and `SHA256SUMS`. The same merged image is also published to GitHub Packages as an OCI artifact (`ghcr.io/h4d35x0/argus:<tag>`, fetch it with [`oras pull`](https://oras.land)).
 
-**Or with esptool** — just [esptool](https://github.com/espressif/esptool) (`pip install esptool`). Download **`1337-v1.0.0.bin`** from the [latest release](https://github.com/r3dfish/13-37/releases/latest) (a single merged image) and flash it at offset `0x0`:
+**With esptool** — just [esptool](https://github.com/espressif/esptool) (`pip install esptool`). Download **`argus-<tag>.bin`** from the [latest release](https://github.com/h4d35x0/argus/releases/latest) and flash it at offset `0x0`:
 
 ```bash
-esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash 0x0 1337-v1.0.0.bin
+esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash 0x0 argus-v0.1.0.bin
 ```
+
+(The upstream 13:37 project also offers a browser flasher at <https://r3dfish.github.io/13-37/>; that installs **13:37**, not ARGUS.)
 
 If you instead have the three separate build artifacts, flash them at their offsets (the bootloader sits at `0x0` on the ESP32-S3, and `boot_app0.bin` ships with the Arduino-ESP32 framework):
 
@@ -557,10 +559,10 @@ esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash \
 
 <details><summary>Generating the merged binary for a release</summary>
 
-From `.pio/build/twatch_ultra/` (with `boot_app0.bin` copied from `~/.platformio/packages/framework-arduinoespressif32/tools/partitions/`):
+This is exactly what `.github/workflows/release.yml` runs on a tag push. By hand, from `.pio/build/twatch_ultra/`, with `boot_app0.bin` copied from `~/.platformio/packages/framework-arduinoespressif32/tools/partitions/`:
 
 ```bash
-esptool.py --chip esp32s3 merge_bin -o 1337-v1.0.0.bin \
+esptool.py --chip esp32s3 merge_bin -o argus-v0.1.0.bin \
   --flash_mode qio --flash_freq 80m --flash_size 16MB \
   0x0 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin
 ```
