@@ -90,8 +90,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Idempotent on purpose: a re-run after a failure in a LATER step must
+          # not trip over the release it already made. Existing release -> the
+          # assets are re-uploaded with --clobber; missing -> created.
           notes=.github/release-notes/${GITHUB_REF_NAME}.md
-          if [ -f "$notes" ]; then
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          elif [ -f "$notes" ]; then
             gh release create "$GITHUB_REF_NAME" release/* --title "ARGUS ${GITHUB_REF_NAME}" --notes-file "$notes"
           else
             gh release create "$GITHUB_REF_NAME" release/* --title "ARGUS ${GITHUB_REF_NAME}" --generate-notes
@@ -103,6 +108,11 @@ jobs:
       - name: Install oras
         uses: oras-project/setup-oras@v1
 
+      # GitHub Packages belong to the ACCOUNT, not the repo. If this repo is ever
+      # deleted and recreated, the package survives, stays linked to the dead
+      # repo, and this step fails with a 403 on the blob HEAD until the old
+      # package is deleted by hand under the account's Packages settings
+      # (learned 2026-09-09).
       - name: Publish merged image as an OCI artifact
         run: |
           set -euo pipefail
