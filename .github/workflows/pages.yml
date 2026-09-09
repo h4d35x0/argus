@@ -10,7 +10,8 @@
 # whenever a new release is published, so the flasher always serves the current
 # version.
 #
-# One-time repo setting: Pages source must be "GitHub Actions" (Settings > Pages,
+# The page vendors esp-web-tools (flasher/vendor/), so it has no runtime CDN
+# dependency. One-time repo setting: Pages source must be "GitHub Actions" (Settings > Pages,
 # or the API call in the migration notes). Without it, deploy-pages fails.
 name: Pages (flasher)
 
@@ -46,7 +47,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p site
-          cp flasher/index.html site/
+          # copy the whole flasher tree so the vendored esp-web-tools/ ships too
+          cp -r flasher/. site/
 
           # The release that should be flashed: the one that triggered us, else latest.
           tag="${{ github.event.release.tag_name }}"
