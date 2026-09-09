@@ -1,0 +1,96 @@
+# ARGUS browser flasher (GitHub Pages).
+#
+# Publishes an ESP Web Tools page at https://<owner>.github.io/argus/ that flashes
+# the watch over WebSerial from Chrome/Edge, the LilyGo-style one-click install.
+#
+# The firmware binary is NOT committed to the repo. This workflow pulls the merged
+# image from the latest GitHub Release at build time and serves it SAME-ORIGIN
+# beside the manifest, so there is no committed binary in git history and no
+# cross-origin fetch for the flasher to trip on. The page redeploys automatically
+# whenever a new release is published, so the flasher always serves the current
+# version.
+#
+# One-time repo setting: Pages source must be "GitHub Actions" (Settings > Pages,
+# or the API call in the migration notes). Without it, deploy-pages fails.
+name: Pages (flasher)
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - flasher/**
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; let a run finish rather than cancelling a publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the flasher site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          cp flasher/index.html site/
+
+          # The release that should be flashed: the one that triggered us, else latest.
+          tag="${{ github.event.release.tag_name }}"
+          if [ -z "$tag" ]; then
+            tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          fi
+          echo "flasher will serve release $tag"
+
+          # Merged single-image build only (argus-<tag>.bin), flashed at 0x0.
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'argus-*.bin' --dir site
+          bin=$(cd site && ls argus-*.bin)
+          test -n "$bin"
+          ver="${tag#v}"
+
+          cat > site/manifest.json <<JSON
+          {
+            "name": "ARGUS",
+            "version": "$ver",
+            "new_install_prompt_erase": true,
+            "builds": [
+              {
+                "chipFamily": "ESP32-S3",
+                "parts": [
+                  { "path": "$bin", "offset": 0 }
+                ]
+              }
+            ]
+          }
+          JSON
+
+          # A 404 helper and a .nojekyll so no filename is mangled.
+          touch site/.nojekyll
+          echo "site contents:"; ls -l site; echo "manifest:"; cat site/manifest.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

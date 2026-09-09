@@ -477,7 +477,7 @@ pio device monitor          # 115200 baud
 
 That's it — no manual library edits. LilyGoLib and its NFC forks are **vendored under `lib/`** with the required patches baked in (SEND_BUF_SIZE and LV_USE_SNAPSHOT), so there is no build-time patch step, and all dependencies are pinned for reproducible output. The build emits `bootloader.bin`, `partitions.bin`, and `firmware.bin` under `.pio/build/twatch_ultra/`.
 
-> **Note:** ARGUS is a fork of the open-source T-Watch Ultra firmware; the `r3dfish/13-37` links elsewhere in this README point to the **upstream base project**. Prebuilt ARGUS images are attached to each [GitHub Release](https://github.com/h4d35x0/argus/releases) (see **Installing a prebuilt binary** below); there is no ARGUS web-flasher yet. The two extra PlatformIO envs (`ancs_spike`, `screenshots`) are development-only.
+> **Note:** ARGUS is a fork of the open-source T-Watch Ultra firmware; the `r3dfish/13-37` links elsewhere in this README point to the **upstream base project**. Prebuilt ARGUS images are attached to each [GitHub Release](https://github.com/h4d35x0/argus/releases), and you can flash from your browser at **<https://h4d35x0.github.io/argus/>** (see **Installing a prebuilt binary** below). The two extra PlatformIO envs (`ancs_spike`, `screenshots`) are development-only.
 
 If the board isn't auto-detected, pass the port: `pio run -t upload --upload-port /dev/ttyACM0` (Linux) / `COMx` (Windows) / `/dev/cu.usbmodemXXXX` (macOS).
 
@@ -539,7 +539,9 @@ local build does not match the crashed firmware.
 
 ### Installing a prebuilt binary
 
-Every [ARGUS release](https://github.com/h4d35x0/argus/releases) is built by CI from its tag and ships a single merged image, the four separate parts, an `sdcard.zip` for the card, and `SHA256SUMS`. The same merged image is also published to GitHub Packages as an OCI artifact (`ghcr.io/h4d35x0/argus:<tag>`, fetch it with [`oras pull`](https://oras.land)).
+**Easiest, flash from your browser** (no toolchain): open **<https://h4d35x0.github.io/argus/>** in desktop **Chrome** or **Edge**, plug the watch in over USB-C, and click **Install**. It flashes the current release over WebSerial via [ESP Web Tools](https://esphome.github.io/esp-web-tools/).
+
+Every [ARGUS release](https://github.com/h4d35x0/argus/releases) is also built by CI from its tag and ships a single merged image, the four separate parts, an `sdcard.zip` for the card, and `SHA256SUMS`. The same merged image is published to GitHub Packages as an OCI artifact (`ghcr.io/h4d35x0/argus:<tag>`, fetch it with [`oras pull`](https://oras.land)).
 
 **With esptool** — just [esptool](https://github.com/espressif/esptool) (`pip install esptool`). Download **`argus-<tag>.bin`** from the [latest release](https://github.com/h4d35x0/argus/releases/latest) and flash it at offset `0x0`:
 
@@ -547,7 +549,7 @@ Every [ARGUS release](https://github.com/h4d35x0/argus/releases) is built by CI 
 esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash 0x0 argus-v0.1.0.bin
 ```
 
-(The upstream 13:37 project also offers a browser flasher at <https://r3dfish.github.io/13-37/>; that installs **13:37**, not ARGUS.)
+(The upstream 13:37 project has its own browser flasher at <https://r3dfish.github.io/13-37/>, which installs **13:37**, not ARGUS.)
 
 If you instead have the three separate build artifacts, flash them at their offsets (the bootloader sits at `0x0` on the ESP32-S3, and `boot_app0.bin` ships with the Arduino-ESP32 framework):
 
