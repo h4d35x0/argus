@@ -477,7 +477,7 @@ pio device monitor          # 115200 baud
 
 That's it — no manual library edits. LilyGoLib and its NFC forks are **vendored under `lib/`** with the required patches baked in (SEND_BUF_SIZE and LV_USE_SNAPSHOT), so there is no build-time patch step, and all dependencies are pinned for reproducible output. The build emits `bootloader.bin`, `partitions.bin`, and `firmware.bin` under `.pio/build/twatch_ultra/`.
 
-> **Note:** ARGUS is a fork of the open-source T-Watch Ultra firmware; the `r3dfish/13-37` links elsewhere in this README point to the **upstream base project**. Prebuilt ARGUS images are attached to each [GitHub Release](https://github.com/h4d35x0/argus/releases), and you can flash from your browser at **<https://h4d35x0.github.io/argus/>** (see **Installing a prebuilt binary** below). The two extra PlatformIO envs (`ancs_spike`, `screenshots`) are development-only.
+> **Note:** ARGUS is a fork of the open-source T-Watch Ultra firmware; the `r3dfish/13-37` links elsewhere in this README point to the **upstream base project**. Prebuilt ARGUS images are attached to each [GitHub Release](https://github.com/h4d35x0/argus/releases), see **Installing a prebuilt binary** below. The two extra PlatformIO envs (`ancs_spike`, `screenshots`) are development-only.
 
 If the board isn't auto-detected, pass the port: `pio run -t upload --upload-port /dev/ttyACM0` (Linux) / `COMx` (Windows) / `/dev/cu.usbmodemXXXX` (macOS).
 
@@ -539,7 +539,7 @@ local build does not match the crashed firmware.
 
 ### Installing a prebuilt binary
 
-**Easiest, flash from your browser** (no toolchain): open **<https://h4d35x0.github.io/argus/>** in desktop **Chrome** or **Edge**, plug the watch in over USB-C, and click **Install**. It flashes the current release over WebSerial via [ESP Web Tools](https://esphome.github.io/esp-web-tools/).
+> **Do NOT flash the merged `argus-<tag>.bin` at `0x0` yet.** The one-time on-device test of that image bricked a watch on 2026-09-09 (black screen, no boot); the merge recipe is under investigation. Until this line is removed, build from source and flash with PlatformIO, or flash `firmware.bin` alone at `0x10000`, which is the path that has always worked.
 
 Every [ARGUS release](https://github.com/h4d35x0/argus/releases) is also built by CI from its tag and ships a single merged image, the four separate parts, an `sdcard.zip` for the card, and `SHA256SUMS`. The same merged image is published to GitHub Packages as an OCI artifact (`ghcr.io/h4d35x0/argus:<tag>`, fetch it with [`oras pull`](https://oras.land)).
 
