@@ -539,37 +539,32 @@ local build does not match the crashed firmware.
 
 ### Installing a prebuilt binary
 
-> **Do NOT flash the merged `argus-<tag>.bin` at `0x0` yet.** The one-time on-device test of that image bricked a watch on 2026-09-09 (black screen, no boot); the merge recipe is under investigation. Until this line is removed, build from source and flash with PlatformIO, or flash `firmware.bin` alone at `0x10000`, which is the path that has always worked.
+Every [ARGUS release](https://github.com/h4d35x0/argus/releases) is built by CI from its tag and ships the four component binaries, an `sdcard.zip` for the card, and `SHA256SUMS`.
 
-Every [ARGUS release](https://github.com/h4d35x0/argus/releases) is also built by CI from its tag and ships a single merged image, the four separate parts, an `sdcard.zip` for the card, and `SHA256SUMS`. The same merged image is published to GitHub Packages as an OCI artifact (`ghcr.io/h4d35x0/argus:<tag>`, fetch it with [`oras pull`](https://oras.land)).
+There is deliberately **no single merged image**. One was published briefly and bricked a watch on 2026-09-09: the merge step rewrote the bootloader's flash-mode byte from `DIO` to `QIO`, so the ROM configured SPI for quad reads, could not read flash, and never booted. The four parts below are byte-for-byte what `pio run -t upload` writes, which is the combination proven to boot.
 
-**With esptool** — just [esptool](https://github.com/espressif/esptool) (`pip install esptool`). Download **`argus-<tag>.bin`** from the [latest release](https://github.com/h4d35x0/argus/releases/latest) and flash it at offset `0x0`:
-
-```bash
-esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash 0x0 argus-v0.1.0.bin
-```
-
-(The upstream 13:37 project has its own browser flasher at <https://r3dfish.github.io/13-37/>, which installs **13:37**, not ARGUS.)
-
-If you instead have the three separate build artifacts, flash them at their offsets (the bootloader sits at `0x0` on the ESP32-S3, and `boot_app0.bin` ships with the Arduino-ESP32 framework):
+**With esptool**: just [esptool](https://github.com/espressif/esptool) (`pip install esptool`). Download the four `.bin` files from the [latest release](https://github.com/h4d35x0/argus/releases/latest) and flash them at their offsets. The bootloader sits at `0x0` on the ESP32-S3, and `boot_app0.bin` ships with the Arduino-ESP32 framework:
 
 ```bash
 esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash \
+  --flash_mode keep --flash_freq keep --flash_size keep \
   0x0     bootloader.bin \
   0x8000  partitions.bin \
   0xe000  boot_app0.bin \
   0x10000 firmware.bin
 ```
 
-<details><summary>Generating the merged binary for a release</summary>
+Keep `--flash_mode keep`. It is what stops esptool rewriting the bootloader's flash-mode byte, which is the exact defect that bricked a watch.
 
-This is exactly what `.github/workflows/release.yml` runs on a tag push. By hand, from `.pio/build/twatch_ultra/`, with `boot_app0.bin` copied from `~/.platformio/packages/framework-arduinoespressif32/tools/partitions/`:
+Put the watch in **download mode first**: hold **BOOT** while connecting USB. esptool cannot reset the running application's USB CDC port on its own.
 
-```bash
-esptool.py --chip esp32s3 merge_bin -o argus-v0.1.0.bin \
-  --flash_mode qio --flash_freq 80m --flash_size 16MB \
-  0x0 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin
-```
+(The upstream 13:37 project has its own browser flasher at <https://r3dfish.github.io/13-37/>, which installs **13:37**, not ARGUS.)
+
+<details><summary>Why there is no merged binary</summary>
+
+`esptool merge_bin` re-stamps the flash mode, frequency and size into the bootloader header it bundles at `0x0`. Passing `--flash_mode qio` there on 2026-09-09 changed the byte at offset `0x2` from the `DIO` that PlatformIO builds for this board to `QIO`, and the resulting image bricked the first watch it touched. CI built it and could not boot it, so nothing caught it.
+
+`.github/workflows/release.yml` now ships only the four parts, and `scripts/verify_release_assets.py` fails the release if a merged image appears in the asset set or if the bootloader's flash mode is not the one proven to boot.
 </details>
 
 To recover a bricked or misbehaving unit, `esptool.py --chip esp32s3 --port <port> erase_flash` first, then reflash. If flashing fails to connect, hold **BOOT** while tapping **RESET** to force download mode.

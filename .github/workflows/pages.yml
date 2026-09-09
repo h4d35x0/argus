@@ -1,0 +1,112 @@
+# ARGUS browser flasher (GitHub Pages).
+#
+# Publishes an ESP Web Tools page at https://<owner>.github.io/argus/ that flashes
+# the watch over WebSerial from Chrome/Edge, the LilyGo-style one-click install.
+#
+# The firmware binaries are NOT committed to the repo. This workflow pulls them
+# from the latest GitHub Release at build time and serves them SAME-ORIGIN beside
+# the manifest, so there is no committed binary in git history and no cross-origin
+# fetch for the flasher to trip on. The page redeploys automatically whenever a
+# new release is published, so the flasher always serves the current version.
+#
+# It serves the FOUR COMPONENT binaries at their own offsets, NOT the single
+# merged image. That is deliberate. On 2026-09-09 the merged image bricked a
+# watch: `esptool merge_bin --flash_mode qio` had rewritten the bootloader's
+# flash-mode byte at 0x2 from the DIO that PlatformIO builds for this board to
+# QIO, so the ROM configured SPI for quad reads and could not read flash. These
+# four parts at these four offsets are byte-for-byte what `pio run -t upload`
+# writes, which is the only combination ever proven to boot on this hardware.
+# ESP Web Tools flashes them with flashMode/flashFreq/flashSize all "keep", so
+# nothing rewrites a header along the way (verified in the vendored bundle).
+#
+# The page vendors esp-web-tools (flasher/vendor/), so it has no runtime CDN
+# dependency. One-time repo setting: Pages source must be "GitHub Actions" (Settings > Pages,
+# or the API call in the migration notes). Without it, deploy-pages fails.
+name: Pages (flasher)
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - flasher/**
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; let a run finish rather than cancelling a publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the flasher site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          # copy the whole flasher tree so the vendored esp-web-tools/ ships too
+          cp -r flasher/. site/
+
+          # The release that should be flashed: the one that triggered us, else latest.
+          tag="${{ github.event.release.tag_name }}"
+          if [ -z "$tag" ]; then
+            tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          fi
+          echo "flasher will serve release $tag"
+
+          # The component binaries, each flashed at its own offset. Offsets must
+          # match README "Installing a prebuilt binary" and the pio upload map.
+          for part in bootloader.bin partitions.bin boot_app0.bin firmware.bin; do
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$part" --dir site
+            test -s "site/$part" || { echo "missing release asset: $part" >&2; exit 1; }
+          done
+          ver="${tag#v}"
+
+          cat > site/manifest.json <<JSON
+          {
+            "name": "ARGUS",
+            "version": "$ver",
+            "new_install_prompt_erase": true,
+            "builds": [
+              {
+                "chipFamily": "ESP32-S3",
+                "parts": [
+                  { "path": "bootloader.bin", "offset": 0 },
+                  { "path": "partitions.bin", "offset": 32768 },
+                  { "path": "boot_app0.bin", "offset": 57344 },
+                  { "path": "firmware.bin", "offset": 65536 }
+                ]
+              }
+            ]
+          }
+          JSON
+
+          # A 404 helper and a .nojekyll so no filename is mangled.
+          touch site/.nojekyll
+          echo "site contents:"; ls -l site; echo "manifest:"; cat site/manifest.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
