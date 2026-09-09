@@ -26,9 +26,9 @@ The LilyGo T-Watch Ultra can be purchased from LilyGo [here](https://www.lilygo.
 | | | |
 |:--:|:--:|:--:|
 | ![Watch face](img/argus/clock.png) | ![Tools grid](img/argus/tools_1.png) | ![Threat Radar](img/argus/radar.png) |
-| Watch face | Tools grid (defense-first) | Threat Radar |
-| ![Phone notifications](img/argus/notify.png) | ![RF tools](img/argus/tools_2.png) | ![Settings](img/argus/settings_1.png) |
-| Phone notifications | RF tools | Settings |
+| Watch face | Tools grid (Defense mode) | Threat Radar |
+| ![Phone notifications](img/argus/notify.png) | ![Offense mode tools](img/argus/tools_2.png) | ![Settings](img/argus/settings_1.png) |
+| Phone notifications | Offense mode (PIN-gated) | Settings |
 | ![Meshtastic](img/argus/meshtastic.png) | ![Mesh config](img/argus/config_2.png) | ![Calendar](img/argus/calendar.png) |
 | Meshtastic | Mesh config | Calendar |
 
